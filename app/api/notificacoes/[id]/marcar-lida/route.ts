@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 
+export const dynamic = 'force-dynamic';
+
 // PATCH /api/notificacoes/:id/marcar-lida
 export async function PATCH(
   request: NextRequest,

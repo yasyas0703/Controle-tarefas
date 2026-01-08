@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { deleteFile } from '@/app/utils/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // DELETE /api/documentos/:id
 export async function DELETE(
   request: NextRequest,

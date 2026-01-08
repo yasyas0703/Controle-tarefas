@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { uploadFile, deleteFile } from '@/app/utils/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/documentos?processoId=123
 export async function GET(request: NextRequest) {
   try {

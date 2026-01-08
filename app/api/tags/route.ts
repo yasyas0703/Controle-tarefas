@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/tags
 export async function GET() {
   try {
