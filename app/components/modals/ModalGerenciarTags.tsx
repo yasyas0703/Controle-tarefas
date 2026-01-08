@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { X, Edit, Check } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
+import { api } from '@/app/utils/api';
 import ModalBase from './ModalBase';
 
 interface ModalGerenciarTagsProps {
@@ -10,8 +11,9 @@ interface ModalGerenciarTagsProps {
 }
 
 export default function ModalGerenciarTags({ onClose }: ModalGerenciarTagsProps) {
-  const { tags, setTags, processos, setProcessos, mostrarAlerta, mostrarConfirmacao } = useSistema();
+  const { tags, setTags, mostrarAlerta, mostrarConfirmacao, adicionarNotificacao } = useSistema();
   const [editando, setEditando] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const [novaTag, setNovaTag] = useState({
     nome: '',
     cor: 'bg-red-500',
@@ -33,51 +35,80 @@ export default function ModalGerenciarTags({ onClose }: ModalGerenciarTagsProps)
     { bg: 'bg-amber-500', text: 'text-white', nome: 'Âmbar' },
   ];
 
-  const adicionarTag = (tag: { nome: string; cor: string; texto?: string }) => {
-    const proximoId = Math.max(0, ...(tags || []).map((t) => Number(t.id) || 0)) + 1;
-    setTags([...(tags || []), { id: proximoId, nome: tag.nome, cor: tag.cor, texto: tag.texto || 'text-white' } as any]);
-  };
-
-  const editarTag = (tagId: number, dados: any) => {
-    setTags((prev) => (prev || []).map((t) => (t.id === tagId ? { ...t, ...dados } : t)));
-  };
-
-  const excluirTagDireta = (tagId: number) => {
-    void (async () => {
-      const tag = (tags || []).find((t) => t.id === tagId);
-      const ok = await mostrarConfirmacao({
-        titulo: 'Excluir Tag',
-        mensagem: `Tem certeza que deseja excluir a tag "${tag?.nome || ''}"?\n\nEsta ação não poderá ser desfeita.`,
-        tipo: 'perigo',
-        textoConfirmar: 'Sim, Excluir',
-        textoCancelar: 'Cancelar',
+  const adicionarTag = async (tag: { nome: string; cor: string; texto?: string }) => {
+    try {
+      setLoading(true);
+      const nova = await api.salvarTag({
+        nome: tag.nome,
+        cor: tag.cor,
+        texto: tag.texto || 'text-white',
       });
-      if (!ok) return;
-
-      setTags((prev) => (prev || []).filter((t) => t.id !== tagId));
-      setProcessos((prev) =>
-        (prev || []).map((p) => ({
-          ...p,
-          tags: (p.tags || []).filter((id) => id !== tagId),
-        }))
-      );
-      if (editando?.id === tagId) setEditando(null);
-    })();
+      setTags((prev) => [...(prev || []), nova]);
+      adicionarNotificacao('Tag criada com sucesso', 'sucesso');
+      setNovaTag({ nome: '', cor: 'bg-red-500', texto: 'text-white' });
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao criar tag', 'erro');
+      await mostrarAlerta('Erro', error.message || 'Erro ao criar tag', 'erro');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSalvarNova = () => {
+  const editarTag = async (tagId: number, dados: any) => {
+    try {
+      setLoading(true);
+      const atualizada = await api.atualizarTag(tagId, dados);
+      setTags((prev) => (prev || []).map((t) => (t.id === tagId ? atualizada : t)));
+      adicionarNotificacao('Tag atualizada com sucesso', 'sucesso');
+      setEditando(null);
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao atualizar tag', 'erro');
+      await mostrarAlerta('Erro', error.message || 'Erro ao atualizar tag', 'erro');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const excluirTagDireta = async (tagId: number) => {
+    const tag = (tags || []).find((t) => t.id === tagId);
+    const ok = await mostrarConfirmacao({
+      titulo: 'Excluir Tag',
+      mensagem: `Tem certeza que deseja excluir a tag "${tag?.nome || ''}"?\n\nEsta ação não poderá ser desfeita.`,
+      tipo: 'perigo',
+      textoConfirmar: 'Sim, Excluir',
+      textoCancelar: 'Cancelar',
+    });
+    if (!ok) return;
+
+    try {
+      setLoading(true);
+      await api.excluirTag(tagId);
+      setTags((prev) => (prev || []).filter((t) => t.id !== tagId));
+      adicionarNotificacao('Tag excluída com sucesso', 'sucesso');
+      if (editando?.id === tagId) setEditando(null);
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao excluir tag', 'erro');
+      await mostrarAlerta('Erro', error.message || 'Erro ao excluir tag', 'erro');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSalvarNova = async () => {
     if (!novaTag.nome.trim()) {
-      void mostrarAlerta('Atenção', 'Digite o nome da tag!', 'aviso');
+      await mostrarAlerta('Atenção', 'Digite o nome da tag!', 'aviso');
       return;
     }
-    adicionarTag(novaTag);
-    setNovaTag({ nome: '', cor: 'bg-red-500', texto: 'text-white' });
+    await adicionarTag(novaTag);
   };
 
-  const handleSalvarEdicao = () => {
+  const handleSalvarEdicao = async () => {
     if (!editando) return;
-    editarTag(editando.id, editando);
-    setEditando(null);
+    await editarTag(editando.id, {
+      nome: editando.nome,
+      cor: editando.cor,
+      texto: editando.texto || 'text-white',
+    });
   };
 
   return (
@@ -134,9 +165,10 @@ export default function ModalGerenciarTags({ onClose }: ModalGerenciarTagsProps)
 
               <button
                 onClick={handleSalvarNova}
-                className="w-full bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 font-medium"
+                disabled={loading}
+                className="w-full bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Criar Tag
+                {loading ? 'Salvando...' : 'Criar Tag'}
               </button>
             </div>
           </div>

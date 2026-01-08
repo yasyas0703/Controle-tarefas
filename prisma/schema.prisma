@@ -1,0 +1,409 @@
+// Configuração do Prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// TABELAS PRINCIPAIS
+// ============================================
+
+// Usuários do Sistema
+model Usuario {
+  id            Int       @id @default(autoincrement())
+  nome          String
+  email         String    @unique
+  senha         String    // Hash bcrypt
+  role          Role      @default(USUARIO)
+  departamentoId Int?
+  departamento  Departamento? @relation(fields: [departamentoId], references: [id])
+  ativo         Boolean   @default(true)
+  permissoes    String[]  @default([]) // Array de strings com permissões
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+  
+  processosCriados  Processo[] @relation("ProcessoCriadoPor")
+  comentarios       Comentario[]
+  historicoEventos  HistoricoEvento[]
+  respostasQuestionario RespostaQuestionario[]
+  templatesCriados  Template[]
+  notificacoes      Notificacao[]
+  
+  @@index([email])
+  @@index([role])
+}
+
+enum Role {
+  ADMIN
+  GERENTE
+  USUARIO
+}
+
+// Departamentos do Fluxo
+model Departamento {
+  id                      Int       @id @default(autoincrement())
+  nome                    String
+  descricao               String?
+  responsavel             String?
+  cor                     String    @default("from-cyan-500 to-blue-600") // Gradiente Tailwind
+  icone                   String?   // Nome do ícone Lucide
+  ativo                   Boolean   @default(true)
+  ordem                   Int       @default(0)
+  criadoEm                DateTime  @default(now())
+  atualizadoEm            DateTime  @updatedAt
+  
+  usuarios                Usuario[]
+  processos               Processo[]
+  questionarios           QuestionarioDepartamento[]
+  documentosObrigatorios  DocumentoObrigatorio[]
+  historicoFluxos         HistoricoFluxo[]
+  comentarios             Comentario[]
+  documentos              Documento[]
+  
+  @@index([ativo, ordem])
+}
+
+// Empresas Cadastradas
+model Empresa {
+  id                    Int       @id @default(autoincrement())
+  cnpj                  String?   @unique
+  codigo                String    @unique
+  razao_social          String
+  apelido               String?   // Nome fantasia
+  inscricao_estadual    String?
+  inscricao_municipal   String?
+  regime_federal        String?
+  regime_estadual       String?
+  regime_municipal      String?
+  data_abertura         DateTime?
+  estado                String?
+  cidade                String?
+  bairro                String?
+  logradouro            String?
+  numero                String?
+  cep                   String?
+  email                 String?
+  telefone              String?
+  cadastrada            Boolean   @default(false) // true se CNPJ informado
+  criado_em             DateTime  @default(now())
+  atualizado_em         DateTime  @updatedAt
+  
+  processos             Processo[]
+  
+  @@index([cnpj])
+  @@index([codigo])
+  @@index([cadastrada])
+}
+
+// Processos/Solicitações
+model Processo {
+  id                      Int       @id @default(autoincrement())
+  nome                    String?
+  nomeServico             String?
+  nomeEmpresa             String
+  cliente                 String?
+  email                   String?
+  telefone                String?
+  
+  empresaId               Int?
+  empresa                 Empresa?  @relation(fields: [empresaId], references: [id])
+  
+  status                  Status    @default(EM_ANDAMENTO)
+  prioridade              Prioridade @default(MEDIA)
+  
+  departamentoAtual       Int
+  departamentoAtualRel    Departamento? @relation(fields: [departamentoAtual], references: [id])
+  departamentoAtualIndex  Int       @default(0)
+  fluxoDepartamentos      Int[]     @default([]) // Array de IDs de departamentos
+  
+  descricao               String?   @db.Text
+  notasCriador            String?   @db.Text
+  
+  criadoPorId             Int?
+  criadoPor               Usuario?  @relation("ProcessoCriadoPor", fields: [criadoPorId], references: [id])
+  
+  criadoEm                DateTime  @default(now())
+  dataCriacao             DateTime  @default(now())
+  dataAtualizacao         DateTime  @default(now())
+  dataInicio              DateTime?
+  dataEntrega             DateTime?
+  dataFinalizacao         DateTime?
+  
+  progresso               Int       @default(0) // 0-100
+  
+  // Relações
+  tags                    ProcessoTag[]
+  comentarios             Comentario[]
+  documentos              Documento[]
+  historicoEventos        HistoricoEvento[]
+  historicoFluxos         HistoricoFluxo[]
+  questionarios           QuestionarioDepartamento[]
+  respostasQuestionario   RespostaQuestionario[]
+  
+  @@index([status])
+  @@index([departamentoAtual])
+  @@index([empresaId])
+  @@index([criadoPorId])
+  @@index([dataCriacao])
+}
+
+enum Status {
+  EM_ANDAMENTO
+  FINALIZADO
+  PAUSADO
+  CANCELADO
+  RASCUNHO
+}
+
+enum Prioridade {
+  ALTA
+  MEDIA
+  BAIXA
+}
+
+// Tags do Sistema
+model Tag {
+  id          Int       @id @default(autoincrement())
+  nome        String    @unique
+  cor         String    @default("bg-blue-500") // Cor Tailwind
+  texto       String    @default("text-white") // Cor do texto
+  criadoEm    DateTime  @default(now())
+  atualizadoEm DateTime @updatedAt
+  
+  processos   ProcessoTag[]
+  
+  @@index([nome])
+}
+
+// Relação Muitos-para-Muitos: Processo <-> Tag
+model ProcessoTag {
+  id        Int      @id @default(autoincrement())
+  processoId Int
+  tagId     Int
+  processo  Processo @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  
+  @@unique([processoId, tagId])
+  @@index([processoId])
+  @@index([tagId])
+}
+
+// Comentários nos Processos
+model Comentario {
+  id              Int       @id @default(autoincrement())
+  processoId      Int
+  processo        Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  
+  texto           String    @db.Text
+  autorId         Int
+  autor           Usuario   @relation(fields: [autorId], references: [id])
+  
+  departamentoId  Int?
+  departamento    Departamento? @relation(fields: [departamentoId], references: [id])
+  
+  mencoes         String[]  @default([]) // Array de emails/nomes mencionados
+  editado         Boolean   @default(false)
+  editadoEm       DateTime?
+  criadoEm        DateTime  @default(now())
+  atualizadoEm    DateTime  @updatedAt
+  
+  @@index([processoId])
+  @@index([autorId])
+}
+
+// Documentos dos Processos
+model Documento {
+  id              Int       @id @default(autoincrement())
+  processoId      Int
+  processo        Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  
+  nome            String
+  tipo            String    // Geral, Contrato Social, CNPJ, etc.
+  tipoCategoria   String?   // Categoria adicional
+  tamanho         BigInt    // Tamanho em bytes
+  url             String    // URL no Supabase Storage
+  path            String?   // Caminho no storage
+  
+  departamentoId  Int?
+  departamento    Departamento? @relation(fields: [departamentoId], references: [id])
+  
+  perguntaId      Int?      // Se foi anexado em uma pergunta específica
+  
+  dataUpload      DateTime  @default(now())
+  uploadPorId     Int?
+  
+  @@index([processoId])
+  @@index([departamentoId])
+  @@index([tipo])
+}
+
+// Documentos Obrigatórios por Departamento
+model DocumentoObrigatorio {
+  id              Int       @id @default(autoincrement())
+  departamentoId  Int
+  departamento    Departamento @relation(fields: [departamentoId], references: [id], onDelete: Cascade)
+  
+  tipo            String
+  nome            String
+  descricao       String?   @db.Text
+  obrigatorio     Boolean   @default(true)
+  
+  @@index([departamentoId])
+}
+
+// Questionários por Departamento
+model QuestionarioDepartamento {
+  id              Int       @id @default(autoincrement())
+  departamentoId  Int
+  departamento    Departamento @relation(fields: [departamentoId], references: [id], onDelete: Cascade)
+  
+  processoId      Int?
+  processo        Processo? @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  
+  label           String
+  tipo            TipoCampo
+  obrigatorio     Boolean   @default(false)
+  ordem           Int       @default(0)
+  
+  opcoes          String[]  @default([]) // Para campos select
+  placeholder     String?
+  descricao       String?   @db.Text
+  
+  // Pergunta condicional
+  condicaoPerguntaId Int?
+  condicaoOperador   String? // igual, diferente, contem
+  condicaoValor      String?
+  
+  respostas       RespostaQuestionario[]
+  
+  @@index([departamentoId])
+  @@index([processoId])
+}
+
+enum TipoCampo {
+  TEXT
+  TEXTAREA
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+  FILE
+  PHONE
+  EMAIL
+}
+
+// Respostas dos Questionários
+model RespostaQuestionario {
+  id              Int       @id @default(autoincrement())
+  processoId      Int
+  processo        Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  
+  questionarioId  Int
+  questionario    QuestionarioDepartamento @relation(fields: [questionarioId], references: [id], onDelete: Cascade)
+  
+  resposta        String    @db.Text // JSON string para valores complexos
+  respondidoPorId Int
+  respondidoPor   Usuario   @relation(fields: [respondidoPorId], references: [id])
+  
+  respondidoEm    DateTime  @default(now())
+  atualizadoEm    DateTime  @updatedAt
+  
+  @@unique([processoId, questionarioId])
+  @@index([processoId])
+  @@index([questionarioId])
+}
+
+// Histórico de Eventos do Processo
+model HistoricoEvento {
+  id              Int       @id @default(autoincrement())
+  processoId      Int
+  processo        Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  
+  tipo            TipoEvento
+  acao            String    @db.Text
+  responsavelId   Int?
+  responsavel     Usuario?  @relation(fields: [responsavelId], references: [id])
+  
+  departamento    String?   // Nome do departamento no momento do evento
+  data            DateTime  @default(now())
+  dataTimestamp   BigInt    // Timestamp para ordenação
+  
+  @@index([processoId])
+  @@index([data])
+  @@index([tipo])
+}
+
+enum TipoEvento {
+  INICIO
+  ALTERACAO
+  MOVIMENTACAO
+  CONCLUSAO
+  FINALIZACAO
+  DOCUMENTO
+  COMENTARIO
+}
+
+// Histórico de Fluxo (movimentação entre departamentos)
+model HistoricoFluxo {
+  id              Int       @id @default(autoincrement())
+  processoId      Int
+  processo        Processo  @relation(fields: [processoId], references: [id], onDelete: Cascade)
+  
+  departamentoId  Int
+  departamento    Departamento @relation(fields: [departamentoId], references: [id])
+  
+  ordem           Int       // Ordem no fluxo (0, 1, 2, ...)
+  status          String    // em_andamento, concluido, etc.
+  entradaEm       DateTime  @default(now())
+  saidaEm         DateTime?
+  
+  @@index([processoId])
+  @@index([departamentoId])
+}
+
+// Templates de Processo
+model Template {
+  id                            Int       @id @default(autoincrement())
+  nome                          String
+  descricao                     String?   @db.Text
+  fluxoDepartamentos            Int[]     @default([]) // Array de IDs
+  questionariosPorDepartamento  Json      // JSON com questionários por dept
+  criadoPorId                   Int?
+  criadoPor                     Usuario?  @relation(fields: [criadoPorId], references: [id])
+  criado_em                     DateTime  @default(now())
+  atualizado_em                 DateTime  @updatedAt
+  
+  @@index([criadoPorId])
+}
+
+// Notificações do Sistema
+model Notificacao {
+  id          Int       @id @default(autoincrement())
+  usuarioId   Int
+  usuario     Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  
+  mensagem    String    @db.Text
+  tipo        TipoNotificacao @default(INFO)
+  lida        Boolean   @default(false)
+  
+  processoId  Int?      // Se relacionado a um processo
+  link        String?   // Link para ação
+  
+  criadoEm    DateTime  @default(now())
+  
+  @@index([usuarioId])
+  @@index([lida])
+  @@index([criadoEm])
+}
+
+enum TipoNotificacao {
+  SUCESSO
+  ERRO
+  INFO
+  AVISO
+}
+

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { LogIn } from 'lucide-react';
 import ModalBase from './ModalBase';
+import { api } from '@/app/utils/api';
 
 interface ModalLoginProps {
   onLogin: (usuario: any) => void;
@@ -10,41 +11,45 @@ interface ModalLoginProps {
 
 export default function ModalLogin({ onLogin }: ModalLoginProps) {
   const [formData, setFormData] = useState({
-    nome: '',
+    email: '',
     senha: '',
   });
 
   const [erro, setErro] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro('');
+    setLoading(true);
 
-    if (!formData.nome || !formData.senha) {
+    if (!formData.email || !formData.senha) {
       setErro('Preencha todos os campos');
+      setLoading(false);
       return;
     }
 
-    if (formData.nome === 'admin' && formData.senha === 'admin123') {
-      const usuario = {
-        id: 1,
-        nome: 'Admin',
-        role: 'admin' as const,
-        ativo: true,
-        criadoEm: new Date(),
-        permissoes: [
-          'criar_processo',
-          'editar_processo',
-          'excluir_processo',
-          'criar_departamento',
-          'editar_departamento',
-          'excluir_departamento',
-          'gerenciar_usuarios',
-        ],
-      };
-      onLogin(usuario);
-    } else {
-      setErro('Credenciais inválidas');
+    try {
+      const response = await api.login(formData.email, formData.senha);
+      
+      if (response.usuario) {
+        // Mapeia o formato do backend para o formato esperado pelo frontend
+        const usuario = {
+          id: response.usuario.id,
+          nome: response.usuario.nome,
+          email: response.usuario.email,
+          role: response.usuario.role.toLowerCase() as 'admin' | 'gerente' | 'usuario',
+          ativo: response.usuario.ativo,
+          permissoes: response.usuario.permissoes || [],
+        };
+        onLogin(usuario);
+      } else {
+        setErro('Erro ao fazer login');
+      }
+    } catch (error: any) {
+      setErro(error.message || 'Credenciais inválidas');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -79,16 +84,17 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">
-                  Usuário
+                  Email
                 </label>
                 <input
-                  type="text"
-                  value={formData.nome}
-                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-4 py-3 border-2 border-gray-200 dark:border-[var(--border)] rounded-lg focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 transition-all duration-200 text-gray-900 dark:text-[var(--fg)] bg-white dark:bg-[var(--card)]"
-                  placeholder="Seu usuário"
+                  placeholder="seu@email.com"
                   id="login-user"
                   aria-required
+                  disabled={loading}
                 />
               </div>
 
@@ -103,6 +109,7 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
                   className="w-full px-4 py-3 border-2 border-gray-200 dark:border-[var(--border)] rounded-lg focus:border-cyan-500 focus:ring-2 focus:ring-cyan-200 transition-all duration-200 text-gray-900 dark:text-[var(--fg)] bg-white dark:bg-[var(--card)]"
                   placeholder="Sua senha"
                   aria-required
+                  disabled={loading}
                 />
               </div>
 
@@ -114,16 +121,17 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
 
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-600 text-sm">
                 <p className="font-semibold mb-1">Demo Credentials:</p>
-                <p>Usuário: <span className="font-mono">admin</span></p>
+                <p>Email: <span className="font-mono">admin@example.com</span></p>
                 <p>Senha: <span className="font-mono">admin123</span></p>
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-bold py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg hover:shadow-xl"
               >
                 <LogIn size={20} />
-                Entrar
+                {loading ? 'Entrando...' : 'Entrar'}
               </button>
             </form>
           </div>

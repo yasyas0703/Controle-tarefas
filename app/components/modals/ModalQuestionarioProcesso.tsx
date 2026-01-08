@@ -21,6 +21,7 @@ export default function ModalQuestionarioProcesso({
 }: ModalQuestionarioProcessoProps) {
   const {
     processos,
+    setProcessos,
     departamentos,
     empresas,
     usuarioLogado,
@@ -165,27 +166,29 @@ export default function ModalQuestionarioProcesso({
     }
   };
 
-  const handleSalvar = () => {
+  const handleSalvar = async () => {
     if (!processo || !departamento) return;
     if (somenteLeitura || processo.status === 'finalizado') return;
     if (!validarObrigatorios()) return;
 
-    const respostasHistoricoAtualizado = {
-      ...(processo.respostasHistorico || {}),
-      [departamentoId]: {
-        departamentoId,
-        departamentoNome: departamento.nome,
-        questionario: questionarioAtual,
-        respostas,
-        respondidoEm: new Date(),
-        respondidoPor: usuarioLogado?.nome || 'Sistema',
-      },
-    };
-
-    atualizarProcesso(processoId, { respostasHistorico: respostasHistoricoAtualizado } as any);
-    respostasBackupRef.current = JSON.parse(JSON.stringify(respostas || {}));
-    adicionarNotificacao('✅ Respostas salvas com sucesso!', 'sucesso');
-    onClose();
+    try {
+      // Salvar respostas usando a API de questionários
+      const { api } = await import('@/app/utils/api');
+      await api.salvarRespostasQuestionario(processoId, departamentoId, respostas);
+      
+      // Recarregar o processo atualizado
+      const processoAtualizado = await api.getProcesso(processoId);
+      if (processoAtualizado && setProcessos) {
+        setProcessos((prev: any) => prev.map((p: any) => p.id === processoId ? processoAtualizado : p));
+      }
+      
+      respostasBackupRef.current = JSON.parse(JSON.stringify(respostas || {}));
+      adicionarNotificacao('✅ Respostas salvas com sucesso!', 'sucesso');
+      onClose();
+    } catch (error: any) {
+      console.error('Erro ao salvar respostas:', error);
+      adicionarNotificacao(error.message || 'Erro ao salvar respostas', 'erro');
+    }
   };
 
   const handleFecharModal = () => {

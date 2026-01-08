@@ -61,19 +61,13 @@ export default function ModalUploadDocumento({
       for (let i = 0; i < arquivos.length; i++) {
         const a = arquivos[i];
         try {
-          const url = URL.createObjectURL(a.file);
-          adicionarDocumentoProcesso(processo.id, {
-            id: Date.now() + i,
-            processoId: processo.id,
-            nome: a.nome,
-            tipo: a.tipo,
-            tamanho: a.tamanho,
-            url,
-            tipoCategoria: perguntaId ? 'questionario' : 'geral',
-            departamentoId: processo.departamentoAtual,
-            perguntaId: perguntaId ?? undefined,
-            dataUpload: new Date(),
-          });
+          await adicionarDocumentoProcesso(
+            processo.id,
+            a.file,
+            a.tipo,
+            processo.departamentoAtual,
+            perguntaId ?? undefined
+          );
           sucessos++;
         } catch {
           erros++;

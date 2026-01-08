@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, UserPlus, Edit, Check, User, Play, Pause } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
+import { api } from '@/app/utils/api';
 import ModalBase from './ModalBase';
 
 interface ModalGerenciarUsuariosProps {
@@ -10,35 +11,37 @@ interface ModalGerenciarUsuariosProps {
 }
 
 export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuariosProps) {
-  const { departamentos, mostrarAlerta } = useSistema();
-  
-  const [usuarios, setUsuarios] = useState([
-    {
-      id: 1,
-      nome: 'Admin',
-      role: 'admin',
-      ativo: true,
-      departamento: 'N/A',
-    },
-    {
-      id: 2,
-      nome: 'Gerente Análise',
-      role: 'gerente',
-      ativo: true,
-      departamento: 'Análise',
-    },
-  ]);
+  const { departamentos, usuarios, setUsuarios, mostrarAlerta, mostrarConfirmacao, adicionarNotificacao } = useSistema();
 
   const [novoUsuario, setNovoUsuario] = useState({ 
     nome: '', 
+    email: '',
     senha: '',
-    role: 'comum', 
-    departamento: '' 
+    role: 'usuario' as 'admin' | 'gerente' | 'usuario', 
+    departamentoId: undefined as number | undefined,
+    permissoes: [] as string[]
   });
   
-  const [editandoUsuario, setEditandoUsuario] = useState(null);
-  const [showConfirmacaoExclusao, setShowConfirmacaoExclusao] = useState(null);
-  const [showAlteracaoStatus, setShowAlteracaoStatus] = useState(null);
+  const [editandoUsuario, setEditandoUsuario] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  
+  // Carregar usuários ao abrir o modal
+  useEffect(() => {
+    async function carregarUsuarios() {
+      try {
+        const usuariosData = await api.getUsuarios();
+        // Converter roles de maiúsculas para minúsculas para o frontend
+        const usuariosConvertidos = (usuariosData || []).map((u: any) => ({
+          ...u,
+          role: typeof u.role === 'string' ? u.role.toLowerCase() : u.role
+        }));
+        setUsuarios(usuariosConvertidos || []);
+      } catch (error) {
+        console.error('Erro ao carregar usuários:', error);
+      }
+    }
+    carregarUsuarios();
+  }, [setUsuarios]);
 
   const permissoesDisponiveis = [
     { id: "criar_processo", label: "Criar Processos" },
@@ -53,54 +56,131 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
     { id: "gerenciar_usuarios", label: "Gerenciar Usuários" }
   ];
 
-  const handleCriarUsuario = () => {
-    if (!novoUsuario.nome || !novoUsuario.senha) {
-      void mostrarAlerta('Atenção', 'Preencha nome e senha.', 'aviso');
+  const handleCriarUsuario = async () => {
+    if (!novoUsuario.nome || !novoUsuario.email || !novoUsuario.senha) {
+      await mostrarAlerta('Atenção', 'Preencha nome, email e senha.', 'aviso');
       return;
     }
 
-    if (novoUsuario.role === 'gerente' && !novoUsuario.departamento) {
-      void mostrarAlerta('Atenção', 'Selecione um departamento para o gerente.', 'aviso');
-      return;
-    }
-
-    setUsuarios([
-      ...usuarios,
-      {
-        id: Date.now(),
+    try {
+      setLoading(true);
+      const usuario = await api.salvarUsuario({
         nome: novoUsuario.nome,
-        role: novoUsuario.role,
-        ativo: true,
-        departamento: novoUsuario.role === 'gerente' ? novoUsuario.departamento : 'N/A',
-      },
-    ]);
-    
-    setNovoUsuario({ nome: '', senha: '', role: 'comum', departamento: '' });
+        email: novoUsuario.email,
+        senha: novoUsuario.senha,
+        role: novoUsuario.role.toUpperCase() as 'ADMIN' | 'GERENTE' | 'USUARIO',
+        departamentoId: novoUsuario.departamentoId,
+        permissoes: novoUsuario.permissoes,
+      });
+      
+      // Recarregar usuários
+      const usuariosData = await api.getUsuarios();
+      const usuariosConvertidos = (usuariosData || []).map((u: any) => ({
+        ...u,
+        role: typeof u.role === 'string' ? u.role.toLowerCase() : u.role
+      }));
+      setUsuarios(usuariosConvertidos || []);
+      
+      adicionarNotificacao('Usuário criado com sucesso', 'sucesso');
+      setNovoUsuario({ nome: '', email: '', senha: '', role: 'usuario', departamentoId: undefined, permissoes: [] });
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao criar usuário', 'erro');
+      await mostrarAlerta('Erro', error.message || 'Erro ao criar usuário', 'erro');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleEditarUsuario = () => {
-    if (!editandoUsuario.nome) {
-      void mostrarAlerta('Atenção', 'Preencha o nome do usuário.', 'aviso');
+  const handleEditarUsuario = async () => {
+    if (!editandoUsuario?.nome || !editandoUsuario?.email) {
+      await mostrarAlerta('Atenção', 'Preencha nome e email do usuário.', 'aviso');
       return;
     }
 
-    setUsuarios(usuarios.map(u => 
-      u.id === editandoUsuario.id ? editandoUsuario : u
-    ));
-    
-    setEditandoUsuario(null);
+    try {
+      setLoading(true);
+      await api.atualizarUsuario(editandoUsuario.id, {
+        nome: editandoUsuario.nome,
+        email: editandoUsuario.email,
+        role: (typeof editandoUsuario.role === 'string' ? editandoUsuario.role.toUpperCase() : editandoUsuario.role) as 'ADMIN' | 'GERENTE' | 'USUARIO',
+        departamentoId: editandoUsuario.departamentoId,
+        permissoes: editandoUsuario.permissoes || [],
+        ativo: editandoUsuario.ativo,
+        ...(editandoUsuario.senha && { senha: editandoUsuario.senha }),
+      });
+      
+      // Recarregar usuários
+      const usuariosData = await api.getUsuarios();
+      const usuariosConvertidos = (usuariosData || []).map((u: any) => ({
+        ...u,
+        role: typeof u.role === 'string' ? u.role.toLowerCase() : u.role
+      }));
+      setUsuarios(usuariosConvertidos || []);
+      
+      adicionarNotificacao('Usuário atualizado com sucesso', 'sucesso');
+      setEditandoUsuario(null);
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao editar usuário', 'erro');
+      await mostrarAlerta('Erro', error.message || 'Erro ao editar usuário', 'erro');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleExcluirUsuario = (id: number) => {
-    setUsuarios(usuarios.filter(u => u.id !== id));
-    setShowConfirmacaoExclusao(null);
+  const handleExcluirUsuario = async (id: number) => {
+    const usuario = usuarios.find(u => u.id === id);
+    const ok = await mostrarConfirmacao({
+      titulo: 'Excluir Usuário',
+      mensagem: `Tem certeza que deseja excluir o usuário "${usuario?.nome || ''}"?\n\nEsta ação não poderá ser desfeita.`,
+      tipo: 'perigo',
+      textoConfirmar: 'Sim, Excluir',
+      textoCancelar: 'Cancelar',
+    });
+
+    if (ok) {
+      try {
+        setLoading(true);
+        await api.excluirUsuario(id);
+        
+        // Recarregar usuários
+        const usuariosData = await api.getUsuarios();
+        const usuariosConvertidos = (usuariosData || []).map((u: any) => ({
+          ...u,
+          role: typeof u.role === 'string' ? u.role.toLowerCase() : u.role
+        }));
+        setUsuarios(usuariosConvertidos || []);
+        
+        adicionarNotificacao('Usuário excluído com sucesso', 'sucesso');
+      } catch (error: any) {
+        adicionarNotificacao(error.message || 'Erro ao excluir usuário', 'erro');
+        await mostrarAlerta('Erro', error.message || 'Erro ao excluir usuário', 'erro');
+      } finally {
+        setLoading(false);
+      }
+    }
   };
 
-  const toggleStatusUsuario = (usuario) => {
-    setUsuarios(usuarios.map(u => 
-      u.id === usuario.id ? { ...u, ativo: !u.ativo } : u
-    ));
-    setShowAlteracaoStatus(null);
+  const toggleStatusUsuario = async (usuario: any) => {
+    try {
+      setLoading(true);
+      await api.atualizarUsuario(usuario.id, {
+        ativo: !usuario.ativo,
+      });
+      
+      // Recarregar usuários
+      const usuariosData = await api.getUsuarios();
+      const usuariosConvertidos = (usuariosData || []).map((u: any) => ({
+        ...u,
+        role: typeof u.role === 'string' ? u.role.toLowerCase() : u.role
+      }));
+      setUsuarios(usuariosConvertidos || []);
+      
+      adicionarNotificacao(`Usuário ${!usuario.ativo ? 'ativado' : 'desativado'} com sucesso`, 'sucesso');
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao alterar status', 'erro');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -173,9 +253,9 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                       Tipo de Usuário
                     </label>
                     <select
-                      value={editandoUsuario ? editandoUsuario.role : novoUsuario.role}
+                      value={editandoUsuario ? (typeof editandoUsuario.role === 'string' ? editandoUsuario.role.toLowerCase() : editandoUsuario.role) : novoUsuario.role}
                       onChange={(e) => {
-                        const newRole = e.target.value;
+                        const newRole = e.target.value as 'admin' | 'gerente' | 'usuario';
                         if (editandoUsuario) {
                           setEditandoUsuario({ ...editandoUsuario, role: newRole });
                         } else {
@@ -184,7 +264,7 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                       }}
                       className="w-full px-4 py-2 border border-gray-300 dark:border-[var(--border)] rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
                     >
-                      <option value="comum">Usuário Comum</option>
+                      <option value="usuario">Usuário</option>
                       <option value="gerente">Gerente</option>
                       <option value="admin">Administrador</option>
                     </select>
@@ -196,16 +276,20 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                         Departamento *
                       </label>
                       <select
-                        value={editandoUsuario ? editandoUsuario.departamento : novoUsuario.departamento}
-                        onChange={(e) => editandoUsuario
-                          ? setEditandoUsuario({ ...editandoUsuario, departamento: e.target.value })
-                          : setNovoUsuario({ ...novoUsuario, departamento: e.target.value })
-                        }
+                        value={editandoUsuario ? editandoUsuario.departamentoId : novoUsuario.departamentoId}
+                        onChange={(e) => {
+                          const deptId = e.target.value ? parseInt(e.target.value) : undefined;
+                          if (editandoUsuario) {
+                            setEditandoUsuario({ ...editandoUsuario, departamentoId: deptId });
+                          } else {
+                            setNovoUsuario({ ...novoUsuario, departamentoId: deptId });
+                          }
+                        }}
                         className="w-full px-4 py-2 border border-gray-300 dark:border-[var(--border)] rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
                       >
                         <option value="">Selecione...</option>
                         {departamentos.map(d => (
-                          <option key={d.id} value={d.nome}>{d.nome}</option>
+                          <option key={d.id} value={d.id}>{d.nome}</option>
                         ))}
                       </select>
                     </div>
@@ -280,8 +364,8 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                           <div className="font-medium dark:text-[var(--fg)]">{user.nome}</div>
                           <div className="text-sm text-gray-600 dark:text-gray-300">
                             {user.role === 'admin' && 'Administrador'}
-                            {user.role === 'gerente' && `Gerente - ${user.departamento}`}
-                            {user.role === 'comum' && 'Usuário Comum'}
+                            {user.role === 'gerente' && `Gerente - ${(user as any).departamento?.nome || 'N/A'}`}
+                            {(user.role === 'usuario' || !user.role) && 'Usuário'}
                           </div>
                         </div>
                       </div>
@@ -297,7 +381,7 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
 
                         <div className="flex gap-1">
                           <button
-                            onClick={() => setShowAlteracaoStatus(user)}
+                            onClick={() => toggleStatusUsuario(user)}
                             className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
                             title={user.ativo ? "Desativar" : "Ativar"}
                           >
@@ -305,7 +389,13 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                           </button>
 
                           <button
-                            onClick={() => setEditandoUsuario(user)}
+                            onClick={() => {
+                              // Converter role para minúsculas ao editar
+                              setEditandoUsuario({
+                                ...user,
+                                role: typeof user.role === 'string' ? user.role.toLowerCase() : user.role
+                              });
+                            }}
                             className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
                             title="Editar"
                           >
@@ -313,7 +403,7 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                           </button>
 
                           <button
-                            onClick={() => setShowConfirmacaoExclusao(user)}
+                            onClick={() => handleExcluirUsuario(user.id)}
                             className="p-2 text-red-600 hover:bg-red-100 rounded-lg"
                             title="Excluir"
                           >
@@ -329,79 +419,6 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
           </div>
       </ModalBase>
 
-      {/* Modal Confirmação Exclusão */}
-      {showConfirmacaoExclusao && (
-        <ModalBase
-          isOpen
-          onClose={() => setShowConfirmacaoExclusao(null)}
-          labelledBy="excluir-usuario-title"
-          dialogClassName="w-full max-w-md bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none"
-          zIndex={1090}
-        >
-          <div className="rounded-2xl">
-            <div className="bg-gradient-to-r from-red-500 to-red-600 p-6 rounded-t-2xl">
-              <h3 id="excluir-usuario-title" className="text-xl font-bold text-white">Excluir Usuário</h3>
-            </div>
-            <div className="p-6">
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Tem certeza que deseja excluir o usuário <strong>{showConfirmacaoExclusao.nome}</strong>?
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowConfirmacaoExclusao(null)}
-                  className="flex-1 px-6 py-3 border border-gray-300 dark:border-[var(--border)] rounded-xl hover:bg-gray-100 dark:hover:bg-[var(--muted)]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={() => handleExcluirUsuario(showConfirmacaoExclusao.id)}
-                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700"
-                >
-                  Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-        </ModalBase>
-      )}
-
-      {/* Modal Alteração Status */}
-      {showAlteracaoStatus && (
-        <ModalBase
-          isOpen
-          onClose={() => setShowAlteracaoStatus(null)}
-          labelledBy="alterar-status-usuario-title"
-          dialogClassName="w-full max-w-md bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none"
-          zIndex={1095}
-        >
-          <div className="rounded-2xl">
-            <div className={`bg-gradient-to-r ${showAlteracaoStatus.ativo ? 'from-amber-500 to-amber-600' : 'from-green-500 to-green-600'} p-6 rounded-t-2xl`}>
-              <h3 id="alterar-status-usuario-title" className="text-xl font-bold text-white">
-                {showAlteracaoStatus.ativo ? 'Desativar' : 'Ativar'} Usuário
-              </h3>
-            </div>
-            <div className="p-6">
-              <p className="text-gray-600 dark:text-gray-300 mb-6">
-                Deseja {showAlteracaoStatus.ativo ? 'desativar' : 'ativar'} o usuário <strong>{showAlteracaoStatus.nome}</strong>?
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowAlteracaoStatus(null)}
-                  className="flex-1 px-6 py-3 border border-gray-300 dark:border-[var(--border)] rounded-xl hover:bg-gray-100 dark:hover:bg-[var(--muted)]"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={() => toggleStatusUsuario(showAlteracaoStatus)}
-                  className={`flex-1 px-6 py-3 text-white rounded-xl ${showAlteracaoStatus.ativo ? 'bg-amber-600 hover:bg-amber-700' : 'bg-green-600 hover:bg-green-700'}`}
-                >
-                  {showAlteracaoStatus.ativo ? 'Desativar' : 'Ativar'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </ModalBase>
-      )}
     </>
   );
 }

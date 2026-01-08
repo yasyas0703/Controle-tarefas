@@ -207,10 +207,13 @@ export default function ModalListarEmpresas({
       empresa.codigo.toLowerCase().includes(buscaEmpresa.toLowerCase()) ||
       (empresa.cnpj && empresa.cnpj.includes(buscaEmpresa));
 
-    const matchTipo =
-      tipo === 'cadastradas'
-        ? empresa.cadastrada === true
-        : empresa.cadastrada === false;
+    // Filtro mais robusto - considera boolean true/false
+    let matchTipo = false;
+    if (tipo === 'cadastradas') {
+      matchTipo = empresa.cadastrada === true;
+    } else {
+      matchTipo = empresa.cadastrada === false || !empresa.cadastrada;
+    }
 
     return matchBusca && matchTipo;
   });

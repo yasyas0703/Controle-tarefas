@@ -21,7 +21,7 @@ export default function ModalCriarDepartamento({
     responsavel: departamento?.responsavel || '',
     descricao: departamento?.descricao || '',
     cor: departamento?.cor || 'from-cyan-500 to-blue-600',
-    icone: departamento?.icone || 'FileText',
+    icone: typeof departamento?.icone === 'string' ? departamento.icone : 'FileText',
   });
 
   const coresDisponiveis = [
@@ -65,7 +65,7 @@ export default function ModalCriarDepartamento({
       descricao: formData.descricao,
       cor: formData.cor,
       corSolida: corSelecionada?.solida,
-      icone: iconeSelecionado?.componente,
+      icone: formData.icone, // Enviar o nome da string diretamente, não o componente
       criadoEm: departamento?.criadoEm || new Date(),
     });
 

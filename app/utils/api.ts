@@ -1,36 +1,64 @@
 // API Client para comunicação com backend
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 const getToken = () => {
   if (typeof window === 'undefined') return null;
+  // Primeiro tenta pegar do cookie (o backend seta httpOnly)
+  // Se não tiver, tenta do localStorage como fallback
   return localStorage.getItem('token');
 };
 
-const fetchAutenticado = async (url: string, options: RequestInit = {}) => {
+export const fetchAutenticado = async (url: string, options: RequestInit = {}) => {
   const token = getToken();
-  const headers = {
-    'Content-Type': 'application/json',
+  const headers: HeadersInit = {
     ...options.headers,
   };
 
-  if (token) {
-    (headers as any)['Authorization'] = `Bearer ${token}`;
+  // Se não for FormData, adiciona Content-Type
+  if (!(options.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
   }
 
-  return fetch(url, { ...options, headers });
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(url, { ...options, headers });
+  
+  // Se não autorizado, limpa token e redireciona
+  if (response.status === 401) {
+    localStorage.removeItem('token');
+    // Não fazemos redirect automático, deixa o componente lidar
+  }
+
+  return response;
 };
 
 export const api = {
   // ========== LOGIN ==========
   login: async (email: string, senha: string) => {
     try {
-      const response = await fetch(`${API_URL}/login`, {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, senha })
+        body: JSON.stringify({ email, senha }),
+        credentials: 'include', // Importante para receber cookies
       });
-      return await response.json();
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao fazer login');
+      }
+      
+      const data = await response.json();
+      
+      // Salva token no localStorage também (fallback)
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+      }
+      
+      return data;
     } catch (error) {
       console.error('Erro ao fazer login:', error);
       throw error;
@@ -41,9 +69,40 @@ export const api = {
   getProcessos: async () => {
     try {
       const response = await fetchAutenticado(`${API_URL}/processos`);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar processos');
+      }
       return await response.json();
     } catch (error) {
       console.error('Erro ao carregar processos:', error);
+      throw error;
+    }
+  },
+
+  getProcesso: async (id: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/processos/${id}`);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar processo');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao carregar processo:', error);
+      throw error;
+    }
+  },
+
+  avancarProcesso: async (id: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/processos/${id}/avancar`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Erro ao avançar processo');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao avançar processo:', error);
       throw error;
     }
   },
@@ -79,9 +138,43 @@ export const api = {
       const response = await fetchAutenticado(`${API_URL}/processos/${id}`, {
         method: 'DELETE'
       });
+      if (!response.ok) {
+        throw new Error('Erro ao excluir processo');
+      }
       return await response.json();
     } catch (error) {
       console.error('Erro ao excluir processo:', error);
+      throw error;
+    }
+  },
+
+  adicionarTagProcesso: async (processoId: number, tagId: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/processos/${processoId}/tags`, {
+        method: 'POST',
+        body: JSON.stringify({ tagId }),
+      });
+      if (!response.ok) {
+        throw new Error('Erro ao adicionar tag');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao adicionar tag:', error);
+      throw error;
+    }
+  },
+
+  removerTagProcesso: async (processoId: number, tagId: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/processos/${processoId}/tags/${tagId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error('Erro ao remover tag');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao remover tag:', error);
       throw error;
     }
   },
@@ -185,9 +278,28 @@ export const api = {
   },
 
   // ========== QUESTIONÁRIOS ==========
+  getQuestionarios: async (departamentoId: number, processoId?: number) => {
+    try {
+      const url = processoId 
+        ? `${API_URL}/questionarios?departamentoId=${departamentoId}&processoId=${processoId}`
+        : `${API_URL}/questionarios?departamentoId=${departamentoId}`;
+      const response = await fetchAutenticado(url);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar questionários');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao carregar questionários:', error);
+      throw error;
+    }
+  },
+
   getRespostasQuestionario: async (processoId: number, departamentoId: number) => {
     try {
       const response = await fetchAutenticado(`${API_URL}/questionarios/respostas/${processoId}/${departamentoId}`);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar respostas');
+      }
       return await response.json();
     } catch (error) {
       console.error('Erro ao carregar respostas:', error);
@@ -406,9 +518,62 @@ export const api = {
   getMe: async () => {
     try {
       const response = await fetchAutenticado(`${API_URL}/usuarios/me`);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar dados do usuário');
+      }
       return await response.json();
     } catch (error) {
       console.error('Erro ao carregar dados do usuário:', error);
+      throw error;
+    }
+  },
+
+  salvarUsuario: async (usuario: any) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/usuarios`, {
+        method: 'POST',
+        body: JSON.stringify(usuario),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao criar usuário');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao criar usuário:', error);
+      throw error;
+    }
+  },
+
+  atualizarUsuario: async (id: number, usuario: any) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/usuarios/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(usuario),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao atualizar usuário');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao atualizar usuário:', error);
+      throw error;
+    }
+  },
+
+  excluirUsuario: async (id: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/usuarios/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao excluir usuário');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao excluir usuário:', error);
       throw error;
     }
   },
@@ -429,10 +594,30 @@ export const api = {
       const response = await fetchAutenticado(`${API_URL}/notificacoes/${id}/marcar-lida`, {
         method: 'PATCH'
       });
+      if (!response.ok) {
+        throw new Error('Erro ao marcar notificação como lida');
+      }
       return await response.json();
     } catch (error) {
       console.error('Erro ao marcar notificação como lida:', error);
       throw error;
     }
-  }
+  },
+
+  // ========== ANALYTICS ==========
+  getAnalytics: async (periodo?: number) => {
+    try {
+      const url = periodo 
+        ? `${API_URL}/analytics?periodo=${periodo}`
+        : `${API_URL}/analytics`;
+      const response = await fetchAutenticado(url);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar analytics');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao carregar analytics:', error);
+      throw error;
+    }
+  },
 };

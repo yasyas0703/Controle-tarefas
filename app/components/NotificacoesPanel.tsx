@@ -11,12 +11,15 @@ interface NotificacoesPanelProps {
 export default function NotificacoesPanel({ onClose }: NotificacoesPanelProps) {
   const { notificacoes, removerNotificacao } = useSistema();
 
+  // Garantir que notificacoes seja sempre um array
+  const notificacoesArray = Array.isArray(notificacoes) ? notificacoes : [];
+
   const marcarComoLida = (id: number) => {
     // Implementar se necessário
   };
 
   const limparTodas = () => {
-    notificacoes.forEach((n) => removerNotificacao(n.id));
+    notificacoesArray.forEach((n) => removerNotificacao(n.id));
   };
 
   return (
@@ -24,19 +27,19 @@ export default function NotificacoesPanel({ onClose }: NotificacoesPanelProps) {
       <div className="p-4 border-b border-gray-200 flex justify-between items-center">
         <h3 className="font-semibold text-gray-900">
           Notificações
-          {notificacoes.length > 0 && (
+          {notificacoesArray.length > 0 && (
             <span className="ml-2 bg-cyan-500 text-white text-xs rounded-full px-2 py-1">
-              {notificacoes.length}
+              {notificacoesArray.length}
             </span>
           )}
         </h3>
         <div className="flex gap-2">
-          {notificacoes.some((n) => !n.lida) && (
+          {notificacoesArray.some((n) => !n.lida) && (
             <button onClick={() => {}} className="text-xs text-blue-600 hover:text-blue-800">
               Marcar todas como lidas
             </button>
           )}
-          {notificacoes.length > 0 && (
+          {notificacoesArray.length > 0 && (
             <button onClick={limparTodas} className="text-xs text-gray-500 hover:text-gray-700">
               Limpar todas
             </button>
@@ -45,13 +48,13 @@ export default function NotificacoesPanel({ onClose }: NotificacoesPanelProps) {
       </div>
 
       <div className="max-h-96 overflow-y-auto">
-        {notificacoes.length === 0 ? (
+        {notificacoesArray.length === 0 ? (
           <div className="p-6 text-center text-gray-500">
             <Bell size={32} className="mx-auto mb-2 opacity-30" />
             <p>Nenhuma notificação</p>
           </div>
         ) : (
-          notificacoes.map((notif) => (
+          notificacoesArray.map((notif) => (
             <div
               key={notif.id}
               className={`p-4 border-b border-gray-100 hover:bg-gray-50 transition-colors ${

@@ -1,0 +1,58 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/app/utils/prisma';
+
+// GET /api/notificacoes
+export async function GET(request: NextRequest) {
+  try {
+    const userId = request.headers.get('x-user-id');
+    if (!userId) {
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    }
+    
+    const { searchParams } = new URL(request.url);
+    const apenasNaoLidas = searchParams.get('apenasNaoLidas') === 'true';
+    
+    const notificacoes = await prisma.notificacao.findMany({
+      where: {
+        usuarioId: parseInt(userId),
+        ...(apenasNaoLidas && { lida: false }),
+      },
+      orderBy: { criadoEm: 'desc' },
+      take: 50,
+    });
+    
+    return NextResponse.json(notificacoes);
+  } catch (error) {
+    console.error('Erro ao buscar notificações:', error);
+    return NextResponse.json(
+      { error: 'Erro ao buscar notificações' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/notificacoes - Criar notificação (geralmente usado pelo sistema)
+export async function POST(request: NextRequest) {
+  try {
+    const data = await request.json();
+    
+    const notificacao = await prisma.notificacao.create({
+      data: {
+        usuarioId: data.usuarioId,
+        mensagem: data.mensagem,
+        tipo: data.tipo || 'INFO',
+        processoId: data.processoId || null,
+        link: data.link || null,
+      },
+    });
+    
+    return NextResponse.json(notificacao, { status: 201 });
+  } catch (error) {
+    console.error('Erro ao criar notificação:', error);
+    return NextResponse.json(
+      { error: 'Erro ao criar notificação' },
+      { status: 500 }
+    );
+  }
+}
+

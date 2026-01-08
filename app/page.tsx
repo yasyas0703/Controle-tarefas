@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, Building2, AlertCircle } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
+import { api } from '@/app/utils/api';
 import { Processo, Departamento } from '@/app/types';
 import Header from '@/app/components/Header';
 import DashboardStats from '@/app/components/DashboardStats';
@@ -94,10 +95,8 @@ export default function Home() {
     setUsuarioLogado(usuario);
   };
 
-  const handleCriarDepartamento = (data: any) => {
-    setDepartamentos((prev) => {
-      const jaExiste = prev.some((d) => d.id === data.id);
-
+  const handleCriarDepartamento = async (data: any) => {
+    try {
       const corNormalizada =
         typeof data?.cor === 'string'
           ? data.cor
@@ -105,30 +104,49 @@ export default function Home() {
             ? data.cor.gradient
             : 'from-cyan-500 to-blue-600';
 
-      const iconeNormalizado =
-        typeof data?.icone === 'function'
-          ? data.icone
-          : typeof data?.icone?.componente === 'function'
-            ? data.icone.componente
-            : null;
-
-      const payload = {
-        ...data,
-        cor: corNormalizada,
-        icone: iconeNormalizado,
-        criadoEm: data?.criadoEm || new Date(),
-      } as any;
-
-      if (jaExiste) {
-        return prev.map((d) => (d.id === data.id ? { ...d, ...payload } : d));
+      // Normalizar ícone - sempre deve ser uma string com o nome
+      let iconeNormalizado = 'FileText';
+      if (typeof data?.icone === 'string') {
+        iconeNormalizado = data.icone;
+      } else if (data?.icone) {
+        // Se for um componente React, tentar extrair o nome
+        const iconeName = data.icone.name || data.icone.displayName || 'FileText';
+        iconeNormalizado = iconeName;
       }
 
-      const proximoId = Math.max(0, ...prev.map((d) => Number(d.id) || 0)) + 1;
-      return [...prev, { ...payload, id: proximoId }];
-    });
+      // Validar campos obrigatórios
+      if (!data.nome || !data.responsavel) {
+        await mostrarAlerta('Erro', 'Nome e responsável são obrigatórios', 'erro');
+        return;
+      }
 
-    setDepartamentoEmEdicao(null);
-    setShowCriarDepartamento(false);
+      const payload = {
+        nome: String(data.nome || '').trim(),
+        responsavel: String(data.responsavel || '').trim(),
+        descricao: data.descricao ? String(data.descricao).trim() : null,
+        cor: corNormalizada,
+        icone: iconeNormalizado,
+        ordem: data.ordem !== undefined ? Number(data.ordem) : departamentos.length,
+        ativo: data.ativo !== undefined ? Boolean(data.ativo) : true,
+      };
+
+      if (data.id && departamentos.some((d) => d.id === data.id)) {
+        // Atualizar
+        await api.atualizarDepartamento(data.id, payload);
+      } else {
+        // Criar
+        await api.salvarDepartamento(payload);
+      }
+
+      // Recarregar departamentos
+      const departamentosData = await api.getDepartamentos();
+      setDepartamentos(departamentosData || []);
+
+      setDepartamentoEmEdicao(null);
+      setShowCriarDepartamento(false);
+    } catch (error: any) {
+      await mostrarAlerta('Erro', error.message || 'Erro ao salvar departamento', 'erro');
+    }
   };
 
   const handleEditarDepartamento = (dept: Departamento) => {
@@ -136,20 +154,25 @@ export default function Home() {
     setShowCriarDepartamento(true);
   };
 
-  const handleExcluirDepartamento = (dept: Departamento) => {
-    void (async () => {
-      const ok = await mostrarConfirmacao({
-        titulo: 'Excluir Departamento',
-        mensagem: 'Tem certeza que deseja excluir este departamento?\n\nEssa ação não poderá ser desfeita.',
-        tipo: 'perigo',
-        textoConfirmar: 'Sim, Excluir',
-        textoCancelar: 'Cancelar',
-      });
+  const handleExcluirDepartamento = async (dept: Departamento) => {
+    const ok = await mostrarConfirmacao({
+      titulo: 'Excluir Departamento',
+      mensagem: 'Tem certeza que deseja excluir este departamento?\n\nEssa ação não poderá ser desfeita.',
+      tipo: 'perigo',
+      textoConfirmar: 'Sim, Excluir',
+      textoCancelar: 'Cancelar',
+    });
 
-      if (ok) {
-        setDepartamentos((prev) => prev.filter((d) => d.id !== dept.id));
+    if (ok) {
+      try {
+        await api.excluirDepartamento(dept.id);
+        // Recarregar departamentos
+        const departamentosData = await api.getDepartamentos();
+        setDepartamentos(departamentosData || []);
+      } catch (error: any) {
+        await mostrarAlerta('Erro', error.message || 'Erro ao excluir departamento', 'erro');
       }
-    })();
+    }
   };
 
   const handleNovaEmpresa = (data: any) => {
@@ -162,8 +185,21 @@ export default function Home() {
     setShowVisualizacao(processo);
   };
 
-  const empresasCadastradasCount = (empresas || []).filter((e: any) => e?.cadastrada).length;
-  const empresasNovasCount = (empresas || []).filter((e: any) => e && e.cadastrada === false).length;
+  // Contagem mais robusta - considera boolean true/false e também verifica se é truthy
+  // Contagem robusta de empresas
+  const empresasCadastradasCount = useMemo(() => {
+    return (empresas || []).filter((e: any) => {
+      if (!e || e === null || e === undefined) return false;
+      return e.cadastrada === true || e.cadastrada === 1 || e.cadastrada === 'true';
+    }).length;
+  }, [empresas]);
+  
+  const empresasNovasCount = useMemo(() => {
+    return (empresas || []).filter((e: any) => {
+      if (!e || e === null || e === undefined) return false;
+      return e.cadastrada === false || e.cadastrada === 0 || e.cadastrada === 'false' || e.cadastrada === null || e.cadastrada === undefined;
+    }).length;
+  }, [empresas]);
 
   if (!usuarioLogado) {
     return <ModalLogin onLogin={handleLogin} />;

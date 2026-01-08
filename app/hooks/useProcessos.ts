@@ -141,7 +141,7 @@ export const useProcessos = () => {
       setError(err instanceof Error ? err.message : 'Erro ao avançar processo');
       throw err;
     }
-  }, [processos, atualizarProcesso]);
+  }, [processos, atualizarProcesso, departamentos]);
 
   const finalizarProcesso = useCallback(async (processoId: number) => {
     setLoading(true);
@@ -172,7 +172,7 @@ export const useProcessos = () => {
     } finally {
       setLoading(false);
     }
-  }, [processos, atualizarProcesso]);
+  }, [processos, atualizarProcesso, departamentos]);
 
   return {
     processos,

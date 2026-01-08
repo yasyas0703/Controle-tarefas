@@ -24,6 +24,10 @@ export default function Header({
 }: HeaderProps) {
   const { notificacoes, usuarioLogado } = useSistema();
   const [showNotifications, setShowNotifications] = useState(false);
+  
+  // Garantir que notificacoes seja sempre um array
+  const notificacoesArray = Array.isArray(notificacoes) ? notificacoes : [];
+  const notificacoesNaoLidas = notificacoesArray.filter((n) => !n.lida);
 
   const temPermissao = (permissao: string) => {
     return usuarioLogado?.permissoes?.includes(permissao) || usuarioLogado?.role === 'admin';
@@ -59,9 +63,9 @@ export default function Header({
                 className="p-3 rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors relative"
               >
                 <Bell size={20} className="text-gray-600" />
-                {notificacoes.filter((n) => !n.lida).length > 0 && (
+                {notificacoesNaoLidas.length > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                    {notificacoes.filter((n) => !n.lida).length}
+                    {notificacoesNaoLidas.length}
                   </span>
                 )}
               </button>

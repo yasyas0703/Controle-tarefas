@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { Departamento, Processo, Tag, Usuario, Notificacao, Empresa, Template } from '@/app/types';
 import type { TipoAlerta } from '@/app/components/modals/ModalAlerta';
+import { api } from '@/app/utils/api';
 
 type ShowListarEmpresasState =
   | null
@@ -80,24 +81,24 @@ interface SistemaContextType {
     textoConfirmar?: string;
     textoCancelar?: string;
   }) => Promise<boolean>;
-  criarEmpresa: (dados: Partial<Empresa>) => Empresa;
-  atualizarEmpresa: (empresaId: number, dados: Partial<Empresa>) => void;
-  excluirEmpresa: (empresaId: number) => void;
+  criarEmpresa: (dados: Partial<Empresa>) => Promise<Empresa>;
+  atualizarEmpresa: (empresaId: number, dados: Partial<Empresa>) => Promise<void>;
+  excluirEmpresa: (empresaId: number) => Promise<void>;
   criarTemplate: (dados: {
     nome: string;
     descricao?: string;
     fluxoDepartamentos: number[];
     questionariosPorDepartamento: any;
-  }) => Template;
-  excluirTemplate: (templateId: number) => void;
-  criarProcesso: (dados: Partial<Processo>) => Processo;
-  atualizarProcesso: (processoId: number, dados: Partial<Processo>) => void;
-  excluirProcesso: (processoId: number) => void;
-  avancarParaProximoDepartamento: (processoId: number) => void;
-  finalizarProcesso: (processoId: number) => void;
-  aplicarTagsProcesso: (processoId: number, tags: number[]) => void;
-  adicionarComentarioProcesso: (processoId: number, texto: string, mencoes?: string[]) => void;
-  adicionarDocumentoProcesso: (processoId: number, documento: any) => void;
+  }) => Promise<Template>;
+  excluirTemplate: (templateId: number) => Promise<void>;
+  criarProcesso: (dados: Partial<Processo>) => Promise<Processo>;
+  atualizarProcesso: (processoId: number, dados: Partial<Processo>) => Promise<void>;
+  excluirProcesso: (processoId: number) => Promise<void>;
+  avancarParaProximoDepartamento: (processoId: number) => Promise<void>;
+  finalizarProcesso: (processoId: number) => Promise<void>;
+  aplicarTagsProcesso: (processoId: number, tags: number[]) => Promise<void>;
+  adicionarComentarioProcesso: (processoId: number, texto: string, mencoes?: string[]) => Promise<void>;
+  adicionarDocumentoProcesso: (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number) => Promise<any>;
 }
 
 const SistemaContext = createContext<SistemaContextType | undefined>(undefined);
@@ -212,6 +213,55 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     setNotificacoes(prev => prev.filter(n => n.id !== id));
   }, []);
 
+  // Carregar dados do back-end quando usuário estiver logado
+  useEffect(() => {
+    if (!usuarioLogado) return;
+
+    async function carregarDados() {
+      try {
+        // Carregar departamentos
+        const departamentosData = await api.getDepartamentos();
+        setDepartamentos(departamentosData || []);
+
+        // Carregar tags
+        const tagsData = await api.getTags();
+        setTags(tagsData || []);
+
+        // Carregar processos
+        const processosData = await api.getProcessos();
+        setProcessos(processosData || []);
+
+        // Carregar empresas (todas, sem filtro)
+        const empresasData = await api.getEmpresas();
+        console.log('📊 Empresas carregadas:', empresasData?.length || 0, empresasData);
+        setEmpresas(empresasData || []);
+
+        // Carregar templates
+        const templatesData = await api.getTemplates();
+        setTemplates(templatesData || []);
+
+        // Carregar usuários (se admin)
+        if (usuarioLogado.role === 'admin') {
+          const usuariosData = await api.getUsuarios();
+          setUsuarios(usuariosData || []);
+        }
+
+        // Carregar notificações
+        try {
+          const notificacoesData = await api.getNotificacoes();
+          setNotificacoes(Array.isArray(notificacoesData) ? notificacoesData : []);
+        } catch (error) {
+          console.error('Erro ao carregar notificações:', error);
+          setNotificacoes([]);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+      }
+    }
+
+    carregarDados();
+  }, [usuarioLogado]);
+
   useEffect(() => {
     try {
       window.localStorage.setItem('templates', JSON.stringify(templates));
@@ -220,346 +270,247 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     }
   }, [templates]);
 
-  const criarEmpresa = useCallback((dados: Partial<Empresa>) => {
-    const agora = new Date();
-    const novoId = Math.max(0, ...empresas.map(e => Number(e.id) || 0)) + 1;
-
-    const cnpjLimpo = String(dados.cnpj || '').replace(/\D/g, '');
-    const cadastrada = cnpjLimpo.length > 0;
-
-    const nova: Empresa = {
-      id: novoId,
-      cnpj: String(dados.cnpj || ''),
-      codigo: String(dados.codigo || ''),
-      razao_social: String(dados.razao_social || ''),
-      apelido: dados.apelido,
-      inscricao_estadual: dados.inscricao_estadual,
-      inscricao_municipal: dados.inscricao_municipal,
-      regime_federal: dados.regime_federal,
-      regime_estadual: dados.regime_estadual,
-      regime_municipal: dados.regime_municipal,
-      data_abertura: dados.data_abertura,
-      estado: dados.estado,
-      cidade: dados.cidade,
-      bairro: dados.bairro,
-      logradouro: dados.logradouro,
-      numero: dados.numero,
-      cep: dados.cep,
-      email: dados.email,
-      telefone: dados.telefone,
-      cadastrada,
-      criado_em: dados.criado_em || agora,
-    };
-
-    setEmpresas(prev => [...prev, nova]);
-    return nova;
-  }, [empresas]);
-
-  const atualizarEmpresa = useCallback((empresaId: number, dados: Partial<Empresa>) => {
-    setEmpresas(prev =>
-      prev.map(e => {
-        if (e.id !== empresaId) return e;
-        const cnpj = dados.cnpj !== undefined ? String(dados.cnpj || '') : e.cnpj;
-        const cadastrada = String(cnpj || '').replace(/\D/g, '').length > 0;
-        return { ...e, ...dados, cnpj, cadastrada };
-      })
-    );
+  const criarEmpresa = useCallback(async (dados: Partial<Empresa>) => {
+    try {
+      const nova = await api.salvarEmpresa(dados);
+      setEmpresas(prev => [...prev, nova]);
+      adicionarNotificacao('Empresa criada com sucesso', 'sucesso');
+      return nova;
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao criar empresa', 'erro');
+      throw error;
+    }
   }, []);
 
-  const excluirEmpresa = useCallback((empresaId: number) => {
-    setEmpresas(prev => prev.filter(e => e.id !== empresaId));
+  const atualizarEmpresa = useCallback(async (empresaId: number, dados: Partial<Empresa>) => {
+    try {
+      const atualizada = await api.atualizarEmpresa(empresaId, dados);
+      setEmpresas(prev => prev.map(e => e.id === empresaId ? atualizada : e));
+      adicionarNotificacao('Empresa atualizada com sucesso', 'sucesso');
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao atualizar empresa', 'erro');
+      throw error;
+    }
+  }, []);
+
+  const excluirEmpresa = useCallback(async (empresaId: number) => {
+    try {
+      await api.excluirEmpresa(empresaId);
+      setEmpresas(prev => prev.filter(e => e.id !== empresaId));
+      adicionarNotificacao('Empresa excluída com sucesso', 'sucesso');
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao excluir empresa', 'erro');
+      throw error;
+    }
   }, []);
 
   const criarTemplate = useCallback(
-    (dados: {
+    async (dados: {
       nome: string;
       descricao?: string;
       fluxoDepartamentos: number[];
       questionariosPorDepartamento: any;
     }) => {
-      const agora = new Date();
-      const novoId = Math.max(0, ...templates.map(t => Number(t.id) || 0)) + 1;
-
-      const novo: Template = {
-        id: novoId,
-        nome: dados.nome,
-        descricao: dados.descricao,
-        fluxo_departamentos: JSON.stringify(dados.fluxoDepartamentos || []),
-        questionarios_por_departamento: JSON.stringify(dados.questionariosPorDepartamento || {}),
-        criado_em: agora,
-        criado_por: usuarioLogado?.id,
-      };
-
-      setTemplates(prev => [...prev, novo]);
-      return novo;
+      try {
+        const novo = await api.salvarTemplate({
+          nome: dados.nome,
+          descricao: dados.descricao,
+          fluxoDepartamentos: dados.fluxoDepartamentos,
+          questionariosPorDepartamento: dados.questionariosPorDepartamento,
+        });
+        setTemplates(prev => [...prev, novo]);
+        adicionarNotificacao('Template criado com sucesso', 'sucesso');
+        return novo;
+      } catch (error: any) {
+        adicionarNotificacao(error.message || 'Erro ao criar template', 'erro');
+        throw error;
+      }
     },
-    [templates, usuarioLogado]
+    []
   );
 
-  const excluirTemplate = useCallback((templateId: number) => {
-    setTemplates(prev => prev.filter(t => t.id !== templateId));
+  const excluirTemplate = useCallback(async (templateId: number) => {
+    try {
+      await api.excluirTemplate(templateId);
+      setTemplates(prev => prev.filter(t => t.id !== templateId));
+      adicionarNotificacao('Template excluído com sucesso', 'sucesso');
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao excluir template', 'erro');
+      throw error;
+    }
   }, []);
 
-  const criarHistoricoEvento = useCallback(
-    (
-      processo: Processo,
-      tipo: any,
-      acao: string,
-      opts?: {
-        departamentoNome?: string;
-        responsavel?: string;
-        data?: Date;
-      }
-    ) => {
-      const data = opts?.data ?? new Date();
-      return {
-        departamento: opts?.departamentoNome || 'Sistema',
-        data: data.toISOString(),
-        dataTimestamp: data.getTime(),
-        acao,
-        responsavel: opts?.responsavel || usuarioLogado?.nome || 'Sistema',
-        tipo,
-      };
-    },
-    [usuarioLogado]
-  );
-
-  const atualizarProcesso = useCallback((processoId: number, dados: Partial<Processo>) => {
-    setProcessos(prev =>
-      prev.map(p =>
-        p.id === processoId
-          ? {
-              ...p,
-              ...dados,
-              dataAtualizacao: new Date(),
-            }
-          : p
-      )
-    );
+  const atualizarProcesso = useCallback(async (processoId: number, dados: Partial<Processo>) => {
+    try {
+      const atualizado = await api.atualizarProcesso(processoId, dados);
+      setProcessos(prev => prev.map(p => p.id === processoId ? atualizado : p));
+      adicionarNotificacao('Processo atualizado com sucesso', 'sucesso');
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao atualizar processo', 'erro');
+      throw error;
+    }
   }, []);
 
   const criarProcesso = useCallback(
-    (dados: Partial<Processo>) => {
-      const agora = new Date();
-      const fluxo =
-        (dados.fluxoDepartamentos && dados.fluxoDepartamentos.length > 0
-          ? dados.fluxoDepartamentos
-          : departamentos.length > 0
-            ? [departamentos[0].id]
-            : [1]) as number[];
+    async (dados: Partial<Processo>) => {
+      try {
+        const fluxo =
+          (dados.fluxoDepartamentos && dados.fluxoDepartamentos.length > 0
+            ? dados.fluxoDepartamentos
+            : departamentos.length > 0
+              ? [departamentos[0].id]
+              : [1]) as number[];
 
-      const departamentoInicial =
-        (dados.departamentoAtual ?? fluxo[0] ?? departamentos[0]?.id ?? 1) as number;
+        const departamentoInicial =
+          (dados.departamentoAtual ?? fluxo[0] ?? departamentos[0]?.id ?? 1) as number;
 
-      const novoId = Math.max(0, ...processos.map(p => p.id || 0)) + 1;
+        const novo = await api.salvarProcesso({
+          nome: dados.nome,
+          nomeServico: dados.nomeServico,
+          nomeEmpresa: dados.nomeEmpresa || dados.empresa || 'Nova Empresa',
+          cliente: dados.cliente,
+          email: dados.email,
+          telefone: dados.telefone,
+          empresaId: dados.empresaId,
+          status: dados.status || 'EM_ANDAMENTO',
+          prioridade: dados.prioridade?.toUpperCase() || 'MEDIA',
+          departamentoAtual: departamentoInicial,
+          departamentoAtualIndex: 0,
+          fluxoDepartamentos: fluxo,
+          descricao: dados.descricao,
+          notasCriador: dados.notasCriador,
+        });
 
-      const novo: Processo = {
-        id: novoId,
-        nome: dados.nome,
-        nomeServico: dados.nomeServico,
-        nomeEmpresa: dados.nomeEmpresa || dados.empresa || 'Nova Empresa',
-        cliente: dados.cliente,
-        empresa: dados.empresa,
-        email: dados.email,
-        telefone: dados.telefone,
-        status: 'em_andamento',
-        prioridade: (dados.prioridade || 'media') as any,
-        departamentoAtual: departamentoInicial,
-        departamentoAtualIndex: 0,
-        fluxoDepartamentos: fluxo,
-        criadoEm: dados.criadoEm || agora,
-        dataCriacao: dados.dataCriacao || agora,
-        dataAtualizacao: agora,
-        descricao: dados.descricao,
-        tags: dados.tags || [],
-        historico:
-          dados.historico && Array.isArray(dados.historico) && dados.historico.length > 0
-            ? dados.historico
-            : [
-                criarHistoricoEvento(
-                  {} as any,
-                  'inicio',
-                  `Solicitação criada: ${String(dados.nomeServico || dados.nome || '').trim() || 'Solicitação'}`,
-                  {
-                    departamentoNome: 'Sistema',
-                    responsavel: dados.criadoPor || usuarioLogado?.nome || 'Sistema',
-                    data: agora,
-                  }
-                ) as any,
-              ],
-        historicoEvento:
-          dados.historicoEvento && Array.isArray(dados.historicoEvento) && dados.historicoEvento.length > 0
-            ? dados.historicoEvento
-            : [
-                criarHistoricoEvento(
-                  {} as any,
-                  'inicio',
-                  `Solicitação criada: ${String(dados.nomeServico || dados.nome || '').trim() || 'Solicitação'}`,
-                  {
-                    departamentoNome: 'Sistema',
-                    responsavel: dados.criadoPor || usuarioLogado?.nome || 'Sistema',
-                    data: agora,
-                  }
-                ) as any,
-              ],
-        comentarios: dados.comentarios || [],
-        documentos: dados.documentos || [],
-        questionariosPorDepartamento: dados.questionariosPorDepartamento || {},
-        questionarioSolicitacao: dados.questionarioSolicitacao,
-        respostasHistorico: dados.respostasHistorico || {},
-        criadoPor: dados.criadoPor || usuarioLogado?.nome || 'Sistema',
-        progresso:
-          fluxo.length > 0 ? Math.round((1 / fluxo.length) * 100) : (dados.progresso as any) || 0,
-      };
-
-      setProcessos(prev => [...prev, novo]);
-      return novo;
+        setProcessos(prev => [...prev, novo]);
+        adicionarNotificacao('Processo criado com sucesso', 'sucesso');
+        return novo;
+      } catch (error: any) {
+        adicionarNotificacao(error.message || 'Erro ao criar processo', 'erro');
+        throw error;
+      }
     },
-    [departamentos, processos, usuarioLogado, criarHistoricoEvento]
+    [departamentos]
   );
 
-  const excluirProcesso = useCallback((processoId: number) => {
-    setProcessos(prev => prev.filter(p => p.id !== processoId));
+  const excluirProcesso = useCallback(async (processoId: number) => {
+    try {
+      await api.excluirProcesso(processoId);
+      setProcessos(prev => prev.filter(p => p.id !== processoId));
+      adicionarNotificacao('Processo excluído com sucesso', 'sucesso');
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao excluir processo', 'erro');
+      throw error;
+    }
   }, []);
 
   const avancarParaProximoDepartamento = useCallback(
-    (processoId: number) => {
-      setProcessos(prev =>
-        prev.map(p => {
-          if (p.id !== processoId) return p;
-
-          const fluxo = p.fluxoDepartamentos || [];
-          if (fluxo.length === 0) return p;
-
-          const idxAtual = p.departamentoAtualIndex ?? Math.max(0, fluxo.indexOf(p.departamentoAtual));
-          if (idxAtual >= fluxo.length - 1) return p;
-
-          const proximoDept = fluxo[idxAtual + 1];
-          const novoIdx = idxAtual + 1;
-
-          const deptAtualNome = departamentos.find(d => d.id === p.departamentoAtual)?.nome;
-          const proximoNome = departamentos.find(d => d.id === proximoDept)?.nome;
-          const dataAtual = new Date();
-          const evento = criarHistoricoEvento(
-            p,
-            'movimentacao',
-            `Avançou de ${deptAtualNome || 'Sistema'} para ${proximoNome || 'Sistema'} (${novoIdx + 1}/${fluxo.length})`,
-            {
-              departamentoNome: deptAtualNome || 'Sistema',
-              data: dataAtual,
-            }
-          );
-
-          return {
-            ...p,
-            departamentoAtual: proximoDept,
-            departamentoAtualIndex: novoIdx,
-            dataAtualizacao: new Date(),
-            progresso: Math.round(((novoIdx + 1) / fluxo.length) * 100),
-            historico: [...(p.historico || []), evento as any],
-            historicoEvento: [...(p.historicoEvento || []), evento as any],
-          };
-        })
-      );
+    async (processoId: number) => {
+      try {
+        const atualizado = await api.avancarProcesso(processoId);
+        setProcessos(prev => prev.map(p => p.id === processoId ? atualizado : p));
+        adicionarNotificacao('Processo avançado para próximo departamento', 'sucesso');
+      } catch (error: any) {
+        adicionarNotificacao(error.message || 'Erro ao avançar processo', 'erro');
+        throw error;
+      }
     },
-    [departamentos, criarHistoricoEvento]
+    []
   );
 
-  const finalizarProcesso = useCallback((processoId: number) => {
-    setProcessos(prev =>
-      prev.map(p =>
-        p.id === processoId
-          ? {
-              ...p,
-              status: 'finalizado',
-              dataFinalizacao: new Date(),
-              dataAtualizacao: new Date(),
-              progresso: 100,
-              historico: [
-                ...(p.historico || []),
-                criarHistoricoEvento(p, 'finalizacao', 'Processo finalizado com sucesso', {
-                  departamentoNome: 'Sistema',
-                }) as any,
-              ],
-              historicoEvento: [
-                ...(p.historicoEvento || []),
-                criarHistoricoEvento(p, 'finalizacao', 'Processo finalizado com sucesso', {
-                  departamentoNome: 'Sistema',
-                }) as any,
-              ],
-            }
-          : p
-      )
-    );
-  }, [criarHistoricoEvento]);
+  const finalizarProcesso = useCallback(async (processoId: number) => {
+    try {
+      await api.atualizarProcesso(processoId, {
+        status: 'FINALIZADO' as any,
+        dataFinalizacao: new Date(),
+        progresso: 100,
+      });
+      
+      // Recarrega o processo atualizado
+      const processoAtualizado = await api.getProcesso(processoId);
+      setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
+      
+      adicionarNotificacao('Processo finalizado com sucesso', 'sucesso');
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao finalizar processo', 'erro');
+      throw error;
+    }
+  }, []);
 
-  const aplicarTagsProcesso = useCallback((processoId: number, novasTags: number[]) => {
-    atualizarProcesso(processoId, { tags: novasTags });
-  }, [atualizarProcesso]);
+  const aplicarTagsProcesso = useCallback(async (processoId: number, novasTags: number[]) => {
+    try {
+      // Importar fetchAutenticado dinamicamente
+      const { fetchAutenticado } = await import('@/app/utils/api');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+      
+      const response = await fetchAutenticado(`${API_URL}/processos/${processoId}/tags`, {
+        method: 'PUT',
+        body: JSON.stringify({ tags: novasTags }),
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Erro ao aplicar tags');
+      }
+      
+      // Recarrega o processo atualizado
+      const processo = await api.getProcesso(processoId);
+      setProcessos(prev => prev.map(p => p.id === processoId ? processo : p));
+      
+      adicionarNotificacao('Tags aplicadas com sucesso', 'sucesso');
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao aplicar tags', 'erro');
+      throw error;
+    }
+  }, []);
 
   const adicionarComentarioProcesso = useCallback(
-    (processoId: number, texto: string, mencoes?: string[]) => {
+    async (processoId: number, texto: string, mencoes?: string[]) => {
       if (!texto.trim()) return;
 
-      setProcessos(prev =>
-        prev.map(p => {
-          if (p.id !== processoId) return p;
+      try {
+        const processo = processos.find(p => p.id === processoId);
+        const novoComentario = await api.salvarComentario({
+          processoId,
+          texto,
+          mencoes: mencoes || [],
+          departamentoId: processo?.departamentoAtual,
+        });
 
-          const comentarios = p.comentarios || [];
-          const deptNome = departamentos.find(d => d.id === p.departamentoAtual)?.nome;
-          const evento = criarHistoricoEvento(
-            p,
-            'comentario',
-            'Novo comentário adicionado',
-            { departamentoNome: deptNome || 'Sistema' }
-          );
-          return {
-            ...p,
-            comentarios: [
-              ...comentarios,
-              {
-                id: Math.max(0, ...comentarios.map(c => c.id || 0)) + 1,
-                processoId,
-                texto,
-                autor: usuarioLogado?.nome || 'Você',
-                timestamp: new Date(),
-                editado: false,
-                departamentoId: p.departamentoAtual,
-                mencoes: Array.isArray(mencoes) ? mencoes : [],
-              },
-            ],
-            dataAtualizacao: new Date(),
-            historico: [...(p.historico || []), evento as any],
-            historicoEvento: [...(p.historicoEvento || []), evento as any],
-          };
-        })
-      );
+        // Recarrega o processo atualizado
+        const processoAtualizado = await api.getProcesso(processoId);
+        setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
+        
+        adicionarNotificacao('Comentário adicionado com sucesso', 'sucesso');
+      } catch (error: any) {
+        adicionarNotificacao(error.message || 'Erro ao adicionar comentário', 'erro');
+        throw error;
+      }
     },
-    [usuarioLogado, departamentos, criarHistoricoEvento]
+    [processos]
   );
 
-  const adicionarDocumentoProcesso = useCallback((processoId: number, documento: any) => {
-    setProcessos(prev =>
-      prev.map(p => {
-        if (p.id !== processoId) return p;
-        const documentos = p.documentos || [];
-        const deptNome = departamentos.find(d => d.id === p.departamentoAtual)?.nome;
-        const evento = criarHistoricoEvento(
-          p,
-          'documento',
-          'Novo documento adicionado',
-          { departamentoNome: deptNome || 'Sistema' }
-        );
-        return {
-          ...p,
-          documentos: [...documentos, documento],
-          dataAtualizacao: new Date(),
-          historico: [...(p.historico || []), evento as any],
-          historicoEvento: [...(p.historicoEvento || []), evento as any],
-        };
-      })
-    );
-  }, [departamentos, criarHistoricoEvento]);
+  const adicionarDocumentoProcesso = useCallback(async (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number) => {
+    try {
+      const processo = processos.find(p => p.id === processoId);
+      const novoDocumento = await api.uploadDocumento(
+        processoId,
+        arquivo,
+        tipo,
+        perguntaId,
+        departamentoId || processo?.departamentoAtual
+      );
+
+      // Recarrega o processo atualizado
+      const processoAtualizado = await api.getProcesso(processoId);
+      setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
+      
+      adicionarNotificacao('Documento adicionado com sucesso', 'sucesso');
+      return novoDocumento;
+    } catch (error: any) {
+      adicionarNotificacao(error.message || 'Erro ao adicionar documento', 'erro');
+      throw error;
+    }
+  }, [processos]);
 
   const value: SistemaContextType = {
     processos,
