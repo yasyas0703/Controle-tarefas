@@ -3,6 +3,8 @@ import { prisma } from '@/app/utils/prisma';
 import { verifyPassword, generateToken } from '@/app/utils/auth';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const fetchCache = 'force-no-store';
 
 export async function POST(request: NextRequest) {
   try {
