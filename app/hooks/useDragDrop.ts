@@ -1,6 +1,7 @@
 import { useCallback, useContext, useState } from 'react';
 import { Processo, Departamento } from '../types';
 import { SistemaContext } from '../context/SistemaContext';
+import { temPermissao as verificarPermissao } from '../utils/permissions';
 
 interface DragDropState {
   draggedItem: Processo | null;
@@ -20,19 +21,18 @@ export const useDragDrop = () => {
     throw new Error('useDragDrop deve ser usado dentro de SistemaProvider');
   }
 
-  const { processos, departamentos, setShowAlerta } = context;
+  const { processos, departamentos, setShowAlerta, usuarioLogado } = context;
 
   const temPermissao = useCallback((acao: string, contexto: any = {}) => {
-    // Por enquanto, todos têm permissão
-    // Implementar lógica de permissões conforme necessário
-    return true;
-  }, []);
+    return verificarPermissao(usuarioLogado, acao, contexto);
+  }, [usuarioLogado]);
 
   const handleDragStart = useCallback((e: React.DragEvent, processo: Processo, departamentoAtual: number) => {
-    if (!temPermissao('mover_processo', { departamentoOrigemId: departamentoAtual })) {
+    if (!temPermissao('mover_processo', { departamentoOrigemId: departamentoAtual, departamentoAtual })) {
+      e.preventDefault();
       setShowAlerta({
         titulo: 'Sem Permissão',
-        mensagem: 'Você não tem permissão para mover este processo.',
+        mensagem: 'Você não tem permissão para mover processos deste departamento. Apenas gerentes podem mover processos do próprio departamento.',
         tipo: 'aviso',
         onClose: () => setShowAlerta(null)
       });

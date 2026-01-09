@@ -422,3 +422,5 @@ ALTER TABLE "Notificacao" ADD CONSTRAINT "Notificacao_usuarioId_fkey" FOREIGN KE
 -- npx prisma migrate dev --name init
 -- npx prisma generate
 
+
+

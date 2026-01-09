@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Trash2, Edit, FileText, Users, Calculator, FileCheck, Briefcase } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
+import * as LucideIcons from 'lucide-react';
 
 interface ModalCriarDepartamentoProps {
   onClose: () => void;
@@ -21,7 +22,16 @@ export default function ModalCriarDepartamento({
     responsavel: departamento?.responsavel || '',
     descricao: departamento?.descricao || '',
     cor: departamento?.cor || 'from-cyan-500 to-blue-600',
-    icone: typeof departamento?.icone === 'string' ? departamento.icone : 'FileText',
+    icone: (() => {
+      // Normalizar ícone - garantir que seja sempre uma string com o nome do ícone
+      if (!departamento?.icone) return 'FileText';
+      if (typeof departamento.icone === 'string') {
+        // Verificar se é um dos nomes válidos
+        const nomesValidos = ['FileText', 'Users', 'Calculator', 'FileCheck', 'Briefcase', 'Edit'];
+        return nomesValidos.includes(departamento.icone) ? departamento.icone : 'FileText';
+      }
+      return 'FileText';
+    })(),
   });
 
   const coresDisponiveis = [
@@ -34,12 +44,12 @@ export default function ModalCriarDepartamento({
   ];
 
   const iconesDisponiveis = [
-    { nome: 'Documento', componente: FileText },
-    { nome: 'Usuários', componente: Users },
-    { nome: 'Calculadora', componente: Calculator },
-    { nome: 'Verificação', componente: FileCheck },
-    { nome: 'Maleta', componente: Briefcase },
-    { nome: 'Editar', componente: Edit },
+    { nome: 'FileText', componente: FileText, label: 'Documento' },
+    { nome: 'Users', componente: Users, label: 'Usuários' },
+    { nome: 'Calculator', componente: Calculator, label: 'Calculadora' },
+    { nome: 'FileCheck', componente: FileCheck, label: 'Verificação' },
+    { nome: 'Briefcase', componente: Briefcase, label: 'Maleta' },
+    { nome: 'Edit', componente: Edit, label: 'Editar' },
   ];
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -65,14 +75,15 @@ export default function ModalCriarDepartamento({
       descricao: formData.descricao,
       cor: formData.cor,
       corSolida: corSelecionada?.solida,
-      icone: formData.icone, // Enviar o nome da string diretamente, não o componente
+      icone: iconeSelecionado?.nome || 'FileText', // Sempre salvar o nome do ícone como string
       criadoEm: departamento?.criadoEm || new Date(),
     });
 
     onClose();
   };
 
-  const IconeAtual = iconesDisponiveis.find(i => i.nome === formData.icone)?.componente || FileText;
+  const iconeAtualInfo = iconesDisponiveis.find(i => i.nome === formData.icone);
+  const IconeAtual = iconeAtualInfo?.componente || FileText;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -178,7 +189,7 @@ export default function ModalCriarDepartamento({
                         ? 'border-cyan-500 bg-cyan-50 scale-110'
                         : 'border-gray-300 hover:border-cyan-300 hover:scale-105'
                     }`}
-                    title={icone.nome}
+                    title={icone.label || icone.nome}
                   >
                     <IconeComp
                       size={24}

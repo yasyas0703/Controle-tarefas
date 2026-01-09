@@ -381,7 +381,15 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           notasCriador: dados.notasCriador,
         });
 
-        setProcessos(prev => [...prev, novo]);
+        // Recarregar processos para garantir que apareça no departamento
+        try {
+          const processosData = await api.getProcessos();
+          setProcessos(processosData || []);
+        } catch (err) {
+          // Se falhar ao recarregar, adiciona o novo processo manualmente
+          setProcessos(prev => [...prev, novo]);
+        }
+        
         adicionarNotificacao('Processo criado com sucesso', 'sucesso');
         return novo;
       } catch (error: any) {

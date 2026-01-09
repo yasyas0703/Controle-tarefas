@@ -235,13 +235,17 @@ export default function Home() {
               </p>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowCadastrarEmpresa(true)}
-                className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2"
-              >
-                <Plus size={18} />
-                Cadastrar Empresa
-              </button>
+              {/* Botão Cadastrar Empresa - apenas admin */}
+              {usuarioLogado?.role === 'admin' && (
+                <button
+                  onClick={() => setShowCadastrarEmpresa(true)}
+                  className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2"
+                >
+                  <Plus size={18} />
+                  Cadastrar Empresa
+                </button>
+              )}
+              {/* Botões de empresas - todos podem ver */}
               <button
                 onClick={() => setShowListarEmpresas('cadastradas')}
                 className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
@@ -260,15 +264,18 @@ export default function Home() {
                   Empresas Novas ({empresasNovasCount})
                 </span>
               </button>
-              <button
-                onClick={() => setShowCriarDepartamento(true)}
-                className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <Plus size={18} />
-                  Criar Departamento
-                </span>
-              </button>
+              {/* Botão Criar Departamento - apenas admin */}
+              {usuarioLogado?.role === 'admin' && (
+                <button
+                  onClick={() => setShowCriarDepartamento(true)}
+                  className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Plus size={18} />
+                    Criar Departamento
+                  </span>
+                </button>
+              )}
             </div>
           </div>
 

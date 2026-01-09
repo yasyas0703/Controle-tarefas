@@ -51,9 +51,20 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
     
+    // Determinar se é empresa cadastrada: precisa ter CNPJ válido (14 dígitos) ou CPF válido (11 dígitos)
+    // Mas no contexto do sistema, empresas cadastradas devem ter CNPJ (14 dígitos)
+    const cnpjLimpo = data.cnpj ? String(data.cnpj).replace(/\D/g, '') : '';
+    const temCnpjValido = cnpjLimpo.length === 14; // CNPJ tem 14 dígitos
+    
+    // Se o campo cadastrada foi passado explicitamente, usa ele
+    // Caso contrário, determina baseado no CNPJ
+    const empresaCadastrada = data.cadastrada !== undefined 
+      ? Boolean(data.cadastrada) 
+      : temCnpjValido;
+    
     const empresa = await prisma.empresa.create({
       data: {
-        cnpj: data.cnpj,
+        cnpj: data.cnpj || null,
         codigo: data.codigo,
         razao_social: data.razao_social,
         apelido: data.apelido,
@@ -71,7 +82,7 @@ export async function POST(request: NextRequest) {
         cep: data.cep,
         email: data.email,
         telefone: data.telefone,
-        cadastrada: !!data.cnpj && data.cnpj.replace(/\D/g, '').length >= 14,
+        cadastrada: empresaCadastrada,
       },
     });
     

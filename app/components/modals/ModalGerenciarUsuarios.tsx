@@ -62,6 +62,12 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       return;
     }
 
+    // Validar que gerente precisa ter departamento
+    if (novoUsuario.role === 'gerente' && !novoUsuario.departamentoId) {
+      await mostrarAlerta('Atenção', 'Gerente deve ter um departamento associado.', 'aviso');
+      return;
+    }
+
     try {
       setLoading(true);
       const usuario = await api.salvarUsuario({
@@ -77,15 +83,17 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       const usuariosData = await api.getUsuarios();
       const usuariosConvertidos = (usuariosData || []).map((u: any) => ({
         ...u,
-        role: typeof u.role === 'string' ? u.role.toLowerCase() : u.role
+        role: typeof u.role === 'string' ? u.role.toLowerCase() : u.role,
+        departamento_id: u.departamento?.id || u.departamentoId
       }));
       setUsuarios(usuariosConvertidos || []);
       
       adicionarNotificacao('Usuário criado com sucesso', 'sucesso');
       setNovoUsuario({ nome: '', email: '', senha: '', role: 'usuario', departamentoId: undefined, permissoes: [] });
     } catch (error: any) {
-      adicionarNotificacao(error.message || 'Erro ao criar usuário', 'erro');
-      await mostrarAlerta('Erro', error.message || 'Erro ao criar usuário', 'erro');
+      const errorMessage = error.message || 'Erro ao criar usuário';
+      adicionarNotificacao(errorMessage, 'erro');
+      await mostrarAlerta('Erro', errorMessage, 'erro');
     } finally {
       setLoading(false);
     }

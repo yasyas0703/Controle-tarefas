@@ -32,7 +32,7 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
 
   const empresasDisponiveis = empresas || [];
 
-  const handleCriar = () => {
+  const handleCriar = async () => {
     if (!empresaSelecionada) {
       void mostrarAlerta('Atenção', 'Selecione uma empresa.', 'aviso');
       return;
@@ -72,22 +72,35 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
       return;
     }
 
-    criarProcesso({
-      nome: template.nome,
-      nomeServico: template.nome,
-      nomeEmpresa: empresaSelecionada?.razao_social || empresaSelecionada?.nome || 'Empresa',
-      empresa: empresaSelecionada?.razao_social || empresaSelecionada?.nome || 'Empresa',
-      empresaId: empresaSelecionada?.id,
-      cliente: responsavel,
-      fluxoDepartamentos: fluxo,
-      departamentoAtual: fluxo[0],
-      departamentoAtualIndex: 0,
-      questionariosPorDepartamento: questionariosPorDept as any,
-      criadoPor: usuarioLogado?.nome,
-      descricao: `Solicitação criada via template: ${template.nome}`,
-    });
+    // Validar se gerente está tentando criar solicitação para outro departamento
+    if (usuarioLogado?.role === 'gerente' && usuarioLogado.departamento_id) {
+      const primeiroDepartamento = fluxo[0];
+      if (primeiroDepartamento !== usuarioLogado.departamento_id) {
+        void mostrarAlerta('Erro', 'Gerente só pode criar solicitações para seu próprio departamento.', 'erro');
+        return;
+      }
+    }
 
-    onClose();
+    try {
+      await criarProcesso({
+        nome: template.nome,
+        nomeServico: template.nome,
+        nomeEmpresa: empresaSelecionada?.razao_social || empresaSelecionada?.nome || 'Empresa',
+        empresa: empresaSelecionada?.razao_social || empresaSelecionada?.nome || 'Empresa',
+        empresaId: empresaSelecionada?.id,
+        cliente: responsavel,
+        fluxoDepartamentos: fluxo,
+        departamentoAtual: fluxo[0],
+        departamentoAtualIndex: 0,
+        questionariosPorDepartamento: questionariosPorDept as any,
+        criadoPor: usuarioLogado?.nome,
+        descricao: `Solicitação criada via template: ${template.nome}`,
+      });
+
+      onClose();
+    } catch (error: any) {
+      void mostrarAlerta('Erro', error.message || 'Erro ao criar solicitação', 'erro');
+    }
   };
 
   const excluirTemplate = (templateId: number, templateNome: string) => {

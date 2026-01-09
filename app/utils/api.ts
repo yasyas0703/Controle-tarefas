@@ -530,6 +530,8 @@ export const api = {
 
   salvarUsuario: async (usuario: any) => {
     try {
+      // O middleware já adiciona x-user-role automaticamente baseado no token
+      // Mas garantimos que está sendo enviado
       const response = await fetchAutenticado(`${API_URL}/usuarios`, {
         method: 'POST',
         body: JSON.stringify(usuario),

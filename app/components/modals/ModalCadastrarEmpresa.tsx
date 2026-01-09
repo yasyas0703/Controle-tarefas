@@ -117,13 +117,27 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
       return;
     }
 
+    // Determinar se é empresa cadastrada baseado no CNPJ
     const cnpjDigits = String(formData.cnpj || '').replace(/\D/g, '');
-    const cadastrada = cnpjDigits.length > 0;
+    // Empresa cadastrada: precisa ter CNPJ válido (14 dígitos) OU CPF válido (11 dígitos)
+    // Mas no contexto do sistema, empresas cadastradas devem ter CNPJ (14 dígitos)
+    const temCnpjValido = cnpjDigits.length === 14;
+    
+    // Se o tipo selecionado é "empresa cadastrada", deve ter CNPJ válido
+    // Caso contrário, se tem CNPJ válido, considera cadastrada automaticamente
+    let cadastrada = false;
+    if (empresaCadastrada) {
+      // Se selecionou empresa cadastrada, precisa ter CNPJ válido
+      cadastrada = temCnpjValido;
+    } else {
+      // Se selecionou empresa nova mas tem CNPJ válido, considera cadastrada
+      cadastrada = temCnpjValido;
+    }
 
     const dadosParaSalvar: Partial<Empresa> = {
       ...formData,
-      cnpj: String(formData.cnpj || ''),
-      cadastrada,
+      cnpj: formData.cnpj ? String(formData.cnpj) : null,
+      cadastrada: cadastrada,
     };
 
     if (empresa?.id) {

@@ -128,7 +128,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!empresaSelecionada) {
@@ -146,33 +146,46 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
       return;
     }
 
-    criarProcesso({
-      nome: nomeServico,
-      nomeServico,
-      nomeEmpresa: nomeEmpresa || empresaSelecionada?.razao_social || empresaSelecionada?.apelido || 'Nova Empresa',
-      empresa: nomeEmpresa || empresaSelecionada?.razao_social || empresaSelecionada?.apelido || 'Nova Empresa',
-      empresaId: empresaSelecionada.id,
-      cliente,
-      email,
-      telefone,
-      fluxoDepartamentos,
-      departamentoAtual: fluxoDepartamentos[0],
-      departamentoAtualIndex: 0,
-      questionariosPorDepartamento: questionariosPorDept,
-      criadoPor: usuarioLogado?.nome,
-      descricao: `Solicitação criada: ${nomeServico}`,
-    });
-
-    if (salvarComoTemplateChecked && usuarioLogado?.role === 'admin') {
-      criarTemplate({
-        nome: nomeServico,
-        descricao: `Template criado a partir da solicitação: ${nomeServico}`,
-        fluxoDepartamentos,
-        questionariosPorDepartamento: questionariosPorDept,
-      });
+    // Validar se gerente está tentando criar solicitação para outro departamento
+    if (usuarioLogado?.role === 'gerente' && usuarioLogado.departamento_id) {
+      const primeiroDepartamento = fluxoDepartamentos[0];
+      if (primeiroDepartamento !== usuarioLogado.departamento_id) {
+        void mostrarAlerta('Erro', 'Gerente só pode criar solicitações para seu próprio departamento.', 'erro');
+        return;
+      }
     }
 
-    onClose();
+    try {
+      await criarProcesso({
+        nome: nomeServico,
+        nomeServico,
+        nomeEmpresa: nomeEmpresa || empresaSelecionada?.razao_social || empresaSelecionada?.apelido || 'Nova Empresa',
+        empresa: nomeEmpresa || empresaSelecionada?.razao_social || empresaSelecionada?.apelido || 'Nova Empresa',
+        empresaId: empresaSelecionada.id,
+        cliente,
+        email,
+        telefone,
+        fluxoDepartamentos,
+        departamentoAtual: fluxoDepartamentos[0],
+        departamentoAtualIndex: 0,
+        questionariosPorDepartamento: questionariosPorDept,
+        criadoPor: usuarioLogado?.nome,
+        descricao: `Solicitação criada: ${nomeServico}`,
+      });
+
+      if (salvarComoTemplateChecked && usuarioLogado?.role === 'admin') {
+        criarTemplate({
+          nome: nomeServico,
+          descricao: `Template criado a partir da solicitação: ${nomeServico}`,
+          fluxoDepartamentos,
+          questionariosPorDepartamento: questionariosPorDept,
+        });
+      }
+
+      onClose();
+    } catch (error: any) {
+      void mostrarAlerta('Erro', error.message || 'Erro ao criar solicitação', 'erro');
+    }
   };
 
   return (

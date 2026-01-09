@@ -2,11 +2,23 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Building, User, Plus, MoreVertical, Edit, Trash2, Eye } from 'lucide-react';
+import { Building, User, Plus, MoreVertical, Edit, Trash2, Eye, FileText, Users, Calculator, FileCheck, Briefcase } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { useDragDrop } from '@/app/hooks/useDragDrop';
+import { temPermissao } from '@/app/utils/permissions';
 import { Processo } from '@/app/types';
 import ProcessoCard from './ProcessoCard';
+
+// Mapeamento de nomes de ícones para componentes
+const iconMap: Record<string, any> = {
+  FileText,
+  Users,
+  Calculator,
+  FileCheck,
+  Briefcase,
+  Edit,
+  Building, // fallback
+};
 
 interface DepartamentosGridProps {
   onCriarDepartamento: () => void;
@@ -26,6 +38,7 @@ export default function DepartamentosGrid({
   const {
     departamentos,
     processos,
+    usuarioLogado,
     setShowQuestionario,
     setShowUploadDocumento,
     setShowComentarios,
@@ -102,14 +115,19 @@ export default function DepartamentosGrid({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-3">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-white bg-opacity-20`}>
-                        {typeof dept.icone === 'function' ? (
-                          (() => {
-                            const Icone = dept.icone as any;
-                            return <Icone size={20} className={corTexto} />;
-                          })()
-                        ) : (
-                          <Building size={20} className={corTexto} />
-                        )}
+                        {(() => {
+                          let IconeComponent: any = Building; // fallback
+                          
+                          if (typeof dept.icone === 'string') {
+                            // Se for string, busca no mapeamento
+                            IconeComponent = iconMap[dept.icone] || Building;
+                          } else if (typeof dept.icone === 'function') {
+                            // Se for função/componente, usa diretamente
+                            IconeComponent = dept.icone;
+                          }
+                          
+                          return <IconeComponent size={20} className={corTexto} />;
+                        })()}
                       </div>
                       <h3
                         className="font-bold text-lg break-words line-clamp-2 cursor-help flex-1"
@@ -206,29 +224,40 @@ export default function DepartamentosGrid({
                   {processosNoDept.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
                       <div className={`w-16 h-16 rounded-lg mx-auto mb-3 bg-gradient-to-br ${corFundo} flex items-center justify-center`}>
-                        {typeof dept.icone === 'function' ? (
-                          (() => {
-                            const Icone = dept.icone as any;
-                            return <Icone size={24} className="text-white opacity-30" />;
-                          })()
-                        ) : (
-                          <Building size={24} className="text-white opacity-30" />
-                        )}
+                        {(() => {
+                          let IconeComponent = Building; // fallback
+                          
+                          if (typeof dept.icone === 'string') {
+                            IconeComponent = iconMap[dept.icone] || Building;
+                          } else if (typeof dept.icone === 'function') {
+                            IconeComponent = dept.icone as any;
+                          }
+                          
+                          return <IconeComponent size={24} className="text-white opacity-30" />;
+                        })()}
                       </div>
                       <p className="text-base text-gray-500 font-medium">Nenhum processo</p>
                     </div>
                   ) : (
-                    processosNoDept.map((processo) => (
+                    processosNoDept.map((processo) => {
+                      // Verificar se pode arrastar este processo
+                      const podeArrastar = temPermissao(usuarioLogado, 'mover_processo', { 
+                        departamentoOrigemId: dept.id,
+                        departamentoAtual: dept.id
+                      });
+                      
+                      return (
                       <div
                         key={processo.id}
-                        draggable
+                        draggable={podeArrastar}
                         onDragStart={(e) => handleDragStart(e, processo, dept.id)}
                         onDragEnd={handleDragEnd}
-                        className={`cursor-grab active:cursor-grabbing transition-all ${
+                        className={`${podeArrastar ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-75'} transition-all ${
                           dragState.draggedItem?.id === processo.id
                             ? 'opacity-50'
                             : ''
                         }`}
+                        title={podeArrastar ? 'Arraste para mover' : 'Apenas gerentes podem mover processos'}
                       >
                         <ProcessoCard
                           processo={processo}
@@ -258,7 +287,8 @@ export default function DepartamentosGrid({
                           onVerDetalhes={onProcessoClicado}
                         />
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

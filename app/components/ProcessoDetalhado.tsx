@@ -63,10 +63,12 @@ export default function ProcessoDetalhado({
 
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
-            <h2 className="text-2xl font-bold mb-2">{processo.nome}</h2>
+            <h2 className="text-2xl font-bold mb-2">
+              {processo.nomeServico || processo.nome || 'Processo sem nome'}
+            </h2>
             <p className="text-blue-100 flex items-center gap-2">
               <User size={16} />
-              {processo.empresa}
+              {processo.nomeEmpresa || processo.empresa || 'Empresa não informada'}
             </p>
           </div>
         </div>
@@ -96,7 +98,7 @@ export default function ProcessoDetalhado({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="border-l-4 border-blue-500 pl-4">
             <p className="text-sm text-gray-600 mb-1">Cliente</p>
-            <p className="font-bold text-gray-800">{processo.empresa}</p>
+            <p className="font-bold text-gray-800">{processo.nomeEmpresa || processo.empresa || 'Não informado'}</p>
           </div>
           <div className="border-l-4 border-green-500 pl-4">
             <p className="text-sm text-gray-600 mb-1">Inicio</p>

@@ -47,29 +47,37 @@ export async function PUT(
   try {
     const data = await request.json();
     
+    // Calcular valor de cadastrada
+    const updateData: any = {};
+    if (data.cnpj !== undefined) updateData.cnpj = data.cnpj;
+    if (data.codigo !== undefined) updateData.codigo = data.codigo;
+    if (data.razao_social !== undefined) updateData.razao_social = data.razao_social;
+    if (data.apelido !== undefined) updateData.apelido = data.apelido;
+    if (data.inscricao_estadual !== undefined) updateData.inscricao_estadual = data.inscricao_estadual;
+    if (data.inscricao_municipal !== undefined) updateData.inscricao_municipal = data.inscricao_municipal;
+    if (data.regime_federal !== undefined) updateData.regime_federal = data.regime_federal;
+    if (data.regime_estadual !== undefined) updateData.regime_estadual = data.regime_estadual;
+    if (data.regime_municipal !== undefined) updateData.regime_municipal = data.regime_municipal;
+    if (data.data_abertura !== undefined) updateData.data_abertura = data.data_abertura ? new Date(data.data_abertura) : null;
+    if (data.estado !== undefined) updateData.estado = data.estado;
+    if (data.cidade !== undefined) updateData.cidade = data.cidade;
+    if (data.bairro !== undefined) updateData.bairro = data.bairro;
+    if (data.logradouro !== undefined) updateData.logradouro = data.logradouro;
+    if (data.numero !== undefined) updateData.numero = data.numero;
+    if (data.cep !== undefined) updateData.cep = data.cep;
+    if (data.email !== undefined) updateData.email = data.email;
+    if (data.telefone !== undefined) updateData.telefone = data.telefone;
+    
+    // Lógica para cadastrada
+    if (data.cadastrada !== undefined) {
+      updateData.cadastrada = Boolean(data.cadastrada);
+    } else if (data.cnpj !== undefined) {
+      updateData.cadastrada = !!data.cnpj && String(data.cnpj).replace(/\D/g, '').length === 14;
+    }
+    
     const empresa = await prisma.empresa.update({
       where: { id: parseInt(params.id) },
-      data: {
-        ...(data.cnpj !== undefined && { cnpj: data.cnpj }),
-        ...(data.codigo !== undefined && { codigo: data.codigo }),
-        ...(data.razao_social !== undefined && { razao_social: data.razao_social }),
-        ...(data.apelido !== undefined && { apelido: data.apelido }),
-        ...(data.inscricao_estadual !== undefined && { inscricao_estadual: data.inscricao_estadual }),
-        ...(data.inscricao_municipal !== undefined && { inscricao_municipal: data.inscricao_municipal }),
-        ...(data.regime_federal !== undefined && { regime_federal: data.regime_federal }),
-        ...(data.regime_estadual !== undefined && { regime_estadual: data.regime_estadual }),
-        ...(data.regime_municipal !== undefined && { regime_municipal: data.regime_municipal }),
-        ...(data.data_abertura !== undefined && { data_abertura: data.data_abertura ? new Date(data.data_abertura) : null }),
-        ...(data.estado !== undefined && { estado: data.estado }),
-        ...(data.cidade !== undefined && { cidade: data.cidade }),
-        ...(data.bairro !== undefined && { bairro: data.bairro }),
-        ...(data.logradouro !== undefined && { logradouro: data.logradouro }),
-        ...(data.numero !== undefined && { numero: data.numero }),
-        ...(data.cep !== undefined && { cep: data.cep }),
-        ...(data.email !== undefined && { email: data.email }),
-        ...(data.telefone !== undefined && { telefone: data.telefone }),
-        ...(data.cnpj !== undefined && { cadastrada: !!data.cnpj && data.cnpj.replace(/\D/g, '').length >= 14 }),
-      },
+      data: updateData,
     });
     
     return NextResponse.json(empresa);
@@ -107,4 +115,5 @@ export async function DELETE(
     );
   }
 }
+
 

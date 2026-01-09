@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, TrendingUp, Building, Clock, AlertCircle } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 
@@ -11,74 +11,91 @@ interface ModalAnalyticsProps {
 export default function ModalAnalytics({ onClose }: ModalAnalyticsProps) {
   const { departamentos, processos } = useSistema();
   const [visualizacaoAtiva, setVisualizacaoAtiva] = useState("overview");
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const analytics = {
-    metricasGerais: {
-      totalProcessos: 9,
-      processosFinalizados: 5,
-      taxaSucesso: 56,
-      tempoMedioTotal: 0
-    },
-    tempoMedioPorDepartamento: {
-      "Cadastro": 0,
-      "Sistema": 0,
-      "Fiscal": 0
-    },
-    gargalos: [
-      { departamento: "Sistema", processos: 1, taxaGargalo: 0.0 },
-      { departamento: "dsd", processos: 1, taxaGargalo: 0.0 },
-      { departamento: "dfg", processos: 1, taxaGargalo: 0.0 }
-    ],
-    taxaConclusaoMensal: {
-      "2026-01": 5
-    },
-    performanceDepartamentos: {},
-    previsaoConclusao: {}
-  };
-
-  departamentos.forEach((dept) => {
-    analytics.performanceDepartamentos[dept.id] = {
-      nome: dept.nome,
-      processosConcluidos: 0,
-      tempoMedio: "0",
-      eficiencia: 0
-    };
-  });
-
-  const empresasPrevisoes = [
-    {
-      id: 1,
-      nomeEmpresa: "A. RIBEIRO EQUIPAMENTOS LTDA",
-      previsao: "06/01/2026",
-      confianca: 95
-    },
-    {
-      id: 2,
-      nomeEmpresa: "A. RIBEIRO EQUIPAMENTOS LTDA",
-      previsao: "06/01/2026",
-      confianca: 95
-    },
-    {
-      id: 3,
-      nomeEmpresa: "ADAILTON MAGALHAES MILHORINI",
-      previsao: "06/01/2026",
-      confianca: 95
-    },
-    {
-      id: 4,
-      nomeEmpresa: "A. RIBEIRO EQUIPAMENTOS LTDA",
-      previsao: "10/01/2026",
-      confianca: 30
+  useEffect(() => {
+    async function carregarAnalytics() {
+      try {
+        setLoading(true);
+        const { api } = await import('@/app/utils/api');
+        const data = await api.getAnalytics(30);
+        setAnalyticsData(data);
+      } catch (error) {
+        console.error('Erro ao carregar análises:', error);
+      } finally {
+        setLoading(false);
+      }
     }
-  ];
+    carregarAnalytics();
+  }, []);
 
-  empresasPrevisoes.forEach((emp, index) => {
-    analytics.previsaoConclusao[index] = {
-      nomeEmpresa: emp.nomeEmpresa,
-      previsao: emp.previsao,
-      confianca: emp.confianca
+  // Processar dados reais ou usar fallback
+  const analytics = useMemo(() => {
+    if (!analyticsData) {
+      return {
+        metricasGerais: {
+          totalProcessos: processos.length,
+          processosFinalizados: processos.filter(p => p.status === 'finalizado').length,
+          taxaSucesso: 0,
+          tempoMedioTotal: 0
+        },
+        tempoMedioPorDepartamento: {},
+        gargalos: [],
+        taxaConclusaoMensal: {},
+        performanceDepartamentos: {},
+        previsaoConclusao: {}
+      };
+    }
+
+    const processosFinalizados = processos.filter(p => p.status === 'finalizado').length;
+    const taxaSucesso = processos.length > 0 ? Math.round((processosFinalizados / processos.length) * 100) : 0;
+
+    const tempoMedioPorDepartamento: Record<string, number> = {};
+    if (analyticsData.tempoMedioPorDepartamento) {
+      analyticsData.tempoMedioPorDepartamento.forEach((item: any) => {
+        tempoMedioPorDepartamento[item.departamento] = Math.round(item.tempoMedioDias * 10) / 10;
+      });
+    }
+
+    const performanceDepartamentos: Record<number, any> = {};
+    departamentos.forEach((dept) => {
+      const processosDept = processos.filter(p => p.departamentoAtual === dept.id);
+      const concluidos = processosDept.filter(p => p.status === 'finalizado').length;
+      const tempoMedio = tempoMedioPorDepartamento[dept.nome] || 0;
+      
+      performanceDepartamentos[dept.id] = {
+        nome: dept.nome,
+        processosConcluidos: concluidos,
+        tempoMedio: tempoMedio.toString(),
+        eficiencia: processosDept.length > 0 ? Math.round((concluidos / processosDept.length) * 100) : 0
+      };
+    });
+
+    return {
+      metricasGerais: {
+        totalProcessos: analyticsData.totalProcessos || processos.length,
+        processosFinalizados: analyticsData.processosFinalizadosPeriodo || processosFinalizados,
+        taxaSucesso: analyticsData.taxaConclusao || taxaSucesso,
+        tempoMedioTotal: 0
+      },
+      tempoMedioPorDepartamento,
+      gargalos: Object.entries(tempoMedioPorDepartamento)
+        .map(([nome, tempo]) => ({
+          departamento: nome,
+          processos: processos.filter(p => {
+            const dept = departamentos.find(d => d.nome === nome);
+            return dept && p.departamentoAtual === dept.id;
+          }).length,
+          taxaGargalo: tempo
+        }))
+        .sort((a, b) => b.taxaGargalo - a.taxaGargalo)
+        .slice(0, 5),
+      taxaConclusaoMensal: {},
+      performanceDepartamentos,
+      previsaoConclusao: {}
     };
-  });
+  }, [analyticsData, processos, departamentos]);
 
   const GraficoBarras = ({
     dados,
@@ -175,7 +192,13 @@ export default function ModalAnalytics({ onClose }: ModalAnalyticsProps) {
         </div>
 
         <div className="p-6 space-y-6">
-          {visualizacaoAtiva === "overview" && (
+          {loading && (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">Carregando análises...</p>
+            </div>
+          )}
+          {!loading && visualizacaoAtiva === "overview" && (
             <div className="space-y-6">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-gradient-to-br from-cyan-500 to-blue-600 text-white rounded-xl p-4 shadow-lg">
@@ -256,7 +279,7 @@ export default function ModalAnalytics({ onClose }: ModalAnalyticsProps) {
                         className="text-center p-3 bg-cyan-50 rounded-lg border border-cyan-200"
                       >
                         <div className="text-2xl font-bold text-cyan-600">
-                          {quantidade}
+                          {String(quantidade)}
                         </div>
                         <div className="text-sm text-cyan-700">{mes}</div>
                       </div>

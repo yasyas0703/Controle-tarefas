@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Bell, Download, TrendingUp, Plus, FileText, Users, User, X } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
+import { temPermissao as verificarPermissao } from '@/app/utils/permissions';
 import NotificacoesPanel from './NotificacoesPanel';
 
 interface HeaderProps {
@@ -29,8 +30,8 @@ export default function Header({
   const notificacoesArray = Array.isArray(notificacoes) ? notificacoes : [];
   const notificacoesNaoLidas = notificacoesArray.filter((n) => !n.lida);
 
-  const temPermissao = (permissao: string) => {
-    return usuarioLogado?.permissoes?.includes(permissao) || usuarioLogado?.role === 'admin';
+  const temPermissao = (permissao: string, contexto: any = {}) => {
+    return verificarPermissao(usuarioLogado, permissao, contexto);
   };
 
   return (
@@ -75,28 +76,34 @@ export default function Header({
               )}
             </div>
 
-            {/* Botão Análises */}
-            <button
-              onClick={onAnalytics}
-              className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-5 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 min-w-[180px] justify-center"
-            >
-              <TrendingUp size={20} />
-              <span>Análises</span>
-            </button>
+            {/* Botão Análises - todos podem ver */}
+            {temPermissao('ver_analises') && (
+              <button
+                onClick={onAnalytics}
+                className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-5 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 min-w-[180px] justify-center"
+              >
+                <TrendingUp size={20} />
+                <span>Análises</span>
+              </button>
+            )}
 
             {/* Botões de Criação */}
             {temPermissao('criar_processo') && (
               <div className="flex gap-3">
-                <button
-                  onClick={onSelecionarTemplate}
-                  className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-5 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 min-w-[180px] justify-center"
-                  title="Nova Solicitação usando Templates"
-                >
-                  <FileText size={20} />
-                  <span className="truncate">Nova Solicitação</span>
-                </button>
-
+                {/* Usuários normais não veem o botão Nova Solicitação (só análises) */}
                 {(usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente') && (
+                  <button
+                    onClick={onSelecionarTemplate}
+                    className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-5 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 min-w-[180px] justify-center"
+                    title="Nova Solicitação usando Templates"
+                  >
+                    <FileText size={20} />
+                    <span className="truncate">Nova Solicitação</span>
+                  </button>
+                )}
+
+                {/* Apenas admin e gerente podem criar solicitações personalizadas */}
+                {temPermissao('criar_processo_personalizado') && (
                   <button
                     onClick={onPersonalizado}
                     className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white px-5 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 min-w-[180px] justify-center"
@@ -109,7 +116,7 @@ export default function Header({
               </div>
             )}
 
-            {/* Botão Usuários */}
+            {/* Botão Usuários - apenas admin */}
             {temPermissao('gerenciar_usuarios') && (
               <button
                 onClick={onGerenciarUsuarios}
