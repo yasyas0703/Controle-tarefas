@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,10 +29,8 @@ export async function GET() {
 // POST /api/templates
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    }
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
     
     const data = await request.json();
     
@@ -41,7 +40,7 @@ export async function POST(request: NextRequest) {
         descricao: data.descricao,
         fluxoDepartamentos: data.fluxoDepartamentos || [],
         questionariosPorDepartamento: data.questionariosPorDepartamento || {},
-        criadoPorId: parseInt(userId),
+        criadoPorId: user.id,
       },
       include: {
         criadoPor: {

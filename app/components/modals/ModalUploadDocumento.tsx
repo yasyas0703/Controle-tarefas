@@ -4,6 +4,7 @@ import React from 'react';
 import { X, Upload, File, Trash2, Download } from 'lucide-react';
 import { Processo } from '@/app/types';
 import { useSistema } from '@/app/context/SistemaContext';
+import { api } from '@/app/utils/api';
 import { formatarTamanhoParcela, formatarDataHora } from '@/app/utils/helpers';
 import ModalBase from './ModalBase';
 
@@ -20,12 +21,18 @@ export default function ModalUploadDocumento({
   perguntaLabel = null,
   onClose,
 }: ModalUploadDocumentoProps) {
-  const { adicionarDocumentoProcesso, atualizarProcesso, adicionarNotificacao, mostrarAlerta } = useSistema();
+  const { adicionarDocumentoProcesso, adicionarNotificacao, mostrarAlerta } = useSistema();
   const [uploading, setUploading] = React.useState(false);
   const [arquivos, setArquivos] = React.useState<Array<{ id: number; nome: string; tamanho: number; tipo: string; file: File }>>([]);
   const [arrastando, setArrastando] = React.useState(false);
 
-  const documentos = processo?.documentos || [];
+  const [documentosLocal, setDocumentosLocal] = React.useState<any[]>(processo?.documentos || []);
+
+  React.useEffect(() => {
+    setDocumentosLocal(processo?.documentos || []);
+  }, [processo?.id, processo?.documentos]);
+
+  const documentos = documentosLocal;
   const documentosFiltrados = perguntaId
     ? documentos.filter((d: any) => Number(d.perguntaId) === Number(perguntaId))
     : documentos;
@@ -57,6 +64,7 @@ export default function ModalUploadDocumento({
     setUploading(true);
     let sucessos = 0;
     let erros = 0;
+    const mensagensErro: string[] = [];
     try {
       for (let i = 0; i < arquivos.length; i++) {
         const a = arquivos[i];
@@ -69,8 +77,10 @@ export default function ModalUploadDocumento({
             perguntaId ?? undefined
           );
           sucessos++;
-        } catch {
+        } catch (err: any) {
           erros++;
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg && !mensagensErro.includes(msg)) mensagensErro.push(msg);
         }
       }
       setArquivos([]);
@@ -79,18 +89,27 @@ export default function ModalUploadDocumento({
         onClose();
       }
       if (erros > 0) {
-        await mostrarAlerta('Erro no Upload', `${erros} arquivo(s) não puderam ser enviados`, 'erro');
+        const detalhe = mensagensErro.length > 0 ? `\n\nDetalhe: ${mensagensErro.join(' | ')}` : '';
+        await mostrarAlerta('Erro no Upload', `${erros} arquivo(s) não puderam ser enviados${detalhe}`, 'erro');
       }
     } finally {
       setUploading(false);
     }
   };
 
-  const handleRemover = (id: number) => {
+  const handleRemover = async (id: number) => {
     if (!processo) return;
-    atualizarProcesso(processo.id, {
-      documentos: (processo.documentos || []).filter((d: any) => d.id !== id),
-    } as any);
+    try {
+      setUploading(true);
+      await api.excluirDocumento(id);
+      setDocumentosLocal(prev => prev.filter((d: any) => d.id !== id));
+      adicionarNotificacao('Documento excluído com sucesso', 'sucesso');
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir documento';
+      await mostrarAlerta('Erro', msg, 'erro');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDownload = (doc: any) => {

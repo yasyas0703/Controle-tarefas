@@ -146,7 +146,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
       return;
     }
 
-    // Validar se gerente está tentando criar solicitação para outro departamento
+    // Gerente só pode criar solicitações para o próprio departamento
     if (usuarioLogado?.role === 'gerente' && usuarioLogado.departamento_id) {
       const primeiroDepartamento = fluxoDepartamentos[0];
       if (primeiroDepartamento !== usuarioLogado.departamento_id) {
@@ -169,6 +169,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
         departamentoAtual: fluxoDepartamentos[0],
         departamentoAtualIndex: 0,
         questionariosPorDepartamento: questionariosPorDept,
+        personalizado: true,
         criadoPor: usuarioLogado?.nome,
         descricao: `Solicitação criada: ${nomeServico}`,
       });
@@ -239,7 +240,8 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
                   <option value="">Selecione uma empresa</option>
                   {(empresas || []).map((emp) => (
                       <option key={emp.id} value={emp.id}>
-                        {emp.codigo} - {emp.razao_social}{emp.cadastrada ? '' : ' (NOVA)'}
+                        {emp.codigo} - {emp.razao_social}
+                        {String(emp.cnpj ?? '').replace(/\D/g, '').length > 0 ? '' : ' (NOVA)'}
                       </option>
                     ))}
                 </select>

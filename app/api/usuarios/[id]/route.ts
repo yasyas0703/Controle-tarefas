@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { hashPassword } from '@/app/utils/auth';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,13 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
     const usuario = await prisma.usuario.findUnique({
       where: { id: parseInt(params.id) },
       select: {
@@ -48,26 +56,60 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userRole = request.headers.get('x-user-role');
-    
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     // Apenas ADMIN pode atualizar usuários
-    if (userRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Sem permissão' },
-        { status: 403 }
-      );
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
     
     const data = await request.json();
+
+    // GERENTE não pode promover/alterar ADMIN
+    const targetId = parseInt(params.id);
+    const target = await prisma.usuario.findUnique({ where: { id: targetId }, select: { id: true, role: true, ativo: true } });
+    if (!target) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+    const requesterIsAdmin = requireRole(user, ['ADMIN']);
+
+    // Impede o usuário de se desativar (evita lock-out)
+    if (targetId === (user as any).id && data.ativo === false) {
+      return NextResponse.json(
+        { error: 'Você não pode desativar seu próprio usuário.' },
+        { status: 400 }
+      );
+    }
+
+    // Impede desativar o último ADMIN ativo
+    if (data.ativo === false && String(target.role).toUpperCase() === 'ADMIN' && target.ativo) {
+      const outrosAdminsAtivos = await prisma.usuario.count({
+        where: {
+          role: 'ADMIN',
+          ativo: true,
+          id: { not: targetId },
+        },
+      });
+
+      if (outrosAdminsAtivos === 0) {
+        return NextResponse.json(
+          { error: 'Não é possível desativar o último administrador ativo.' },
+          { status: 400 }
+        );
+      }
+    }
     
     const updateData: any = {
       nome: data.nome,
       email: data.email,
-      role: data.role,
+      role: data.role ? String(data.role).toUpperCase() : undefined,
       departamentoId: data.departamentoId || null,
       permissoes: data.permissoes || [],
       ativo: data.ativo !== undefined ? data.ativo : true,
     };
+
+    // requester é admin (já validado acima)
     
     // Se tiver senha, atualiza
     if (data.senha) {
@@ -111,16 +153,19 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userRole = request.headers.get('x-user-role');
-    
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     // Apenas ADMIN pode excluir usuários
-    if (userRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Sem permissão' },
-        { status: 403 }
-      );
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
-    
+
+    const target = await prisma.usuario.findUnique({ where: { id: parseInt(params.id) }, select: { id: true, role: true } });
+    if (!target) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
     await prisma.usuario.delete({
       where: { id: parseInt(params.id) },
     });

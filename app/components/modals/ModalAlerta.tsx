@@ -8,7 +8,7 @@ export type TipoAlerta = 'info' | 'aviso' | 'erro' | 'sucesso';
 
 interface ModalAlertaProps {
   titulo: string;
-  mensagem: string;
+  mensagem: unknown;
   tipo?: TipoAlerta;
   onClose: () => void;
 }
@@ -19,6 +19,16 @@ export default function ModalAlerta({
   tipo = 'info',
   onClose,
 }: ModalAlertaProps) {
+  const mensagemTexto = React.useMemo(() => {
+    if (typeof mensagem === 'string') return mensagem;
+    if (mensagem instanceof Error) return mensagem.message;
+    try {
+      return JSON.stringify(mensagem, null, 2);
+    } catch {
+      return String(mensagem);
+    }
+  }, [mensagem]);
+
   const getConfig = () => {
     switch (tipo) {
       case 'erro':
@@ -65,7 +75,7 @@ export default function ModalAlerta({
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               {config.iconeCentral}
             </div>
-            <p className="text-gray-600 dark:text-gray-200 whitespace-pre-wrap">{mensagem}</p>
+            <p className="text-gray-600 dark:text-gray-200 whitespace-pre-wrap">{mensagemTexto}</p>
           </div>
 
           <button

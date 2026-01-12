@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,9 +10,12 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    const roleUpper = String((user as any).role || '').toUpperCase();
+    if (roleUpper === 'USUARIO') {
+      return NextResponse.json({ error: 'Sem permissão para avançar processo' }, { status: 403 });
     }
     
     const processoId = parseInt(params.id);
@@ -32,6 +36,13 @@ export async function POST(
         { error: 'Processo não encontrado' },
         { status: 404 }
       );
+    }
+
+    if (roleUpper === 'GERENTE') {
+      const departamentoUsuario = (user as any).departamento_id;
+      if (typeof departamentoUsuario === 'number' && processo.departamentoAtual !== departamentoUsuario) {
+        return NextResponse.json({ error: 'Sem permissão para mover processo de outro departamento' }, { status: 403 });
+      }
     }
     
     // Verificar se há próximo departamento
@@ -102,33 +113,11 @@ export async function POST(
         processoId: processoId,
         tipo: 'MOVIMENTACAO',
         acao: `Processo movido de "${departamentoAtual?.nome || 'N/A'}" para "${proximoDepartamento.nome}"`,
-        responsavelId: parseInt(userId),
+        responsavelId: user.id,
         departamento: proximoDepartamento.nome,
         dataTimestamp: BigInt(Date.now()),
       },
     });
-    
-    // Se é o último departamento, marcar como concluído
-    if (proximoIndex === processo.fluxoDepartamentos.length - 1) {
-      await prisma.processo.update({
-        where: { id: processoId },
-        data: {
-          status: 'FINALIZADO',
-          dataFinalizacao: new Date(),
-        },
-      });
-      
-      await prisma.historicoEvento.create({
-        data: {
-          processoId: processoId,
-          tipo: 'FINALIZACAO',
-          acao: 'Processo concluído',
-          responsavelId: parseInt(userId),
-          departamento: proximoDepartamento.nome,
-          dataTimestamp: BigInt(Date.now()),
-        },
-      });
-    }
     
     return NextResponse.json(processoAtualizado);
   } catch (error) {

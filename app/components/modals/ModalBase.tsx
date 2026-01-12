@@ -55,9 +55,18 @@ export default function ModalBase({
     mountRef.current = container;
     document.body.appendChild(container);
     return () => {
-      if (mountRef.current) {
-        document.body.removeChild(mountRef.current);
-        mountRef.current = null;
+      const node = mountRef.current;
+      mountRef.current = null;
+      if (!node) return;
+
+      // Em dev (React 18 StrictMode/Fast Refresh) o cleanup pode rodar mais de uma vez.
+      // Só remove se o nó ainda estiver anexado.
+      const parent = node.parentNode;
+      if (!parent) return;
+      try {
+        parent.removeChild(node);
+      } catch {
+        // no-op: nó já foi removido por outro ciclo
       }
     };
   }, [container]);
@@ -101,7 +110,7 @@ export default function ModalBase({
       document.body.style.overflow = '';
       lastFocusedRef.current?.focus?.();
     };
-  }, [isOpen, initialFocusSelector]);
+  }, [isOpen, initialFocusSelector, onClose]);
 
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();

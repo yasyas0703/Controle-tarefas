@@ -35,7 +35,15 @@ export default function SecaoAlertas() {
               <div key={p.id} className="bg-white bg-opacity-70 rounded-lg p-3 flex items-center gap-2">
                 <Clock size={16} className="text-orange-600" />
                 <span className="text-sm text-gray-900">
-                  <strong>{p.empresa}</strong> - Entrega em{' '}
+                  <strong>
+                    {typeof (p as any).empresa === 'string'
+                      ? (p as any).empresa
+                      : (p as any).empresa?.razao_social ||
+                        (p as any).empresa?.apelido ||
+                        (p as any).nomeEmpresa ||
+                        'Empresa'}
+                  </strong>{' '}
+                  - Entrega em{' '}
                   {new Date(p.dataEntrega!).toLocaleDateString('pt-BR')}
                 </span>
               </div>

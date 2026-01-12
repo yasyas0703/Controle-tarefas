@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
+
+function jsonBigInt(data: unknown, init?: { status?: number }) {
+  return new NextResponse(
+    JSON.stringify(data, (_key, value) => (typeof value === 'bigint' ? value.toString() : value)),
+    {
+      status: init?.status ?? 200,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+      },
+    }
+  );
+}
 
 // GET /api/processos/:id
 export async function GET(
@@ -9,6 +22,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const processo = await prisma.processo.findUnique({
       where: { id: parseInt(params.id) },
       include: {
@@ -47,19 +63,13 @@ export async function GET(
     });
     
     if (!processo) {
-      return NextResponse.json(
-        { error: 'Processo não encontrado' },
-        { status: 404 }
-      );
+      return jsonBigInt({ error: 'Processo não encontrado' }, { status: 404 });
     }
     
-    return NextResponse.json(processo);
+    return jsonBigInt(processo);
   } catch (error) {
     console.error('Erro ao buscar processo:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar processo' },
-      { status: 500 }
-    );
+    return jsonBigInt({ error: 'Erro ao buscar processo' }, { status: 500 });
   }
 }
 
@@ -69,9 +79,12 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    const roleUpper = String((user as any).role || '').toUpperCase();
+    if (roleUpper !== 'ADMIN' && roleUpper !== 'GERENTE') {
+      return NextResponse.json({ error: 'Sem permissão para editar processo' }, { status: 403 });
     }
     
     const data = await request.json();
@@ -80,6 +93,39 @@ export async function PUT(
     const processoAntigo = await prisma.processo.findUnique({
       where: { id: parseInt(params.id) },
     });
+
+    if (!processoAntigo) {
+      return NextResponse.json({ error: 'Processo não encontrado' }, { status: 404 });
+    }
+
+    if (roleUpper === 'GERENTE') {
+      const departamentoUsuario = (user as any).departamento_id;
+      if (typeof departamentoUsuario === 'number' && processoAntigo.departamentoAtual !== departamentoUsuario) {
+        return NextResponse.json({ error: 'Sem permissão para editar processo de outro departamento' }, { status: 403 });
+      }
+
+      // gerente não pode "mover" via PUT (use /avancar)
+      if (data?.departamentoAtual !== undefined && data.departamentoAtual !== processoAntigo.departamentoAtual) {
+        return NextResponse.json({ error: 'Movimentação de departamento não permitida por esta ação' }, { status: 403 });
+      }
+      if (data?.departamentoAtualIndex !== undefined && data.departamentoAtualIndex !== processoAntigo.departamentoAtualIndex) {
+        return NextResponse.json({ error: 'Movimentação de departamento não permitida por esta ação' }, { status: 403 });
+      }
+      if (data?.fluxoDepartamentos !== undefined) {
+        return NextResponse.json({ error: 'Alteração do fluxo não permitida' }, { status: 403 });
+      }
+
+      // gerente só finaliza no último departamento
+      const statusNovo = typeof data?.status === 'string' ? data.status.toUpperCase() : undefined;
+      if (statusNovo === 'FINALIZADO' || statusNovo === 'FINALIZACAO') {
+        const idx = Number(processoAntigo.departamentoAtualIndex ?? 0);
+        const len = Array.isArray(processoAntigo.fluxoDepartamentos) ? processoAntigo.fluxoDepartamentos.length : 0;
+        const isUltimo = len > 0 ? idx >= len - 1 : true;
+        if (!isUltimo) {
+          return NextResponse.json({ error: 'Só é possível finalizar no último departamento' }, { status: 403 });
+        }
+      }
+    }
     
     const processo = await prisma.processo.update({
       where: { id: parseInt(params.id) },
@@ -129,7 +175,22 @@ export async function PUT(
             processoId: processo.id,
             tipo: 'ALTERACAO',
             acao: mudancas.join(', '),
-            responsavelId: parseInt(userId),
+            responsavelId: user.id,
+            dataTimestamp: BigInt(Date.now()),
+          },
+        });
+      }
+
+      const oldStatus = String(processoAntigo.status || '').toUpperCase();
+      const newStatus = String(processo.status || '').toUpperCase();
+      if (oldStatus !== newStatus && (newStatus === 'FINALIZADO' || newStatus === 'FINALIZACAO')) {
+        await prisma.historicoEvento.create({
+          data: {
+            processoId: processo.id,
+            tipo: 'FINALIZACAO',
+            acao: 'Processo finalizado',
+            responsavelId: user.id,
+            departamento: 'Sistema',
             dataTimestamp: BigInt(Date.now()),
           },
         });
@@ -152,15 +213,12 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    const userRole = request.headers.get('x-user-role');
-    
-    // Apenas ADMIN pode excluir
-    if (userRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Sem permissão para excluir' },
-        { status: 403 }
-      );
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    // Apenas ADMIN pode excluir processo
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão para excluir' }, { status: 403 });
     }
     
     await prisma.processo.delete({

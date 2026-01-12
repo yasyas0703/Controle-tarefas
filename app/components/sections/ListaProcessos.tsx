@@ -17,8 +17,10 @@ import {
   Mail,
   Phone,
 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { Processo } from '@/app/types';
+import { temPermissao } from '@/app/utils/permissions';
 
 interface ListaProcessosProps {
   onProcessoClicado: (processo: Processo) => void;
@@ -55,6 +57,24 @@ export default function ListaProcessos({
 }: ListaProcessosProps) {
   const { processos, tags, usuarioLogado } = useSistema();
 
+  const getNomeEmpresa = (proc: Processo): string => {
+    const nomeEmpresa = (proc as any).nomeEmpresa;
+    if (typeof nomeEmpresa === 'string' && nomeEmpresa.trim()) return nomeEmpresa;
+
+    const empresa = (proc as any).empresa;
+    if (typeof empresa === 'string' && empresa.trim()) return empresa;
+    if (empresa && typeof empresa === 'object') {
+      const razao = (empresa as any).razao_social;
+      const apelido = (empresa as any).apelido;
+      const codigo = (empresa as any).codigo;
+      if (typeof razao === 'string' && razao.trim()) return razao;
+      if (typeof apelido === 'string' && apelido.trim()) return apelido;
+      if (typeof codigo === 'string' && codigo.trim()) return codigo;
+    }
+
+    return 'Nova Empresa';
+  };
+
   const processosFiltrados = processos.filter((proc) => {
     // Filtro por status
     if (filtroStatus === 'andamento' && proc.status !== 'em_andamento') return false;
@@ -62,7 +82,7 @@ export default function ListaProcessos({
     if (filtroStatus === 'alta' && proc.prioridade !== 'alta') return false;
 
     // Filtro por busca
-    const nomeEmpresa = proc.empresa || proc.nomeEmpresa || '';
+    const nomeEmpresa = getNomeEmpresa(proc);
     if (filtroBusca && !nomeEmpresa.toLowerCase().includes(filtroBusca.toLowerCase())) {
       return false;
     }
@@ -149,6 +169,12 @@ export default function ListaProcessos({
     return departamentos.find(dept => dept.id === processo.departamentoAtual);
   };
 
+  const getIconeDepartamento = (icone: any) => {
+    if (typeof icone === 'function') return icone;
+    if (typeof icone === 'string' && icone) return (LucideIcons as any)[icone] || null;
+    return null;
+  };
+
   if (processosFiltrados.length === 0) {
     return (
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100">
@@ -175,12 +201,16 @@ export default function ListaProcessos({
           const isFinalizado = processo.status === 'finalizado';
           const isUltimoDepartamento = processo.departamentoAtualIndex === (processo.fluxoDepartamentos?.length || 1) - 1;
           const departamentoAtual = getDepartamentoAtual(processo);
-          const nomeEmpresa = processo.empresa || processo.nomeEmpresa || 'Nova Empresa';
+          const nomeEmpresa = getNomeEmpresa(processo);
           const nomeServico = processo.nome || processo.nomeServico || 'Processo';
           const comentariosCount = (processo.comentarios || []).length;
           const documentosCount = (processo.documentos || []).length;
-          const podeGerenciarTags =
-            usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente' || usuarioLogado?.role === 'usuario';
+          const podeAvancar = Boolean(onAvancar) && temPermissao(usuarioLogado, 'mover_processo', { departamentoAtual: processo.departamentoAtual });
+          const podeFinalizar =
+            Boolean(onFinalizar) && temPermissao(usuarioLogado, 'finalizar_processo', { departamentoAtual: processo.departamentoAtual, isUltimoDepartamento });
+          const podeGerenciarTags = Boolean(onGerenciarTags) && temPermissao(usuarioLogado, 'gerenciar_tags');
+          const podeAplicarTags = Boolean(onTags) && temPermissao(usuarioLogado, 'aplicar_tags');
+          const IconeDept = departamentoAtual ? getIconeDepartamento(departamentoAtual.icone) : null;
 
           return (
             <div
@@ -303,11 +333,7 @@ export default function ListaProcessos({
                     <div className="bg-white border-l-4 border-blue-500 rounded-lg p-5 shadow-sm mb-6">
                       <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${departamentoAtual.cor || 'from-blue-500 to-cyan-500'} flex items-center justify-center flex-shrink-0`}>
-                          {departamentoAtual.icone ? (
-                            <departamentoAtual.icone size={24} className="text-white" />
-                          ) : (
-                            <User size={24} className="text-white" />
-                          )}
+                          {IconeDept ? <IconeDept size={24} className="text-white" /> : <User size={24} className="text-white" />}
                         </div>
 
                         <div className="flex-1">
@@ -399,7 +425,7 @@ export default function ListaProcessos({
                           </button>
                         )}
 
-                        {!isUltimoDepartamento && onAvancar && (
+                        {!isUltimoDepartamento && onAvancar && podeAvancar && (
                           <button
                             onClick={() => onAvancar(processo)}
                             className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
@@ -409,7 +435,7 @@ export default function ListaProcessos({
                           </button>
                         )}
 
-                        {isUltimoDepartamento && onFinalizar && (
+                        {isUltimoDepartamento && onFinalizar && podeFinalizar && (
                           <button
                             onClick={() => onFinalizar(processo)}
                             className="bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
@@ -429,7 +455,7 @@ export default function ListaProcessos({
                           </button>
                         )}
 
-                        {onTags && (
+                        {onTags && podeAplicarTags && (
                           <button
                             onClick={() => onTags(processo)}
                             className="bg-gradient-to-r from-violet-500 to-fuchsia-600 hover:from-violet-600 hover:to-fuchsia-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"

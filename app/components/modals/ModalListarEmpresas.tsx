@@ -172,6 +172,19 @@ export default function ModalListarEmpresas({
 }: ModalListarEmpresasProps) {
   const { empresas, excluirEmpresa, mostrarConfirmacao } = useSistema();
   const [buscaEmpresa, setBuscaEmpresa] = useState('');
+
+  const getNomeEmpresa = (empresa: Empresa): string => {
+    return (
+      (empresa.razao_social && String(empresa.razao_social)) ||
+      (empresa.apelido && String(empresa.apelido)) ||
+      (empresa.codigo && String(empresa.codigo)) ||
+      'Sem Razão Social'
+    );
+  };
+
+  const temCnpj = (empresa: Empresa): boolean => {
+    return String(empresa.cnpj || '').replace(/\D/g, '').length > 0;
+  };
   const [empresaSelecionada, setEmpresaSelecionada] = useState<Empresa | null>(() => {
     if (empresaIdInicial) {
       const emp = (empresas || []).find((e) => e.id === empresaIdInicial);
@@ -202,17 +215,24 @@ export default function ModalListarEmpresas({
   }, [empresaIdInicial, empresas, autoDetalheConsumido]);
 
   const empresasFiltradas = (empresas || []).filter((empresa) => {
-    const matchBusca =
-      empresa.razao_social.toLowerCase().includes(buscaEmpresa.toLowerCase()) ||
-      empresa.codigo.toLowerCase().includes(buscaEmpresa.toLowerCase()) ||
-      (empresa.cnpj && empresa.cnpj.includes(buscaEmpresa));
+    const busca = (buscaEmpresa || '').toLowerCase();
+    const norm = (v?: string | null) => (v || '').toLowerCase();
+    const cnpjDigits = String(empresa.cnpj || '').replace(/\D/g, '');
+    const temCnpj = cnpjDigits.length > 0;
 
-    // Filtro mais robusto - considera boolean true/false
+    const matchBusca =
+      norm(empresa.razao_social).includes(busca) ||
+      norm(empresa.codigo).includes(busca) ||
+      norm(empresa.apelido).includes(busca) ||
+      (empresa.cnpj && String(empresa.cnpj).includes(buscaEmpresa));
+
+    // Regra do app: se tem CNPJ preenchido, deve aparecer em "Empresas" (cadastradas)
+    // (mesmo que o campo `cadastrada` esteja inconsistente no banco)
     let matchTipo = false;
     if (tipo === 'cadastradas') {
-      matchTipo = empresa.cadastrada === true;
+      matchTipo = temCnpj || empresa.cadastrada === true;
     } else {
-      matchTipo = empresa.cadastrada === false || !empresa.cadastrada;
+      matchTipo = !temCnpj && (empresa.cadastrada === false || !empresa.cadastrada);
     }
 
     return matchBusca && matchTipo;
@@ -340,9 +360,9 @@ export default function ModalListarEmpresas({
                       <div className="flex-1 min-w-0">
                         <h4
                           className="font-bold text-gray-900 dark:text-[var(--fg)] text-sm sm:text-base truncate max-w-[180px] md:max-w-[200px] lg:max-w-[220px] uppercase tracking-wide"
-                          title={empresa.razao_social}
+                          title={getNomeEmpresa(empresa)}
                         >
-                          {empresa.razao_social}
+                          {getNomeEmpresa(empresa)}
                         </h4>
 
                         {empresa.apelido && (
@@ -357,10 +377,10 @@ export default function ModalListarEmpresas({
 
                       <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                         <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium shadow-sm">
-                          {empresa.codigo}
+                          {empresa.codigo || '—'}
                         </span>
 
-                        {!empresa.cadastrada && (
+                        {!temCnpj(empresa) && (
                           <span className="bg-amber-100 text-amber-700 px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
                             <AlertCircle size={10} />
                             Nova

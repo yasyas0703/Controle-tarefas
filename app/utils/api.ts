@@ -2,6 +2,309 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+const toLower = (v: any) => (typeof v === 'string' ? v.toLowerCase() : v);
+const toUpper = (v: any) => (typeof v === 'string' ? v.toUpperCase() : v);
+
+const normalizeStatus = (status: any) => {
+  const s = toLower(status);
+  switch (s) {
+    case 'em_andamento':
+    case 'em andamento':
+      return 'em_andamento';
+    case 'finalizado':
+      return 'finalizado';
+    case 'pausado':
+      return 'pausado';
+    case 'cancelado':
+      return 'cancelado';
+    case 'rascunho':
+      return 'rascunho';
+    default:
+      // Prisma enum vem como EM_ANDAMENTO etc
+      if (typeof status === 'string') return status.toLowerCase();
+      return 'em_andamento';
+  }
+};
+
+const normalizePrioridade = (prioridade: any) => {
+  const p = toLower(prioridade);
+  switch (p) {
+    case 'alta':
+      return 'alta';
+    case 'media':
+      return 'media';
+    case 'baixa':
+      return 'baixa';
+    default:
+      if (typeof prioridade === 'string') return prioridade.toLowerCase();
+      return 'media';
+  }
+};
+
+const normalizeTipoCampo = (
+  tipo: any
+): 'text' | 'textarea' | 'number' | 'date' | 'boolean' | 'select' | 'file' | 'phone' | 'email' => {
+  const t = typeof tipo === 'string' ? tipo.toLowerCase() : '';
+  switch (t) {
+    case 'text':
+    case 'text_simple':
+    case 'texto':
+    case 'textosimples':
+    case 'textsimples':
+    case 'textsimple':
+      return 'text';
+    case 'textarea':
+    case 'text_area':
+    case 'texto_longo':
+    case 'textolongo':
+      return 'textarea';
+    case 'number':
+    case 'numero':
+      return 'number';
+    case 'date':
+    case 'data':
+      return 'date';
+    case 'boolean':
+    case 'sim_nao':
+    case 'sim/nao':
+      return 'boolean';
+    case 'select':
+    case 'selecao':
+      return 'select';
+    case 'file':
+    case 'arquivo':
+      return 'file';
+    case 'phone':
+    case 'telefone':
+      return 'phone';
+    case 'email':
+      return 'email';
+    default: {
+      // Prisma enum vem como TEXT, TEXTAREA etc
+      const upper = typeof tipo === 'string' ? tipo.toUpperCase() : '';
+      switch (upper) {
+        case 'TEXT':
+          return 'text';
+        case 'TEXTAREA':
+          return 'textarea';
+        case 'NUMBER':
+          return 'number';
+        case 'DATE':
+          return 'date';
+        case 'BOOLEAN':
+          return 'boolean';
+        case 'SELECT':
+          return 'select';
+        case 'FILE':
+          return 'file';
+        case 'PHONE':
+          return 'phone';
+        case 'EMAIL':
+          return 'email';
+        default:
+          return 'text';
+      }
+    }
+  }
+};
+
+const normalizeTipoEvento = (tipo: any) => {
+  const t = typeof tipo === 'string' ? tipo.toUpperCase() : '';
+  switch (t) {
+    case 'INICIO':
+      return 'inicio';
+    case 'ALTERACAO':
+      return 'alteracao';
+    case 'MOVIMENTACAO':
+      return 'movimentacao';
+    case 'CONCLUSAO':
+      return 'conclusao';
+    case 'FINALIZACAO':
+      return 'finalizacao';
+    case 'DOCUMENTO':
+      return 'documento';
+    case 'COMENTARIO':
+      return 'comentario';
+    default:
+      return 'alteracao';
+  }
+};
+
+const normalizeProcesso = (raw: any) => {
+  const tagsArray = Array.isArray(raw?.tags) ? raw.tags : [];
+  const tagsIds = tagsArray.length > 0 && typeof tagsArray[0] === 'object'
+    ? tagsArray.map((t: any) => t.tagId ?? t.tag?.id).filter((x: any) => typeof x === 'number')
+    : tagsArray;
+
+  const tagsMetadata = tagsArray.length > 0 && typeof tagsArray[0] === 'object'
+    ? tagsArray.map((t: any) => t.tag).filter(Boolean)
+    : undefined;
+
+  const comentariosArray = Array.isArray(raw?.comentarios) ? raw.comentarios : [];
+  const comentarios = comentariosArray.map((c: any) => ({
+    id: c.id,
+    processoId: c.processoId,
+    texto: c.texto,
+    autor: c.autor?.nome ?? c.autor ?? '—',
+    departamentoId: c.departamentoId ?? undefined,
+    departamento: c.departamento?.nome ?? c.departamento ?? undefined,
+    timestamp: c.criadoEm ?? c.timestamp ?? new Date().toISOString(),
+    editado: Boolean(c.editado),
+    editadoEm: c.editadoEm ?? undefined,
+    mencoes: Array.isArray(c.mencoes) ? c.mencoes : [],
+  }));
+
+  const questionariosArray = Array.isArray(raw?.questionarios) ? raw.questionarios : [];
+
+  const historicoEventosArray = Array.isArray(raw?.historicoEventos) ? raw.historicoEventos : [];
+  const historico = historicoEventosArray
+    .map((e: any) => {
+      const data = e?.data ?? (e?.dataTimestamp ? new Date(Number(e.dataTimestamp)) : undefined);
+      const responsavel =
+        e?.responsavel?.nome ??
+        (typeof e?.responsavel === 'string' ? e.responsavel : undefined) ??
+        (typeof e?.responsavelId === 'number' ? `Usuário #${e.responsavelId}` : '—');
+
+      return {
+        departamento: e?.departamento ?? '—',
+        data: data ?? new Date().toISOString(),
+        dataTimestamp:
+          e?.dataTimestamp !== undefined
+            ? Number(e.dataTimestamp)
+            : data
+              ? new Date(data).getTime()
+              : undefined,
+        acao: String(e?.acao ?? ''),
+        responsavel,
+        tipo: normalizeTipoEvento(e?.tipo) as any,
+      };
+    })
+    .filter((h: any) => h?.acao);
+
+  const questionariosPorDepartamento: Record<number, any[]> = {};
+  const respostasHistorico: Record<number, any> = {};
+
+  const questionarios = questionariosArray
+    .map((q: any) => {
+      const departamentoId = Number(q?.departamentoId ?? q?.departamento?.id ?? 0);
+      const normalized = {
+        id: Number(q?.id),
+        label: String(q?.label ?? ''),
+        tipo: normalizeTipoCampo(q?.tipo),
+        obrigatorio: Boolean(q?.obrigatorio),
+        opcoes: Array.isArray(q?.opcoes) ? q.opcoes : [],
+        ordem: Number(q?.ordem ?? 0),
+        condicao:
+          q?.condicaoPerguntaId
+            ? {
+                perguntaId: Number(q.condicaoPerguntaId),
+                operador: (q.condicaoOperador || 'igual') as any,
+                valor: String(q.condicaoValor ?? ''),
+              }
+            : undefined,
+        // suporte interno para agrupamento
+        departamentoId,
+        respostas: Array.isArray(q?.respostas) ? q.respostas : [],
+      };
+
+      if (Number.isFinite(departamentoId) && departamentoId > 0) {
+        questionariosPorDepartamento[departamentoId] = questionariosPorDepartamento[departamentoId] || [];
+        questionariosPorDepartamento[departamentoId].push({
+          id: normalized.id,
+          label: normalized.label,
+          tipo: normalized.tipo,
+          obrigatorio: normalized.obrigatorio,
+          opcoes: normalized.opcoes,
+          ordem: normalized.ordem,
+          condicao: normalized.condicao,
+        });
+
+        // Monta um "snapshot" de respostas por departamento para o modo somente leitura
+        const respostas = normalized.respostas;
+        if (Array.isArray(respostas) && respostas.length > 0) {
+          const sorted = respostas
+            .slice()
+            .sort((a: any, b: any) => new Date(b.respondidoEm).getTime() - new Date(a.respondidoEm).getTime());
+          const r = sorted[0];
+          let valor: any = r?.resposta;
+          if (typeof valor === 'string') {
+            try {
+              valor = JSON.parse(valor);
+            } catch {
+              // mantém string
+            }
+          }
+
+          if (!respostasHistorico[departamentoId]) {
+            respostasHistorico[departamentoId] = {
+              departamentoId,
+              departamentoNome: '',
+              questionario: questionariosPorDepartamento[departamentoId] || [],
+              respostas: {},
+              respondidoEm: r?.respondidoEm,
+              respondidoPor: r?.respondidoPor?.nome ?? undefined,
+            };
+          }
+
+          respostasHistorico[departamentoId].respostas[String(normalized.id)] = valor;
+
+          const tsPrev = respostasHistorico[departamentoId]?.respondidoEm
+            ? new Date(respostasHistorico[departamentoId].respondidoEm).getTime()
+            : 0;
+          const tsNow = r?.respondidoEm ? new Date(r.respondidoEm).getTime() : 0;
+          if (tsNow >= tsPrev) {
+            respostasHistorico[departamentoId].respondidoEm = r?.respondidoEm;
+            respostasHistorico[departamentoId].respondidoPor = r?.respondidoPor?.nome ?? undefined;
+          }
+        }
+      }
+
+      return {
+        id: normalized.id,
+        label: normalized.label,
+        tipo: normalized.tipo,
+        obrigatorio: normalized.obrigatorio,
+        opcoes: normalized.opcoes,
+        ordem: normalized.ordem,
+        condicao: normalized.condicao,
+        departamentoId,
+      };
+    })
+    .filter((q: any) => Number.isFinite(q?.id));
+
+  return {
+    ...raw,
+    nomeEmpresa: raw?.nomeEmpresa ?? raw?.empresa ?? 'Nova Empresa',
+    status: normalizeStatus(raw?.status),
+    prioridade: normalizePrioridade(raw?.prioridade),
+    departamentoAtual: Number(raw?.departamentoAtual ?? 0),
+    departamentoAtualIndex: Number(raw?.departamentoAtualIndex ?? 0),
+    fluxoDepartamentos: Array.isArray(raw?.fluxoDepartamentos) ? raw.fluxoDepartamentos : [],
+    tags: tagsIds,
+    tagsMetadata,
+    comentarios,
+    questionarios,
+    questionariosPorDepartamento,
+    respostasHistorico,
+    historico,
+    historicoEvento: historico,
+  };
+};
+
+async function parseError(response: Response) {
+  try {
+    const data = await response.json();
+    return data?.error || data?.message || 'Erro na requisição';
+  } catch {
+    return 'Erro na requisição';
+  }
+}
+
+function toPrismaEnum(value: any) {
+  if (typeof value !== 'string') return value;
+  return value === value.toLowerCase() ? value.toUpperCase() : value;
+}
+
 const getToken = () => {
   if (typeof window === 'undefined') return null;
   // Primeiro tenta pegar do cookie (o backend seta httpOnly)
@@ -24,7 +327,7 @@ export const fetchAutenticado = async (url: string, options: RequestInit = {}) =
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers, credentials: options.credentials ?? 'include' });
   
   // Se não autorizado, limpa token e redireciona
   if (response.status === 401) {
@@ -70,9 +373,10 @@ export const api = {
     try {
       const response = await fetchAutenticado(`${API_URL}/processos`);
       if (!response.ok) {
-        throw new Error('Erro ao carregar processos');
+        throw new Error(await parseError(response));
       }
-      return await response.json();
+      const data = await response.json();
+      return Array.isArray(data) ? data.map(normalizeProcesso) : [];
     } catch (error) {
       console.error('Erro ao carregar processos:', error);
       throw error;
@@ -83,9 +387,10 @@ export const api = {
     try {
       const response = await fetchAutenticado(`${API_URL}/processos/${id}`);
       if (!response.ok) {
-        throw new Error('Erro ao carregar processo');
+        throw new Error(await parseError(response));
       }
-      return await response.json();
+      const data = await response.json();
+      return normalizeProcesso(data);
     } catch (error) {
       console.error('Erro ao carregar processo:', error);
       throw error;
@@ -98,9 +403,10 @@ export const api = {
         method: 'POST',
       });
       if (!response.ok) {
-        throw new Error('Erro ao avançar processo');
+        throw new Error(await parseError(response));
       }
-      return await response.json();
+      const data = await response.json();
+      return normalizeProcesso(data);
     } catch (error) {
       console.error('Erro ao avançar processo:', error);
       throw error;
@@ -109,11 +415,19 @@ export const api = {
 
   salvarProcesso: async (processo: any) => {
     try {
+      const payload = { ...processo };
+      if (payload.status !== undefined) payload.status = toPrismaEnum(payload.status);
+      if (payload.prioridade !== undefined) payload.prioridade = toPrismaEnum(payload.prioridade);
+
       const response = await fetchAutenticado(`${API_URL}/processos`, {
         method: 'POST',
-        body: JSON.stringify(processo)
+        body: JSON.stringify(payload)
       });
-      return await response.json();
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      const data = await response.json();
+      return normalizeProcesso(data);
     } catch (error) {
       console.error('Erro ao salvar processo:', error);
       throw error;
@@ -122,11 +436,19 @@ export const api = {
 
   atualizarProcesso: async (id: number, processo: any) => {
     try {
+      const payload = { ...processo };
+      if (payload.status !== undefined) payload.status = toPrismaEnum(payload.status);
+      if (payload.prioridade !== undefined) payload.prioridade = toPrismaEnum(payload.prioridade);
+
       const response = await fetchAutenticado(`${API_URL}/processos/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(processo)
+        body: JSON.stringify(payload)
       });
-      return await response.json();
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      const data = await response.json();
+      return normalizeProcesso(data);
     } catch (error) {
       console.error('Erro ao atualizar processo:', error);
       throw error;
@@ -232,6 +554,9 @@ export const api = {
   getDocumentos: async (processoId: number) => {
     try {
       const response = await fetchAutenticado(`${API_URL}/documentos?processoId=${processoId}`);
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
       const data = await response.json();
       return Array.isArray(data) ? data : data.documentos || [];
     } catch (error) {
@@ -249,18 +574,34 @@ export const api = {
       if (perguntaId) formData.append('perguntaId', String(perguntaId));
       if (departamentoId) formData.append('departamentoId', String(departamentoId));
 
-      const token = getToken();
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const response = await fetch(`${API_URL}/documentos`, {
+      const response = await fetchAutenticado(`${API_URL}/documentos`, {
         method: 'POST',
-        headers,
-        body: formData
+        body: formData,
       });
+
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+
       return await response.json();
     } catch (error) {
       console.error('Erro ao fazer upload:', error);
+      throw error;
+    }
+  },
+
+  salvarQuestionariosProcesso: async (processoId: number, departamentoId: number, perguntas: any[]) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/questionarios`, {
+        method: 'PUT',
+        body: JSON.stringify({ processoId, departamentoId, perguntas }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao salvar questionários do processo:', error);
       throw error;
     }
   },
@@ -270,6 +611,9 @@ export const api = {
       const response = await fetchAutenticado(`${API_URL}/documentos/${id}`, {
         method: 'DELETE'
       });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
       return await response.json();
     } catch (error) {
       console.error('Erro ao excluir documento:', error);
@@ -324,8 +668,23 @@ export const api = {
   getComentarios: async (processoId: number) => {
     try {
       const response = await fetchAutenticado(`${API_URL}/comentarios?processoId=${processoId}`);
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
       const data = await response.json();
-      return Array.isArray(data) ? data : data.comentarios || [];
+      const list = Array.isArray(data) ? data : data.comentarios || [];
+      return list.map((c: any) => ({
+        id: c.id,
+        processoId: c.processoId,
+        texto: c.texto,
+        autor: c.autor?.nome ?? c.autor ?? '—',
+        departamentoId: c.departamentoId ?? undefined,
+        departamento: c.departamento?.nome ?? c.departamento ?? undefined,
+        timestamp: c.criadoEm ?? c.timestamp ?? new Date().toISOString(),
+        editado: Boolean(c.editado),
+        editadoEm: c.editadoEm ?? undefined,
+        mencoes: Array.isArray(c.mencoes) ? c.mencoes : [],
+      }));
     } catch (error) {
       console.error('Erro ao carregar comentários:', error);
       throw error;
@@ -338,7 +697,22 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(dados)
       });
-      return await response.json();
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      const c = await response.json();
+      return {
+        id: c.id,
+        processoId: c.processoId,
+        texto: c.texto,
+        autor: c.autor?.nome ?? c.autor ?? '—',
+        departamentoId: c.departamentoId ?? undefined,
+        departamento: c.departamento?.nome ?? c.departamento ?? undefined,
+        timestamp: c.criadoEm ?? c.timestamp ?? new Date().toISOString(),
+        editado: Boolean(c.editado),
+        editadoEm: c.editadoEm ?? undefined,
+        mencoes: Array.isArray(c.mencoes) ? c.mencoes : [],
+      };
     } catch (error) {
       console.error('Erro ao salvar comentário:', error);
       throw error;

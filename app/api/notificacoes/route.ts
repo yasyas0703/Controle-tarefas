@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/notificacoes
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    }
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
     
     const { searchParams } = new URL(request.url);
     const apenasNaoLidas = searchParams.get('apenasNaoLidas') === 'true';
     
     const notificacoes = await prisma.notificacao.findMany({
       where: {
-        usuarioId: parseInt(userId),
+        usuarioId: user.id,
         ...(apenasNaoLidas && { lida: false }),
       },
       orderBy: { criadoEm: 'desc' },

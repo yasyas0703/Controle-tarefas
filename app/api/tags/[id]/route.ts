@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,13 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
+      return NextResponse.json({ error: 'Sem permissão para editar tags' }, { status: 403 });
+    }
+
     const data = await request.json();
     
     const tag = await prisma.tag.update({
@@ -42,6 +50,13 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
+      return NextResponse.json({ error: 'Sem permissão para excluir tags' }, { status: 403 });
+    }
+
     await prisma.tag.delete({
       where: { id: parseInt(params.id) },
     });
@@ -62,6 +77,9 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const { processoId } = await request.json();
     
     await prisma.processoTag.create({

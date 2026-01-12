@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/empresas
 export async function GET(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const { searchParams } = new URL(request.url);
     const cadastrada = searchParams.get('cadastrada');
     const busca = searchParams.get('busca');
@@ -49,6 +53,13 @@ export async function GET(request: NextRequest) {
 // POST /api/empresas
 export async function POST(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão para cadastrar empresa' }, { status: 403 });
+    }
+
     const data = await request.json();
     
     // Determinar se é empresa cadastrada: precisa ter CNPJ válido (14 dígitos) ou CPF válido (11 dígitos)
@@ -56,11 +67,9 @@ export async function POST(request: NextRequest) {
     const cnpjLimpo = data.cnpj ? String(data.cnpj).replace(/\D/g, '') : '';
     const temCnpjValido = cnpjLimpo.length === 14; // CNPJ tem 14 dígitos
     
-    // Se o campo cadastrada foi passado explicitamente, usa ele
-    // Caso contrário, determina baseado no CNPJ
-    const empresaCadastrada = data.cadastrada !== undefined 
-      ? Boolean(data.cadastrada) 
-      : temCnpjValido;
+    // Regra do sistema: se tem CNPJ válido (14 dígitos), é empresa cadastrada.
+    // Isso evita inconsistência quando o frontend envia `cadastrada` incorretamente.
+    const empresaCadastrada = temCnpjValido ? true : Boolean(data.cadastrada);
     
     const empresa = await prisma.empresa.create({
       data: {

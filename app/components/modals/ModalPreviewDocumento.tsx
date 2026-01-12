@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import Image from 'next/image';
 import { X, ExternalLink, Download, FileText } from 'lucide-react';
 import { formatarDataHora, formatarTamanhoParcela } from '@/app/utils/helpers';
 import ModalBase from './ModalBase';
@@ -39,7 +40,7 @@ export default function ModalPreviewDocumento({ documento, onClose }: ModalPrevi
   };
 
   return (
-    <ModalBase isOpen onClose={onClose} labelledBy="preview-title" dialogClassName="w-full max-w-5xl bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none max-h-[90vh] overflow-hidden" zIndex={1030}>
+    <ModalBase isOpen onClose={onClose} labelledBy="preview-title" dialogClassName="w-full max-w-5xl bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none max-h-[90vh] overflow-hidden" zIndex={1090}>
       <div className="rounded-2xl">
         <div className="bg-gradient-to-r from-cyan-600 to-blue-600 p-6 rounded-t-2xl flex items-center justify-between">
           <div>
@@ -62,7 +63,14 @@ export default function ModalPreviewDocumento({ documento, onClose }: ModalPrevi
         <div className="grid grid-cols-1 md:grid-cols-4 gap-0 h-[calc(90vh-112px)]">
           <div className="md:col-span-3 h-full bg-gray-50 dark:bg-[var(--muted)] flex items-center justify-center overflow-auto">
             {isImage && (
-              <img src={documento.url} alt={documento.nome} className="max-w-full max-h-full object-contain" />
+              <Image
+                src={documento.url}
+                alt={documento.nome}
+                width={1600}
+                height={1200}
+                unoptimized
+                className="max-w-full max-h-full object-contain"
+              />
             )}
             {isPdf && (
               <iframe src={documento.url} className="w-full h-full" title="Pré-visualização PDF" />

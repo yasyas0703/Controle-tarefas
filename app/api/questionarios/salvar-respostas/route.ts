@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
 // POST /api/questionarios/salvar-respostas
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    }
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
     
     const { processoId, departamentoId, respostas } = await request.json();
     
@@ -36,13 +35,13 @@ export async function POST(request: NextRequest) {
           },
           update: {
             resposta: respostaString,
-            respondidoPorId: parseInt(userId),
+            respondidoPorId: user.id,
           },
           create: {
             processoId: parseInt(processoId),
             questionarioId: parseInt(questionarioId),
             resposta: respostaString,
-            respondidoPorId: parseInt(userId),
+            respondidoPorId: user.id,
           },
         });
       })

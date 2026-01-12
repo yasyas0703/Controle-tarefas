@@ -5,6 +5,7 @@ import { X, File, Download, Eye, Trash2 } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { Documento } from '@/app/types';
 import { formatarTamanhoParcela, formatarDataHora } from '@/app/utils/helpers';
+import { api } from '@/app/utils/api';
 
 interface GaleriaDocumentosProps {
   onClose: () => void;
@@ -14,9 +15,38 @@ interface GaleriaDocumentosProps {
 }
 
 export default function GaleriaDocumentos({ onClose, departamentoId, processoId, titulo }: GaleriaDocumentosProps) {
-  const { processos, departamentos, atualizarProcesso, setShowPreviewDocumento } = useSistema();
+  const { processos, departamentos, setProcessos, adicionarNotificacao, mostrarAlerta, setShowPreviewDocumento } = useSistema();
+
+  const [docsCarregados, setDocsCarregados] = React.useState<Documento[]>([]);
+  const [carregando, setCarregando] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (typeof processoId !== 'number') return;
+
+    void (async () => {
+      try {
+        setCarregando(true);
+        const list = await api.getDocumentos(processoId);
+        if (cancelled) return;
+        const filtrados = (Array.isArray(list) ? list : [])
+          .filter((d: any) => (typeof departamentoId === 'number' ? Number(d.departamentoId) === Number(departamentoId) : true))
+          .sort((a: any, b: any) => new Date(b.dataUpload as any).getTime() - new Date(a.dataUpload as any).getTime());
+        setDocsCarregados(filtrados as any);
+      } finally {
+        if (!cancelled) setCarregando(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [processoId, departamentoId]);
 
   const documentos: Documento[] = React.useMemo(() => {
+    // Se temos processoId, preferimos a fonte do backend (lista completa)
+    if (typeof processoId === 'number') return docsCarregados;
+
     const all = (processos || []).flatMap((p) => (p.documentos || []) as Documento[]);
 
     let filtrados = all;
@@ -32,7 +62,7 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
       const db = new Date(b.dataUpload as any).getTime();
       return db - da;
     });
-  }, [processos, departamentoId, processoId]);
+  }, [processos, departamentoId, processoId, docsCarregados]);
 
   const getIconeByTipo = (tipo: string) => {
     return <File size={24} className="text-gray-400" />;
@@ -61,12 +91,31 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
     }
   };
 
-  const handleApagar = (doc: Documento) => {
-    const processo = processos.find((p) => p.id === doc.processoId);
-    if (!processo) return;
-    atualizarProcesso(processo.id, {
-      documentos: (processo.documentos || []).filter((d: any) => d.id !== doc.id),
-    } as any);
+  const handleApagar = async (doc: Documento) => {
+    try {
+      await api.excluirDocumento(doc.id);
+
+      // Se a galeria foi aberta com processoId, a fonte de verdade é o backend (docsCarregados)
+      if (typeof processoId === 'number') {
+        setDocsCarregados(prev => prev.filter((d: any) => Number(d.id) !== Number(doc.id)));
+      } else {
+        // Fallback: remove da lista em memória (não faz PUT em /processos)
+        setProcessos(prev => prev.map((p: any) => {
+          if (Number(p.id) !== Number(doc.processoId)) return p;
+          return {
+            ...p,
+            documentos: Array.isArray(p.documentos)
+              ? p.documentos.filter((d: any) => Number(d.id) !== Number(doc.id))
+              : p.documentos,
+          };
+        }));
+      }
+
+      adicionarNotificacao('Documento excluído com sucesso', 'sucesso');
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir documento';
+      await mostrarAlerta('Erro', msg, 'erro');
+    }
   };
 
   return (
@@ -83,7 +132,12 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
         </div>
 
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-96px)]">
-          {documentos.length === 0 ? (
+          {carregando ? (
+            <div className="text-center py-12 text-gray-500">
+              <File size={48} className="mx-auto mb-2 opacity-30" />
+              <p>Carregando documentos…</p>
+            </div>
+          ) : documentos.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <File size={48} className="mx-auto mb-2 opacity-30" />
               <p>Nenhum documento disponível</p>

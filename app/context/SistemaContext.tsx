@@ -73,6 +73,8 @@ interface SistemaContextType {
 
   adicionarNotificacao: (mensagem: string, tipo: 'sucesso' | 'erro' | 'info') => void;
   removerNotificacao: (id: number) => void;
+  marcarNotificacaoComoLida: (id: number) => Promise<void>;
+  marcarTodasNotificacoesComoLidas: () => Promise<void>;
   mostrarAlerta: (titulo: string, mensagem: string, tipo?: TipoAlerta) => Promise<void>;
   mostrarConfirmacao: (config: {
     titulo: string;
@@ -205,6 +207,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       tipo,
       timestamp: new Date().toLocaleTimeString('pt-BR'),
       lida: false,
+      origem: 'local',
     };
     setNotificacoes(prev => [novaNotificacao, ...prev]);
   }, []);
@@ -212,6 +215,86 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   const removerNotificacao = useCallback((id: number) => {
     setNotificacoes(prev => prev.filter(n => n.id !== id));
   }, []);
+
+  function normalizarNotificacoesDoBackend(dados: any): Notificacao[] {
+    const arr = Array.isArray(dados) ? dados : [];
+    return arr
+      .map((n: any) => {
+        const tipoRaw = String(n.tipo || 'INFO').toUpperCase();
+        const tipoMap: Record<string, Notificacao['tipo']> = {
+          SUCESSO: 'sucesso',
+          ERRO: 'erro',
+          INFO: 'info',
+          AVISO: 'aviso',
+        };
+        const tipo = tipoMap[tipoRaw] ?? 'info';
+
+        const criadoEm = n.criadoEm ?? n.timestamp;
+        const timestamp = criadoEm
+          ? new Date(criadoEm).toLocaleString('pt-BR')
+          : new Date().toLocaleString('pt-BR');
+
+        return {
+          id: Number(n.id),
+          mensagem: String(n.mensagem ?? ''),
+          tipo,
+          timestamp,
+          lida: Boolean(n.lida),
+          origem: 'db',
+          link: n.link ?? null,
+        } as Notificacao;
+      })
+      .filter(n => Number.isFinite(n.id));
+  }
+
+  const marcarNotificacaoComoLida = useCallback(
+    async (id: number) => {
+      const notif = notificacoes.find(n => n.id === id);
+
+      // Sempre refletir no UI, mesmo se for notificação local
+      setNotificacoes(prev => prev.map(n => (n.id === id ? { ...n, lida: true } : n)));
+
+      // Notificação local não existe no banco
+      if (!notif || notif.origem === 'local') return;
+
+      try {
+        await api.marcarNotificacaoLida(id);
+      } catch (error: any) {
+        // Se falhar, desfaz no UI (melhor do que "fingir" que persistiu)
+        setNotificacoes(prev => prev.map(n => (n.id === id ? { ...n, lida: false } : n)));
+        throw error;
+      }
+    },
+    [notificacoes]
+  );
+
+  const marcarTodasNotificacoesComoLidas = useCallback(async () => {
+    const naoLidas = notificacoes.filter(n => !n.lida);
+    if (naoLidas.length === 0) return;
+
+    // Otimista no UI
+    setNotificacoes(prev => prev.map(n => ({ ...n, lida: true })));
+
+    const idsDb = naoLidas.filter(n => n.origem !== 'local').map(n => n.id);
+    if (idsDb.length === 0) return;
+
+    const resultados = await Promise.allSettled(idsDb.map(id => api.marcarNotificacaoLida(id)));
+    const algumErro = resultados.some(r => r.status === 'rejected');
+    if (algumErro) {
+      // Se houver erro, recarrega do backend pra manter a verdade
+      try {
+        const notificacoesData = await api.getNotificacoes();
+        const normalizadas = normalizarNotificacoesDoBackend(notificacoesData);
+        setNotificacoes(prev => {
+          const locais = prev.filter(n => n.origem === 'local');
+          return [...normalizadas, ...locais];
+        });
+      } catch {
+        // Se nem recarregar der, deixa tudo como lido no UI
+      }
+      throw new Error('Erro ao marcar algumas notificações como lidas');
+    }
+  }, [notificacoes]);
 
   // Carregar dados do back-end quando usuário estiver logado
   useEffect(() => {
@@ -249,10 +332,15 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         // Carregar notificações
         try {
           const notificacoesData = await api.getNotificacoes();
-          setNotificacoes(Array.isArray(notificacoesData) ? notificacoesData : []);
+          const normalizadas = normalizarNotificacoesDoBackend(notificacoesData);
+          setNotificacoes(prev => {
+            const locais = prev.filter(n => n.origem === 'local');
+            return [...normalizadas, ...locais];
+          });
         } catch (error) {
           console.error('Erro ao carregar notificações:', error);
-          setNotificacoes([]);
+          // Mantém locais, mas não zera tudo
+          setNotificacoes(prev => prev.filter(n => n.origem === 'local'));
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
@@ -280,7 +368,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao criar empresa', 'erro');
       throw error;
     }
-  }, []);
+  }, [adicionarNotificacao]);
 
   const atualizarEmpresa = useCallback(async (empresaId: number, dados: Partial<Empresa>) => {
     try {
@@ -291,7 +379,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao atualizar empresa', 'erro');
       throw error;
     }
-  }, []);
+  }, [adicionarNotificacao]);
 
   const excluirEmpresa = useCallback(async (empresaId: number) => {
     try {
@@ -302,7 +390,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao excluir empresa', 'erro');
       throw error;
     }
-  }, []);
+  }, [adicionarNotificacao]);
 
   const criarTemplate = useCallback(
     async (dados: {
@@ -326,7 +414,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         throw error;
       }
     },
-    []
+    [adicionarNotificacao]
   );
 
   const excluirTemplate = useCallback(async (templateId: number) => {
@@ -338,7 +426,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao excluir template', 'erro');
       throw error;
     }
-  }, []);
+  }, [adicionarNotificacao]);
 
   const atualizarProcesso = useCallback(async (processoId: number, dados: Partial<Processo>) => {
     try {
@@ -349,7 +437,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao atualizar processo', 'erro');
       throw error;
     }
-  }, []);
+  }, [adicionarNotificacao]);
 
   const criarProcesso = useCallback(
     async (dados: Partial<Processo>) => {
@@ -372,6 +460,9 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           email: dados.email,
           telefone: dados.telefone,
           empresaId: dados.empresaId,
+          questionariosPorDepartamento: (dados as any).questionariosPorDepartamento,
+          personalizado: (dados as any).personalizado,
+          templateId: (dados as any).templateId,
           status: dados.status || 'EM_ANDAMENTO',
           prioridade: dados.prioridade?.toUpperCase() || 'MEDIA',
           departamentoAtual: departamentoInicial,
@@ -397,7 +488,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         throw error;
       }
     },
-    [departamentos]
+    [departamentos, adicionarNotificacao]
   );
 
   const excluirProcesso = useCallback(async (processoId: number) => {
@@ -409,20 +500,22 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao excluir processo', 'erro');
       throw error;
     }
-  }, []);
+  }, [adicionarNotificacao]);
 
   const avancarParaProximoDepartamento = useCallback(
     async (processoId: number) => {
       try {
-        const atualizado = await api.avancarProcesso(processoId);
-        setProcessos(prev => prev.map(p => p.id === processoId ? atualizado : p));
+        await api.avancarProcesso(processoId);
+        // Recarrega o processo completo para manter documentos/anexos e histórico
+        const processoAtualizado = await api.getProcesso(processoId);
+        setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
         adicionarNotificacao('Processo avançado para próximo departamento', 'sucesso');
       } catch (error: any) {
         adicionarNotificacao(error.message || 'Erro ao avançar processo', 'erro');
         throw error;
       }
     },
-    []
+    [adicionarNotificacao]
   );
 
   const finalizarProcesso = useCallback(async (processoId: number) => {
@@ -442,7 +535,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao finalizar processo', 'erro');
       throw error;
     }
-  }, []);
+  }, [adicionarNotificacao]);
 
   const aplicarTagsProcesso = useCallback(async (processoId: number, novasTags: number[]) => {
     try {
@@ -469,7 +562,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao aplicar tags', 'erro');
       throw error;
     }
-  }, []);
+  }, [adicionarNotificacao]);
 
   const adicionarComentarioProcesso = useCallback(
     async (processoId: number, texto: string, mencoes?: string[]) => {
@@ -494,7 +587,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         throw error;
       }
     },
-    [processos]
+    [processos, adicionarNotificacao]
   );
 
   const adicionarDocumentoProcesso = useCallback(async (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number) => {
@@ -518,7 +611,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao adicionar documento', 'erro');
       throw error;
     }
-  }, [processos]);
+  }, [processos, adicionarNotificacao]);
 
   const value: SistemaContextType = {
     processos,
@@ -579,6 +672,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
     adicionarNotificacao,
     removerNotificacao,
+    marcarNotificacaoComoLida,
+    marcarTodasNotificacoesComoLidas,
     mostrarAlerta,
     mostrarConfirmacao,
     criarEmpresa,

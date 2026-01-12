@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/departamentos
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const departamentos = await prisma.departamento.findMany({
       where: { ativo: true },
       orderBy: { ordem: 'asc' },
@@ -29,6 +33,13 @@ export async function GET() {
 // POST /api/departamentos
 export async function POST(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão para criar departamento' }, { status: 403 });
+    }
+
     const data = await request.json();
     
     // Validar campos obrigatórios

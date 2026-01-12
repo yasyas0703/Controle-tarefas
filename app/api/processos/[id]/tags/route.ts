@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const { tagId } = await request.json();
     
     if (!tagId) {
@@ -53,6 +57,9 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const { tags } = await request.json();
     
     if (!Array.isArray(tags)) {
@@ -103,6 +110,9 @@ export async function DELETE(
   { params }: { params: { id: string; tagId: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     await prisma.processoTag.deleteMany({
       where: {
         processoId: parseInt(params.id),

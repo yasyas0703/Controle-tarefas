@@ -97,6 +97,11 @@ export default function Home() {
 
   const handleCriarDepartamento = async (data: any) => {
     try {
+      const isUpdate = Boolean(data?.id) && departamentos.some((d) => d.id === data.id);
+      const departamentoExistente = isUpdate
+        ? departamentos.find((d) => d.id === data.id)
+        : undefined;
+
       const corNormalizada =
         typeof data?.cor === 'string'
           ? data.cor
@@ -126,21 +131,29 @@ export default function Home() {
         descricao: data.descricao ? String(data.descricao).trim() : null,
         cor: corNormalizada,
         icone: iconeNormalizado,
-        ordem: data.ordem !== undefined ? Number(data.ordem) : departamentos.length,
+        // Importante: ao EDITAR, manter a ordem original caso o modal não envie `ordem`
+        ordem:
+          data.ordem !== undefined
+            ? Number(data.ordem)
+            : (departamentoExistente as any)?.ordem ?? departamentos.length,
         ativo: data.ativo !== undefined ? Boolean(data.ativo) : true,
       };
 
-      if (data.id && departamentos.some((d) => d.id === data.id)) {
-        // Atualizar
-        await api.atualizarDepartamento(data.id, payload);
+      if (isUpdate) {
+        // Atualizar sem reordenar a lista no frontend
+        const atualizado = await api.atualizarDepartamento(data.id, payload);
+        setDepartamentos((prev) => {
+          const idx = prev.findIndex((d) => d.id === data.id);
+          if (idx === -1) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], ...(atualizado || {}), ...payload };
+          return next;
+        });
       } else {
         // Criar
-        await api.salvarDepartamento(payload);
+        const criado = await api.salvarDepartamento(payload);
+        setDepartamentos((prev) => [...prev, criado || payload]);
       }
-
-      // Recarregar departamentos
-      const departamentosData = await api.getDepartamentos();
-      setDepartamentos(departamentosData || []);
 
       setDepartamentoEmEdicao(null);
       setShowCriarDepartamento(false);
@@ -180,24 +193,34 @@ export default function Home() {
     setShowNovaEmpresa(false);
   };
 
-  const handleProcessoClicado = (processo: Processo) => {
+  const abrirVisualizacaoCompleta = async (processo: Processo) => {
     setProcessoSelecionado(processo);
-    setShowVisualizacao(processo);
+    try {
+      const completo = await api.getProcesso(processo.id);
+      setShowVisualizacao(completo);
+    } catch {
+      setShowVisualizacao(processo);
+    }
   };
 
-  // Contagem mais robusta - considera boolean true/false e também verifica se é truthy
-  // Contagem robusta de empresas
+  const handleProcessoClicado = (processo: Processo) => {
+    void abrirVisualizacaoCompleta(processo);
+  };
+
+  // Contagem alinhada com o modal: tem CNPJ => "Empresas"; sem CNPJ => "Empresas Novas"
   const empresasCadastradasCount = useMemo(() => {
-    return (empresas || []).filter((e: any) => {
-      if (!e || e === null || e === undefined) return false;
-      return e.cadastrada === true || e.cadastrada === 1 || e.cadastrada === 'true';
+    const list = Array.isArray(empresas) ? empresas : [];
+    return list.filter((e: any) => {
+      const cnpj = String(e?.cnpj ?? '').replace(/\D/g, '');
+      return cnpj.length > 0;
     }).length;
   }, [empresas]);
-  
+
   const empresasNovasCount = useMemo(() => {
-    return (empresas || []).filter((e: any) => {
-      if (!e || e === null || e === undefined) return false;
-      return e.cadastrada === false || e.cadastrada === 0 || e.cadastrada === 'false' || e.cadastrada === null || e.cadastrada === undefined;
+    const list = Array.isArray(empresas) ? empresas : [];
+    return list.filter((e: any) => {
+      const cnpj = String(e?.cnpj ?? '').replace(/\D/g, '');
+      return cnpj.length === 0;
     }).length;
   }, [empresas]);
 
@@ -318,7 +341,20 @@ export default function Home() {
             if (options?.abrirGaleria) {
               const docs = (processo.documentos || []).length;
               if (docs > 0) {
-                setShowGaleria({ processoId: processo.id, titulo: `Documentos - ${processo.nomeEmpresa || processo.empresa || 'Processo'}` });
+                const nomeEmpresa = (() => {
+                  const nome = (processo as any).nomeEmpresa;
+                  if (typeof nome === 'string' && nome.trim()) return nome;
+
+                  const empresa = (processo as any).empresa;
+                  if (typeof empresa === 'string' && empresa.trim()) return empresa;
+                  if (empresa && typeof empresa === 'object') {
+                    return (empresa as any).razao_social || (empresa as any).apelido || (empresa as any).codigo || 'Processo';
+                  }
+
+                  return 'Processo';
+                })();
+
+                setShowGaleria({ processoId: processo.id, titulo: `Documentos - ${nomeEmpresa}` });
               } else {
                 void mostrarAlerta('Sem Documentos', 'Este processo não possui documentos anexados.', 'aviso');
               }
@@ -473,7 +509,7 @@ export default function Home() {
             departamentos={departamentos}
             onClose={() => setShowProcessoDetalhado(null)}
             onVerCompleto={() => {
-              setShowVisualizacao(showProcessoDetalhado);
+              void abrirVisualizacaoCompleta(showProcessoDetalhado);
             }}
             onComentarios={() => {
               setShowComentarios(showProcessoDetalhado.id);

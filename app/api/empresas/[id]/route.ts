@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const empresa = await prisma.empresa.findUnique({
       where: { id: parseInt(params.id) },
       include: {
@@ -45,6 +49,13 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
+      return NextResponse.json({ error: 'Sem permissão para editar empresa' }, { status: 403 });
+    }
+
     const data = await request.json();
     
     // Calcular valor de cadastrada
@@ -102,6 +113,13 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão para excluir empresa' }, { status: 403 });
+    }
+
     await prisma.empresa.delete({
       where: { id: parseInt(params.id) },
     });

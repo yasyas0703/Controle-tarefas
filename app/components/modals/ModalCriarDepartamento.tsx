@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Plus, Trash2, Edit, FileText, Users, Calculator, FileCheck, Briefcase } from 'lucide-react';
+import { X, Plus, Trash2, Edit, FileText, Users, Calculator, FileCheck, Briefcase, Headphones, Scale, CheckCircle } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import * as LucideIcons from 'lucide-react';
 
@@ -27,7 +27,7 @@ export default function ModalCriarDepartamento({
       if (!departamento?.icone) return 'FileText';
       if (typeof departamento.icone === 'string') {
         // Verificar se é um dos nomes válidos
-        const nomesValidos = ['FileText', 'Users', 'Calculator', 'FileCheck', 'Briefcase', 'Edit'];
+        const nomesValidos = ['FileText', 'Users', 'Calculator', 'FileCheck', 'Briefcase', 'Edit', 'Headphones', 'Scale', 'CheckCircle'];
         return nomesValidos.includes(departamento.icone) ? departamento.icone : 'FileText';
       }
       return 'FileText';
@@ -50,6 +50,9 @@ export default function ModalCriarDepartamento({
     { nome: 'FileCheck', componente: FileCheck, label: 'Verificação' },
     { nome: 'Briefcase', componente: Briefcase, label: 'Maleta' },
     { nome: 'Edit', componente: Edit, label: 'Editar' },
+    { nome: 'Headphones', componente: Headphones, label: 'Atendimento' },
+    { nome: 'Scale', componente: Scale, label: 'Jurídico' },
+    { nome: 'CheckCircle', componente: CheckCircle, label: 'Conclusão' },
   ];
 
   const handleSubmit = (e: React.FormEvent) => {

@@ -19,7 +19,7 @@ export const useProcessos = () => {
     setError(null);
     try {
       const data = await api.getProcessos();
-      setProcessos(Array.isArray(data) ? data : data.processos || []);
+      setProcessos(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar processos');
       console.error('Erro ao carregar processos:', err);
@@ -112,7 +112,7 @@ export const useProcessos = () => {
             departamentoAtual: proximoDeptId,
             departamentoAtualIndex: indexAtual + 1,
             historicoEvento: historico,
-            status: indexAtual + 1 === processo.fluxoDepartamentos.length - 1 ? 'finalizado' : 'em_andamento'
+            status: processo.status
           });
         }
       } else {

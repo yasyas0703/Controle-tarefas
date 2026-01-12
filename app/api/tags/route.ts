@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/tags
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const tags = await prisma.tag.findMany({
       orderBy: { nome: 'asc' },
       include: {
@@ -28,6 +32,13 @@ export async function GET() {
 // POST /api/tags
 export async function POST(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
+      return NextResponse.json({ error: 'Sem permissão para criar tags' }, { status: 403 });
+    }
+
     const data = await request.json();
     
     const tag = await prisma.tag.create({

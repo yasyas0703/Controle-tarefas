@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,10 +10,8 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    }
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
     
     const { texto } = await request.json();
     
@@ -28,7 +27,7 @@ export async function PUT(
       );
     }
     
-    if (comentarioExistente.autorId !== parseInt(userId)) {
+    if (comentarioExistente.autorId !== user.id) {
       return NextResponse.json(
         { error: 'Sem permissão para editar este comentário' },
         { status: 403 }
@@ -68,12 +67,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    const userRole = request.headers.get('x-user-role');
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    }
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
     
     // Verificar se o comentário pertence ao usuário ou se é admin
     const comentario = await prisma.comentario.findUnique({
@@ -87,7 +82,7 @@ export async function DELETE(
       );
     }
     
-    if (comentario.autorId !== parseInt(userId) && userRole !== 'ADMIN') {
+    if (comentario.autorId !== user.id && !requireRole(user, ['ADMIN'])) {
       return NextResponse.json(
         { error: 'Sem permissão para excluir este comentário' },
         { status: 403 }

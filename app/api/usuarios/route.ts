@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { hashPassword } from '@/app/utils/auth';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { Role } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
 // GET /api/usuarios
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
     const usuarios = await prisma.usuario.findMany({
       select: {
         id: true,
@@ -35,33 +44,48 @@ export async function GET() {
 // POST /api/usuarios
 export async function POST(request: NextRequest) {
   try {
-    const userRole = request.headers.get('x-user-role');
-    
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     // Apenas ADMIN pode criar usuários
-    if (userRole !== 'ADMIN') {
-      return NextResponse.json(
-        { error: 'Sem permissão' },
-        { status: 403 }
-      );
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
     
     const data = await request.json();
+
+    const requestedRoleRaw = String(data.role || 'USUARIO').toUpperCase();
+    const role: Role = (Object.values(Role) as string[]).includes(requestedRoleRaw)
+      ? (requestedRoleRaw as Role)
+      : Role.USUARIO;
     
-    if (!data.senha) {
+    const nome = String(data.nome || '').trim();
+    const email = String(data.email || '').trim();
+    const senha = String(data.senha || '').trim();
+
+    if (!nome) {
+      return NextResponse.json({ error: 'Nome é obrigatório' }, { status: 400 });
+    }
+
+    if (!email) {
+      return NextResponse.json({ error: 'Email é obrigatório' }, { status: 400 });
+    }
+
+    if (!senha) {
       return NextResponse.json(
         { error: 'Senha é obrigatória' },
         { status: 400 }
       );
     }
     
-    const senhaHash = await hashPassword(data.senha);
+    const senhaHash = await hashPassword(senha);
     
     const usuario = await prisma.usuario.create({
       data: {
-        nome: data.nome,
-        email: data.email,
+        nome,
+        email,
         senha: senhaHash,
-        role: data.role || 'USUARIO',
+        role,
         departamentoId: data.departamentoId || null,
         permissoes: data.permissoes || [],
         ativo: data.ativo !== undefined ? data.ativo : true,

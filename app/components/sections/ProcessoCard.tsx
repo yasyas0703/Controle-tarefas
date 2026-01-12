@@ -14,6 +14,7 @@ import {
 import { Processo } from '@/app/types';
 import { useSistema } from '@/app/context/SistemaContext';
 import { formatarData } from '@/app/utils/helpers';
+import { temPermissao as temPermissaoSistema } from '@/app/utils/permissions';
 
 interface ProcessoCardProps {
   processo: Processo;
@@ -44,10 +45,9 @@ export default function ProcessoCard({
 }: ProcessoCardProps) {
   const { tags, atualizarProcesso, usuarioLogado } = useSistema();
 
-  const temPermissao = (_permissao: string) => {
-    // Mantém simples no front: se tiver usuário, libera; se não, libera também (demo)
-    return true;
-  };
+  const podeEditarProcesso = temPermissaoSistema(usuarioLogado, 'editar_processo', { departamentoAtual: processo.departamentoAtual });
+  const podeExcluirProcesso = temPermissaoSistema(usuarioLogado, 'excluir_processo', { departamentoAtual: processo.departamentoAtual });
+  const podeMover = temPermissaoSistema(usuarioLogado, 'mover_processo', { departamentoAtual: processo.departamentoAtual });
 
   const getPriorityColor = (prioridade: string) => {
     switch ((prioridade || '').toLowerCase()) {
@@ -68,6 +68,11 @@ export default function ProcessoCard({
   const fluxo = processo.fluxoDepartamentos || [];
   const idxAtual = processo.departamentoAtualIndex || 0;
   const isUltimo = fluxo.length > 0 ? idxAtual === fluxo.length - 1 : false;
+
+  const podeFinalizar = temPermissaoSistema(usuarioLogado, 'finalizar_processo', {
+    departamentoAtual: processo.departamentoAtual,
+    isUltimoDepartamento: isUltimo,
+  });
 
   const progresso =
     typeof processo.progresso === 'number'
@@ -152,7 +157,7 @@ export default function ProcessoCard({
             )}
           </button>
 
-          {temPermissao('excluir_processo') && (
+          {podeExcluirProcesso && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -170,30 +175,36 @@ export default function ProcessoCard({
 
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <div className="relative">
-          <select
-            value={prioridade}
-            onChange={(e) => {
-              e.stopPropagation();
-              atualizarProcesso(processo.id, { prioridade: e.target.value as any });
-            }}
-            className={`text-xs px-3 py-1 rounded-full border cursor-pointer appearance-none pr-8 ${getPriorityColor(
-              prioridade
-            )}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <option value="baixa" className="text-green-600 bg-white">
-              BAIXA
-            </option>
-            <option value="media" className="text-yellow-600 bg-white">
-              MEDIA
-            </option>
-            <option value="alta" className="text-red-600 bg-white">
-              ALTA
-            </option>
-          </select>
-          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-            <ChevronDown size={12} />
-          </div>
+          {podeEditarProcesso ? (
+            <>
+              <select
+                value={prioridade}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  atualizarProcesso(processo.id, { prioridade: e.target.value as any });
+                }}
+                className={`text-xs px-3 py-1 rounded-full border cursor-pointer appearance-none pr-8 ${getPriorityColor(
+                  prioridade
+                )}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="baixa" className="text-green-600 bg-white">
+                  BAIXA
+                </option>
+                <option value="media" className="text-yellow-600 bg-white">
+                  MEDIA
+                </option>
+                <option value="alta" className="text-red-600 bg-white">
+                  ALTA
+                </option>
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                <ChevronDown size={12} />
+              </div>
+            </>
+          ) : (
+            <span className={`text-xs px-3 py-1 rounded-full border ${getPriorityColor(prioridade)}`}>{prioridade.toUpperCase()}</span>
+          )}
         </div>
 
         <span className="text-xs text-gray-500">{statusLabel}</span>
@@ -235,7 +246,7 @@ export default function ProcessoCard({
               Docs
             </button>
 
-            {temPermissao('mover_processo') && (
+            {podeMover && (
               <>
                 {fluxo.length > 0 && idxAtual < fluxo.length - 1 && (
                   <button
@@ -250,7 +261,7 @@ export default function ProcessoCard({
                   </button>
                 )}
 
-                {fluxo.length > 0 && isUltimo && (
+                {fluxo.length > 0 && isUltimo && podeFinalizar && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

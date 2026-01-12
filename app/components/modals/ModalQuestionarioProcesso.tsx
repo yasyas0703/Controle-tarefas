@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { X, Save, Upload, FileText, Eye, Download, MessageSquare, CheckCircle, Pencil } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { Questionario } from '@/app/types';
 import { formatarDataHora, formatarTamanhoParcela } from '@/app/utils/helpers';
@@ -38,6 +39,16 @@ export default function ModalQuestionarioProcesso({
   const processo = processos.find((p) => p.id === processoId);
   const departamento = departamentos.find((d) => d.id === departamentoId);
 
+  const getDepartamentoIcone = (icone: any) => {
+    if (typeof icone === 'function') return icone;
+    if (typeof icone === 'string' && icone) {
+      return (LucideIcons as any)[icone] || null;
+    }
+    return null;
+  };
+
+  const [carregandoProcesso, setCarregandoProcesso] = React.useState(false);
+
   const modalContainerRef = React.useRef<HTMLDivElement | null>(null);
 
   const questionarioAtual: Questionario[] =
@@ -46,6 +57,51 @@ export default function ModalQuestionarioProcesso({
     (processo as any)?.questionario ||
     (processo as any)?.questionarios ||
     [];
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const needsFetch = (() => {
+      if (!processoId || !departamentoId) return false;
+      // Se não temos o processo no estado, sempre busca.
+      if (!processo) return true;
+      // Se o processo veio do GET /processos (lista), ele normalmente não inclui questionários.
+      // Busca o detalhe para carregar as perguntas.
+      const hasAnyQuestionario =
+        Array.isArray((processo as any)?.questionarios) && (processo as any).questionarios.length > 0;
+      return !hasAnyQuestionario;
+    })();
+
+    if (!needsFetch) return;
+
+    void (async () => {
+      try {
+        setCarregandoProcesso(true);
+        const { api } = await import('@/app/utils/api');
+        const atualizado = await api.getProcesso(processoId);
+        if (cancelled) return;
+
+        setProcessos((prev: any) => {
+          const list = Array.isArray(prev) ? prev : [];
+          const idx = list.findIndex((p: any) => p?.id === processoId);
+          if (idx >= 0) {
+            return list.map((p: any) => (p?.id === processoId ? atualizado : p));
+          }
+          return [...list, atualizado];
+        });
+      } catch (e) {
+        // Se falhar, o modal ainda renderiza o estado atual.
+        console.warn('Falha ao carregar processo completo:', e);
+      } finally {
+        if (!cancelled) setCarregandoProcesso(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processoId, departamentoId]);
 
   const respostasSalvas =
     ((processo?.respostasHistorico as any)?.[departamentoId]?.respostas as Record<string, any>) || {};
@@ -80,6 +136,20 @@ export default function ModalQuestionarioProcesso({
   const docsAnexadosPergunta = (perguntaId: number) => {
     const docs = processo?.documentos || [];
     return docs.filter((d: any) => Number(d.perguntaId) === Number(perguntaId));
+  };
+
+  const docsAnexadosPerguntaNoDepartamento = (deptId: number, perguntaId: number) => {
+    const docs = processo?.documentos || [];
+    return docs.filter((d: any) => {
+      const dPerg = Number(d?.perguntaId ?? d?.pergunta_id);
+      if (dPerg !== Number(perguntaId)) return false;
+
+      const dDeptRaw = d?.departamentoId ?? d?.departamento_id;
+      const dDept = Number(dDeptRaw);
+      // Alguns registros antigos podem não ter departamentoId; ainda assim pertence ao processo/pergunta
+      if (!Number.isFinite(dDept)) return true;
+      return dDept === Number(deptId);
+    });
   };
 
   const avaliarCondicao = (pergunta: Questionario, respostasAtuais: Record<string, any>) => {
@@ -487,12 +557,60 @@ export default function ModalQuestionarioProcesso({
     return null;
   }
 
-  const respostasAnteriores: Record<string, any> = {};
+  const respostasAnteriores: Array<{ deptId: number; dados: any }> = [];
   try {
-    Object.entries(processo.respostasHistorico || {}).forEach(([deptId, dados]: any) => {
-      if (Number(deptId) === Number(departamentoId)) return;
-      if (dados?.respostas && Object.keys(dados.respostas).length > 0) {
-        respostasAnteriores[deptId] = dados;
+    const fluxoIds: number[] = Array.isArray((processo as any)?.fluxoDepartamentos)
+      ? ((processo as any).fluxoDepartamentos as any[]).map((x: any) => Number(x)).filter((x: any) => Number.isFinite(x))
+      : [];
+
+    const idxNoFluxo = fluxoIds.findIndex((id) => id === Number(departamentoId));
+    const deptIdsAnteriores = idxNoFluxo >= 0 ? fluxoIds.slice(0, idxNoFluxo) : [];
+
+    const deptIdsFallback = Object.keys(processo.respostasHistorico || {})
+      .map((k) => Number(k))
+      .filter((id) => Number.isFinite(id) && id !== Number(departamentoId));
+
+    const deptIds = (deptIdsAnteriores.length ? deptIdsAnteriores : deptIdsFallback).filter(
+      (id, pos, arr) => arr.indexOf(id) === pos
+    );
+
+    deptIds.forEach((deptIdNum) => {
+      if (deptIdNum === Number(departamentoId)) return;
+
+      const dados = (processo.respostasHistorico as any)?.[String(deptIdNum)] || {};
+
+      const questionarioDepto: Questionario[] =
+        (Array.isArray(dados?.questionario) ? dados.questionario : null) ||
+        (Array.isArray((processo as any)?.questionariosPorDepartamento?.[String(deptIdNum)])
+          ? (processo as any).questionariosPorDepartamento[String(deptIdNum)]
+          : []);
+
+      const respostasDepto: Record<string, any> = (dados?.respostas as any) || {};
+
+      const hasRespostas = Object.values(respostasDepto).some(
+        (v: any) => v !== undefined && v !== null && String(v).trim() !== ''
+      );
+
+      const hasAnexos = questionarioDepto.some((p: any) => {
+        if (p?.tipo !== 'file') return false;
+        return docsAnexadosPerguntaNoDepartamento(deptIdNum, Number(p.id)).length > 0;
+      });
+
+      const hasAlgumDocNoDept = (processo?.documentos || []).some((d: any) => {
+        const dDept = Number(d?.departamentoId ?? d?.departamento_id);
+        return Number.isFinite(dDept) && dDept === deptIdNum;
+      });
+
+      // Exibe dept anterior se houver respostas OU anexos (mesmo que o questionário não tenha sido salvo)
+      if (hasRespostas || hasAnexos || hasAlgumDocNoDept) {
+        respostasAnteriores.push({
+          deptId: deptIdNum,
+          dados: {
+            ...dados,
+            questionario: questionarioDepto,
+            respostas: respostasDepto,
+          },
+        });
       }
     });
   } catch {
@@ -514,17 +632,27 @@ export default function ModalQuestionarioProcesso({
         className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
       >
         <div className={`bg-gradient-to-r ${departamento.cor} p-6 rounded-t-2xl`}>
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <MessageSquare size={24} />
-                Questionário - {departamento.nome}
-              </h3>
-              <p className="text-white opacity-90 text-sm mt-1">{processo?.nomeEmpresa}</p>
+          <div className="flex justify-between items-center gap-4">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                {(() => {
+                  const Icone = getDepartamentoIcone(departamento.icone);
+                  return Icone ? (
+                    <Icone className="w-6 h-6 text-white" />
+                  ) : (
+                    <MessageSquare className="w-6 h-6 text-white" />
+                  );
+                })()}
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xl font-bold text-white truncate">Questionário - {departamento.nome}</h3>
+                <p className="text-white opacity-90 text-sm mt-1 truncate">{processo?.nomeEmpresa}</p>
+              </div>
             </div>
+
             <button
               onClick={handleFecharModal}
-              className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-lg transition-colors"
+              className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-lg transition-colors flex-shrink-0"
             >
               <X size={20} />
             </button>
@@ -538,7 +666,7 @@ export default function ModalQuestionarioProcesso({
           }}
           className="p-6"
         >
-          {Object.keys(respostasAnteriores).length > 0 && (
+          {respostasAnteriores.length > 0 && (
             <div className="mb-8 space-y-6">
               <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2 text-lg">
                 <Eye size={18} className="text-blue-500" />
@@ -548,13 +676,92 @@ export default function ModalQuestionarioProcesso({
                 (somente leitura)
               </h4>
 
-              {Object.entries(respostasAnteriores).map(([deptId, dados]: any) => {
+              {respostasAnteriores.map(({ deptId, dados }) => {
                 const deptAnt = departamentos.find((d) => d.id === Number(deptId));
                 if (!deptAnt) return null;
 
                 const questionarioDepto: Questionario[] = (dados?.questionario as any) || [];
                 const respostasDepto: Record<string, any> = (dados?.respostas as any) || {};
-                if (questionarioDepto.length === 0) return null;
+
+                const docsDept = (processo?.documentos || []).filter((d: any) => {
+                  const dDept = Number(d?.departamentoId ?? d?.departamento_id);
+                  return Number.isFinite(dDept) && dDept === Number(deptId);
+                });
+
+                // Se não temos a estrutura do questionário (pode acontecer se não foi salvo),
+                // ainda assim mostramos os documentos anexados ao departamento.
+                if (questionarioDepto.length === 0) {
+                  if (!docsDept.length) return null;
+
+                  return (
+                    <div
+                      key={deptId}
+                      className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200 shadow-sm"
+                    >
+                      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-200">
+                        <div
+                          className={`w-12 h-12 rounded-lg bg-gradient-to-br ${deptAnt.cor} flex items-center justify-center`}
+                        >
+                          {(() => {
+                            const Icone = getDepartamentoIcone(deptAnt.icone);
+                            return Icone ? (
+                              <Icone size={20} className="text-white" />
+                            ) : (
+                              <MessageSquare size={20} className="text-white" />
+                            );
+                          })()}
+                        </div>
+                        <div className="flex-1">
+                          <h5 className="font-bold text-gray-800 text-lg">{deptAnt.nome}</h5>
+                          {dados?.respondidoEm && (
+                            <p className="text-sm text-gray-600">
+                              Respondido por <span className="font-medium">{dados?.respondidoPor}</span> em{' '}
+                              {formatarDataHora(dados.respondidoEm)}
+                            </p>
+                          )}
+                        </div>
+                        <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium">
+                          {docsDept.length} documento(s)
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {docsDept.map((doc: any) => (
+                          <div
+                            key={doc.id}
+                            className="flex items-center justify-between bg-white border border-blue-100 rounded-lg p-3"
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <FileText size={20} className="text-blue-600 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <div className="font-medium text-sm text-gray-900 truncate">{doc.nome}</div>
+                                <div className="text-xs text-gray-500">{formatarDataHora(doc.dataUpload)}</div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2 flex-shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => visualizarDocumento(doc)}
+                                className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
+                                title="Visualizar"
+                              >
+                                <Eye size={16} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => baixarDocumento(doc)}
+                                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                                title="Baixar"
+                              >
+                                <Download size={16} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
 
                 const deveAparecerNaVisualizacao = (pergunta: Questionario) => {
                   if (!pergunta.condicao) return true;
@@ -594,7 +801,14 @@ export default function ModalQuestionarioProcesso({
                       <div
                         className={`w-12 h-12 rounded-lg bg-gradient-to-br ${deptAnt.cor} flex items-center justify-center`}
                       >
-                        {deptAnt.icone ? <deptAnt.icone size={20} className="text-white" /> : <MessageSquare size={20} className="text-white" />}
+                        {(() => {
+                          const Icone = getDepartamentoIcone(deptAnt.icone);
+                          return Icone ? (
+                            <Icone size={20} className="text-white" />
+                          ) : (
+                            <MessageSquare size={20} className="text-white" />
+                          );
+                        })()}
                       </div>
                       <div className="flex-1">
                         <h5 className="font-bold text-gray-800 text-lg">{deptAnt.nome}</h5>
@@ -629,14 +843,10 @@ export default function ModalQuestionarioProcesso({
                                 </label>
 
                                 <div className="flex-1">
-                                  {!resposta ? (
-                                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center text-sm text-yellow-700 h-full flex items-center justify-center">
-                                      ⚠️ Não respondido
-                                    </div>
-                                  ) : pergunta.tipo === 'file' ? (
+                                  {pergunta.tipo === 'file' ? (
                                     <div className="space-y-2">
                                       {(() => {
-                                        const docs = docsAnexadosPergunta(pergunta.id);
+                                        const docs = docsAnexadosPerguntaNoDepartamento(Number(deptId), pergunta.id);
                                         return docs.length > 0 ? (
                                           docs.map((doc: any) => (
                                             <div
@@ -681,6 +891,10 @@ export default function ModalQuestionarioProcesso({
                                         );
                                       })()}
                                     </div>
+                                  ) : resposta === undefined || resposta === null || String(resposta).trim() === '' ? (
+                                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center text-sm text-yellow-700 h-full flex items-center justify-center">
+                                      ⚠️ Não respondido
+                                    </div>
                                   ) : pergunta.tipo === 'textarea' ? (
                                     <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 whitespace-pre-wrap text-sm text-gray-800 h-full">
                                       {String(resposta)}
@@ -717,7 +931,13 @@ export default function ModalQuestionarioProcesso({
             </div>
           )}
 
-          {questionarioAtual.length === 0 ? (
+          {carregandoProcesso ? (
+            <div className="text-center py-12">
+              <FileText size={48} className="mx-auto text-gray-300 mb-4" />
+              <p className="text-gray-600 mb-2">Carregando questionário…</p>
+              <p className="text-sm text-gray-500">Buscando detalhes desta solicitação.</p>
+            </div>
+          ) : questionarioAtual.length === 0 ? (
             <div className="text-center py-12">
               <FileText size={48} className="mx-auto text-gray-300 mb-4" />
               <p className="text-gray-600 mb-4">Esta solicitação não possui questionário ainda.</p>
@@ -732,7 +952,14 @@ export default function ModalQuestionarioProcesso({
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200 shadow-sm">
                 <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-200">
                   <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${departamento.cor} flex items-center justify-center`}>
-                    {departamento.icone ? <departamento.icone size={20} className="text-white" /> : <MessageSquare size={20} className="text-white" />}
+                    {(() => {
+                      const Icone = getDepartamentoIcone(departamento.icone);
+                      return Icone ? (
+                        <Icone size={20} className="text-white" />
+                      ) : (
+                        <MessageSquare size={20} className="text-white" />
+                      );
+                    })()}
                   </div>
                   <div className="flex-1">
                     <h5 className="font-bold text-gray-800 text-lg">{departamento.nome}</h5>

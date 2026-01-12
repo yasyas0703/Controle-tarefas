@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { uploadFile, deleteFile } from '@/app/utils/supabase';
+import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
+
+function jsonBigInt(data: unknown, init?: { status?: number }) {
+  return new NextResponse(
+    JSON.stringify(data, (_key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    ),
+    {
+      status: init?.status ?? 200,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+      },
+    }
+  );
+}
 
 // GET /api/documentos?processoId=123
 export async function GET(request: NextRequest) {
@@ -30,24 +45,19 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { dataUpload: 'desc' },
     });
-    
-    return NextResponse.json(documentos);
+
+    return jsonBigInt(documentos);
   } catch (error) {
     console.error('Erro ao buscar documentos:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar documentos' },
-      { status: 500 }
-    );
+    return jsonBigInt({ error: 'Erro ao buscar documentos' }, { status: 500 });
   }
 }
 
 // POST /api/documentos - Upload de documento
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    }
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
     
     const formData = await request.formData();
     const file = formData.get('arquivo') as File;
@@ -82,7 +92,7 @@ export async function POST(request: NextRequest) {
         path,
         departamentoId,
         perguntaId,
-        uploadPorId: parseInt(userId),
+        uploadPorId: user.id,
       },
       include: {
         departamento: {
@@ -97,18 +107,16 @@ export async function POST(request: NextRequest) {
         processoId,
         tipo: 'DOCUMENTO',
         acao: `Documento "${file.name}" adicionado`,
-        responsavelId: parseInt(userId),
+        responsavelId: user.id,
         dataTimestamp: BigInt(Date.now()),
       },
     });
     
-    return NextResponse.json(documento, { status: 201 });
+    return jsonBigInt(documento, { status: 201 });
   } catch (error) {
     console.error('Erro no upload:', error);
-    return NextResponse.json(
-      { error: 'Erro ao fazer upload' },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : 'Erro ao fazer upload';
+    return jsonBigInt({ error: message }, { status: 500 });
   }
 }
 

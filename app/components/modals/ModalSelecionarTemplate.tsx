@@ -50,8 +50,10 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
     }
 
     const fluxo = (() => {
+      const v: any = (template as any).fluxoDepartamentos ?? (template as any).fluxo_departamentos;
+      if (Array.isArray(v)) return v as number[];
       try {
-        const parsed = JSON.parse(template.fluxo_departamentos as any);
+        const parsed = JSON.parse(v as any);
         return Array.isArray(parsed) ? (parsed as number[]) : [];
       } catch {
         return [];
@@ -59,8 +61,10 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
     })();
 
     const questionariosPorDept = (() => {
+      const v: any = (template as any).questionariosPorDepartamento ?? (template as any).questionarios_por_departamento;
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v as any;
       try {
-        const parsed = JSON.parse(template.questionarios_por_departamento as any);
+        const parsed = JSON.parse(v as any);
         return parsed && typeof parsed === 'object' ? parsed : {};
       } catch {
         return {};
@@ -72,11 +76,11 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
       return;
     }
 
-    // Validar se gerente está tentando criar solicitação para outro departamento
-    if (usuarioLogado?.role === 'gerente' && usuarioLogado.departamento_id) {
+    // Validar se gerente/usuário está tentando criar solicitação para outro departamento
+    if ((usuarioLogado?.role === 'gerente' || usuarioLogado?.role === 'usuario') && usuarioLogado.departamento_id) {
       const primeiroDepartamento = fluxo[0];
       if (primeiroDepartamento !== usuarioLogado.departamento_id) {
-        void mostrarAlerta('Erro', 'Gerente só pode criar solicitações para seu próprio departamento.', 'erro');
+        void mostrarAlerta('Erro', 'Você só pode criar solicitações para seu próprio departamento.', 'erro');
         return;
       }
     }
@@ -93,6 +97,8 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
         departamentoAtual: fluxo[0],
         departamentoAtualIndex: 0,
         questionariosPorDepartamento: questionariosPorDept as any,
+        personalizado: false,
+        templateId: template.id,
         criadoPor: usuarioLogado?.nome,
         descricao: `Solicitação criada via template: ${template.nome}`,
       });
@@ -131,8 +137,10 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
   };
 
   const parseFluxo = (template: Template): number[] => {
+    const v: any = (template as any).fluxoDepartamentos ?? (template as any).fluxo_departamentos;
+    if (Array.isArray(v)) return v as number[];
     try {
-      const parsed = JSON.parse(template.fluxo_departamentos as any);
+      const parsed = JSON.parse(v as any);
       return Array.isArray(parsed) ? (parsed as number[]) : [];
     } catch {
       return [];
@@ -140,8 +148,10 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
   };
 
   const parseQuestionarios = (template: Template): Record<number, any[]> => {
+    const v: any = (template as any).questionariosPorDepartamento ?? (template as any).questionarios_por_departamento;
+    if (v && typeof v === 'object' && !Array.isArray(v)) return v as any;
     try {
-      const parsed = JSON.parse(template.questionarios_por_departamento as any);
+      const parsed = JSON.parse(v as any);
       return parsed && typeof parsed === 'object' ? (parsed as any) : {};
     } catch {
       return {};
@@ -202,7 +212,8 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
                   <option value="">Selecione uma empresa</option>
                   {empresasDisponiveis.map((emp: any) => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.codigo} - {emp.razao_social}{emp.cadastrada ? '' : ' (NOVA)'}
+                      {emp.codigo} - {emp.razao_social}
+                      {String(emp.cnpj ?? '').replace(/\D/g, '').length > 0 ? '' : ' (NOVA)'}
                     </option>
                   ))}
                 </select>

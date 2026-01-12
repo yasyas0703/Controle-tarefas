@@ -9,10 +9,12 @@ export const fetchCache = 'force-no-store';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const periodo = searchParams.get('periodo') || '30'; // dias
+    const periodoParam = searchParams.get('periodo') || '30'; // dias
+    const periodo = Number.parseInt(periodoParam, 10);
+    const periodoDias = Number.isFinite(periodo) && periodo > 0 ? periodo : 30;
     
     const dataInicio = new Date();
-    dataInicio.setDate(dataInicio.getDate() - parseInt(periodo));
+    dataInicio.setDate(dataInicio.getDate() - periodoDias);
     
     // Total de processos
     const totalProcessos = await prisma.processo.count();
@@ -86,14 +88,14 @@ export async function GET(request: NextRequest) {
     
     // Taxa de conclusão
     const taxaConclusao =
-      totalProcessos > 0
+      processosCriadosPeriodo > 0
         ? (processosFinalizadosPeriodo / processosCriadosPeriodo) * 100
         : 0;
     
     return NextResponse.json({
       totalProcessos,
       processosPorStatus: processosPorStatus.map((p) => ({
-        status: p.status,
+        status: typeof p.status === 'string' ? p.status.toLowerCase() : p.status,
         quantidade: p._count.id,
       })),
       processosPorDepartamento: processosPorDepartamento.map((p) => ({
@@ -104,7 +106,7 @@ export async function GET(request: NextRequest) {
       processosFinalizadosPeriodo,
       tempoMedioPorDepartamento,
       taxaConclusao: Math.round(taxaConclusao * 100) / 100,
-      periodo: parseInt(periodo),
+      periodo: periodoDias,
     });
   } catch (error) {
     console.error('Erro ao buscar analytics:', error);

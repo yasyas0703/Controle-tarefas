@@ -115,7 +115,18 @@ export default function ModalComentarios({
             <div>
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <MessageSquare size={24} />
-                Comentários - {processo?.nomeEmpresa || processo?.empresa || `Processo #${processoId}`}
+                Comentários - {(() => {
+                  const nomeEmpresa = processo?.nomeEmpresa;
+                  if (nomeEmpresa) return nomeEmpresa;
+
+                  const emp = (processo as any)?.empresa;
+                  if (typeof emp === 'string') return emp;
+                  if (emp && typeof emp === 'object') {
+                    return emp.razao_social || emp.apelido || emp.codigo || `Processo #${processoId}`;
+                  }
+
+                  return `Processo #${processoId}`;
+                })()}
               </h3>
               <p className="text-white opacity-90 text-sm mt-1">
                 {comentariosDoProcesso.length} comentários • Departamento: {deptAtual?.nome || '—'}

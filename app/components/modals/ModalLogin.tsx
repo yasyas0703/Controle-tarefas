@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { LogIn } from 'lucide-react';
 import ModalBase from './ModalBase';
 import { api } from '@/app/utils/api';
@@ -67,12 +68,17 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
           {/* Header com Gradient */}
           <div className="bg-gradient-to-r from-cyan-500 to-blue-600 p-8 text-white">
             <div className="flex items-center justify-center mb-4">
-              <div className="w-16 h-16 rounded-xl bg-white/20 flex items-center justify-center">
-                <img
-                  src="/triar.png"
-                  alt="Logo"
-                  className="w-12 h-12 object-contain"
-                />
+              <div className="bg-white/25 p-[2px] rounded-2xl shadow-lg">
+                <div className="w-20 h-20 rounded-[14px] bg-white/15 backdrop-blur flex items-center justify-center">
+                  <Image
+                    src="/triar.png"
+                    alt="Logo"
+                    width={56}
+                    height={56}
+                    priority
+                    className="w-14 h-14 object-contain"
+                  />
+                </div>
               </div>
             </div>
             <h1 id="login-title" className="text-3xl font-bold text-center">Sistema de Abertura</h1>
@@ -118,12 +124,6 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
                   {erro}
                 </div>
               )}
-
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-600 text-sm">
-                <p className="font-semibold mb-1">Demo Credentials:</p>
-                <p>Email: <span className="font-mono">admin@example.com</span></p>
-                <p>Senha: <span className="font-mono">admin123</span></p>
-              </div>
 
               <button
                 type="submit"

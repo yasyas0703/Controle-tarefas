@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Building, User, Plus, MoreVertical, Edit, Trash2, Eye, FileText, Users, Calculator, FileCheck, Briefcase } from 'lucide-react';
+import { Building, User, Plus, MoreVertical, Edit, Trash2, Eye, FileText, Users, Calculator, FileCheck, Briefcase, Headphones, Scale, CheckCircle } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { useDragDrop } from '@/app/hooks/useDragDrop';
 import { temPermissao } from '@/app/utils/permissions';
@@ -16,6 +16,9 @@ const iconMap: Record<string, any> = {
   Calculator,
   FileCheck,
   Briefcase,
+  Headphones,
+  Scale,
+  CheckCircle,
   Edit,
   Building, // fallback
 };

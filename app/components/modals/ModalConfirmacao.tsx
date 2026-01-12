@@ -8,7 +8,7 @@ type TipoConfirmacao = 'info' | 'aviso' | 'perigo' | 'sucesso' | 'warning' | 'er
 
 interface ModalConfirmacaoProps {
   titulo: string;
-  mensagem: string;
+  mensagem: unknown;
   onConfirm: () => void;
   onCancel: () => void;
   tipo?: TipoConfirmacao;
@@ -25,6 +25,16 @@ export default function ModalConfirmacao({
   textoConfirmar = 'Confirmar',
   textoCancelar = 'Cancelar',
 }: ModalConfirmacaoProps) {
+  const mensagemTexto = React.useMemo(() => {
+    if (typeof mensagem === 'string') return mensagem;
+    if (mensagem instanceof Error) return mensagem.message;
+    try {
+      return JSON.stringify(mensagem, null, 2);
+    } catch {
+      return String(mensagem);
+    }
+  }, [mensagem]);
+
   const tipoNormalizado: 'info' | 'aviso' | 'perigo' | 'sucesso' = (() => {
     if (tipo === 'warning') return 'aviso';
     if (tipo === 'error') return 'perigo';
@@ -85,7 +95,7 @@ export default function ModalConfirmacao({
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               {config.iconeCentral}
             </div>
-            <p className="text-gray-600 dark:text-gray-200 whitespace-pre-wrap">{mensagem}</p>
+            <p className="text-gray-600 dark:text-gray-200 whitespace-pre-wrap">{mensagemTexto}</p>
           </div>
 
           <div className="flex gap-3">

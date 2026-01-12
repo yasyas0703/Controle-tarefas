@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { deleteFile } from '@/app/utils/supabase';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,12 +11,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const userId = request.headers.get('x-user-id');
-    const userRole = request.headers.get('x-user-role');
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    }
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
     
     // Buscar documento
     const documento = await prisma.documento.findUnique({
@@ -30,7 +27,7 @@ export async function DELETE(
     }
     
     // Verificar permissão (autor do upload ou admin)
-    if (documento.uploadPorId !== parseInt(userId) && userRole !== 'ADMIN') {
+    if (documento.uploadPorId !== user.id && !requireRole(user, ['ADMIN'])) {
       return NextResponse.json(
         { error: 'Sem permissão para excluir este documento' },
         { status: 403 }
@@ -58,7 +55,7 @@ export async function DELETE(
         processoId: documento.processoId,
         tipo: 'DOCUMENTO',
         acao: `Documento "${documento.nome}" excluído`,
-        responsavelId: parseInt(userId),
+        responsavelId: user.id,
         dataTimestamp: BigInt(Date.now()),
       },
     });

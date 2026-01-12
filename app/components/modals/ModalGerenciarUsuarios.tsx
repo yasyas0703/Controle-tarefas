@@ -11,7 +11,7 @@ interface ModalGerenciarUsuariosProps {
 }
 
 export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuariosProps) {
-  const { departamentos, usuarios, setUsuarios, mostrarAlerta, mostrarConfirmacao, adicionarNotificacao } = useSistema();
+  const { departamentos, usuarios, setUsuarios, mostrarAlerta, mostrarConfirmacao, adicionarNotificacao, usuarioLogado } = useSistema();
 
   const [novoUsuario, setNovoUsuario] = useState({ 
     nome: '', 
@@ -57,7 +57,7 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
   ];
 
   const handleCriarUsuario = async () => {
-    if (!novoUsuario.nome || !novoUsuario.email || !novoUsuario.senha) {
+    if (!String(novoUsuario.nome || '').trim() || !String(novoUsuario.email || '').trim() || !String(novoUsuario.senha || '').trim()) {
       await mostrarAlerta('Atenção', 'Preencha nome, email e senha.', 'aviso');
       return;
     }
@@ -100,7 +100,7 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
   };
 
   const handleEditarUsuario = async () => {
-    if (!editandoUsuario?.nome || !editandoUsuario?.email) {
+    if (!String(editandoUsuario?.nome || '').trim() || !String(editandoUsuario?.email || '').trim()) {
       await mostrarAlerta('Atenção', 'Preencha nome e email do usuário.', 'aviso');
       return;
     }
@@ -169,6 +169,11 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
   };
 
   const toggleStatusUsuario = async (usuario: any) => {
+    if (usuarioLogado?.id && usuario?.id === usuarioLogado.id) {
+      await mostrarAlerta('Atenção', 'Você não pode desativar seu próprio usuário.', 'aviso');
+      return;
+    }
+
     try {
       setLoading(true);
       await api.atualizarUsuario(usuario.id, {
@@ -253,6 +258,22 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                       className="w-full px-4 py-2 border border-gray-300 dark:border-[var(--border)] rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email (login) *
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="email@empresa.com"
+                    value={editandoUsuario ? editandoUsuario.email : novoUsuario.email}
+                    onChange={(e) => editandoUsuario
+                      ? setEditandoUsuario({ ...editandoUsuario, email: e.target.value })
+                      : setNovoUsuario({ ...novoUsuario, email: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-[var(--border)] rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

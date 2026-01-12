@@ -4,9 +4,9 @@ export interface Processo {
   id: number;
   nome?: string;
   nomeServico?: string;
-  nomeEmpresa: string;
+  nomeEmpresa?: string;
   cliente?: string;
-  empresa?: string;
+  empresa?: string | Empresa;
   email?: string;
   telefone?: string;
   status: 'em_andamento' | 'finalizado' | 'pausado' | 'cancelado' | 'rascunho';
@@ -37,6 +37,8 @@ export interface Processo {
   progresso?: number;
   respostasHistorico?: Record<number, RespostaQuestionario>;
   empresaId?: number;
+  personalizado?: boolean;
+  templateId?: number;
 }
 
 export interface Departamento {
@@ -79,6 +81,8 @@ export interface Notificacao {
   tipo: 'sucesso' | 'erro' | 'info' | 'aviso';
   timestamp: string;
   lida: boolean;
+  origem?: 'db' | 'local';
+  link?: string | null;
 }
 
 export interface Comentario {

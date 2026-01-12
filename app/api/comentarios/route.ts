@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,10 +43,8 @@ export async function GET(request: NextRequest) {
 // POST /api/comentarios
 export async function POST(request: NextRequest) {
   try {
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
-    }
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
     
     const data = await request.json();
     
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest) {
       data: {
         processoId: data.processoId,
         texto: data.texto,
-        autorId: parseInt(userId),
+        autorId: user.id,
         departamentoId: data.departamentoId,
         mencoes: data.mencoes || [],
       },
@@ -73,7 +72,7 @@ export async function POST(request: NextRequest) {
         processoId: data.processoId,
         tipo: 'COMENTARIO',
         acao: 'Comentário adicionado',
-        responsavelId: parseInt(userId),
+        responsavelId: user.id,
         dataTimestamp: BigInt(Date.now()),
       },
     });

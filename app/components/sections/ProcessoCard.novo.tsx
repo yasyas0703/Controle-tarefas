@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { Processo } from '@/app/types';
 import { formatarData } from '@/app/utils/helpers';
+import { useSistema } from '@/app/context/SistemaContext';
+import { temPermissao as temPermissaoSistema } from '@/app/utils/permissions';
 
 interface ProcessoCardProps {
   processo: Processo;
@@ -36,6 +38,7 @@ export default function ProcessoCard({
   comentarioCount = 0,
   documentCount = 0
 }: ProcessoCardProps) {
+  const { usuarioLogado } = useSistema();
   const [isDeleting, setIsDeleting] = useState(false);
   const [prioridade, setPrioridade] = useState<'alta' | 'media' | 'baixa'>(
     (processo.prioridade?.toLowerCase() || 'media') as 'alta' | 'media' | 'baixa'
@@ -80,6 +83,17 @@ export default function ProcessoCard({
     ((processo.departamentoAtualIndex || 0) + 1);
   const totalDepts = processo.fluxoDepartamentos?.length || 1;
 
+  const idxAtual = processo.departamentoAtualIndex || 0;
+  const isUltimo = idxAtual >= (processo.fluxoDepartamentos?.length || 1) - 1;
+
+  const podeExcluir = temPermissaoSistema(usuarioLogado, 'excluir_processo', { departamentoAtual: processo.departamentoAtual });
+  const podeMover = temPermissaoSistema(usuarioLogado, 'mover_processo', { departamentoAtual: processo.departamentoAtual });
+  const podeFinalizar = temPermissaoSistema(usuarioLogado, 'finalizar_processo', {
+    departamentoAtual: processo.departamentoAtual,
+    isUltimoDepartamento: isUltimo,
+  });
+  const podeAplicarTags = temPermissaoSistema(usuarioLogado, 'aplicar_tags');
+
   return (
     <div 
       draggable
@@ -117,6 +131,7 @@ export default function ProcessoCard({
               }}
               className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
               title="Gerenciar Tags"
+              disabled={!podeAplicarTags}
             >
               <Star size={14} className="text-gray-600" />
             </button>
@@ -132,17 +147,19 @@ export default function ProcessoCard({
               <MessageSquare size={14} className="text-gray-600" />
             </button>
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleExcluir();
-              }}
-              disabled={isDeleting}
-              className="p-1.5 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
-              title="Excluir"
-            >
-              <X size={14} className="text-red-600" />
-            </button>
+            {podeExcluir && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExcluir();
+                }}
+                disabled={isDeleting}
+                className="p-1.5 hover:bg-red-100 rounded-lg transition-colors disabled:opacity-50"
+                title="Excluir"
+              >
+                <X size={14} className="text-red-600" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -196,33 +213,33 @@ export default function ProcessoCard({
 
             {/* Botão Avançar ou Finalizar */}
             {processo.fluxoDepartamentos && processo.fluxoDepartamentos.length > 0 && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if ((processo.departamentoAtualIndex || 0) >= (processo.fluxoDepartamentos?.length || 1) - 1) {
-                    onFinalizar(processo.id);
-                  } else {
-                    onAvancar(processo.id);
-                  }
-                }}
-                className={`w-full px-2 py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 font-medium text-white ${
-                  (processo.departamentoAtualIndex || 0) >= (processo.fluxoDepartamentos?.length || 1) - 1
-                    ? 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700'
-                    : 'bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700'
-                }`}
-              >
-                {(processo.departamentoAtualIndex || 0) >= (processo.fluxoDepartamentos?.length || 1) - 1 ? (
-                  <>
+              isUltimo ? (
+                podeFinalizar ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onFinalizar(processo.id);
+                    }}
+                    className="w-full px-2 py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 font-medium text-white bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700"
+                  >
                     <CheckCircle size={14} />
                     Finalizar
-                  </>
-                ) : (
-                  <>
+                  </button>
+                ) : null
+              ) : (
+                podeMover ? (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAvancar(processo.id);
+                    }}
+                    className="w-full px-2 py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 font-medium text-white bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700"
+                  >
                     <ArrowRight size={14} />
                     Avançar ({priorityNumber}/{totalDepts})
-                  </>
-                )}
-              </button>
+                  </button>
+                ) : null
+              )
             )}
           </>
         )}

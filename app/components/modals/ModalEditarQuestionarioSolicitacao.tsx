@@ -4,6 +4,7 @@ import React from 'react';
 import { X, Plus, Save, Trash2 } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import type { Questionario } from '@/app/types';
+import { api } from '@/app/utils/api';
 
 interface ModalEditarQuestionarioSolicitacaoProps {
   processoId: number;
@@ -28,7 +29,7 @@ export default function ModalEditarQuestionarioSolicitacao({
   departamentoId,
   onClose,
 }: ModalEditarQuestionarioSolicitacaoProps) {
-  const { processos, departamentos, atualizarProcesso, mostrarAlerta } = useSistema();
+  const { processos, departamentos, setProcessos, mostrarAlerta, adicionarNotificacao } = useSistema();
 
   const processo = processos.find((p) => p.id === processoId);
   const departamento = departamentos.find((d) => d.id === departamentoId);
@@ -95,14 +96,22 @@ export default function ModalEditarQuestionarioSolicitacao({
       return;
     }
 
-    atualizarProcesso(processoId, {
-      questionariosPorDepartamento: {
-        ...(processo.questionariosPorDepartamento || {}),
-        [String(departamentoId)]: perguntas.map((p, idx) => ({ ...p, ordem: idx + 1 })),
-      } as any,
-    });
-
-    onClose();
+    void (async () => {
+      try {
+        await api.salvarQuestionariosProcesso(
+          processoId,
+          departamentoId,
+          perguntas.map((p, idx) => ({ ...p, ordem: idx + 1 })) as any
+        );
+        // Recarrega o processo completo para refletir em todos os lugares (cards, ver completo, etc.)
+        const atualizado = await api.getProcesso(processoId);
+        setProcessos((prev: any) => (Array.isArray(prev) ? prev.map((x: any) => (x?.id === processoId ? atualizado : x)) : prev));
+        adicionarNotificacao('Questionário atualizado com sucesso', 'sucesso');
+        onClose();
+      } catch (e: any) {
+        void mostrarAlerta('Erro', e?.message || 'Erro ao salvar questionário', 'erro');
+      }
+    })();
   };
 
   return (
@@ -113,7 +122,18 @@ export default function ModalEditarQuestionarioSolicitacao({
             <div>
               <h3 className="text-xl font-bold text-white">Editar Quest.</h3>
               <p className="text-white opacity-90 text-sm mt-1">
-                {processo?.nomeEmpresa || processo?.empresa || 'Processo'}
+                {(() => {
+                  const nomeEmpresa = processo?.nomeEmpresa;
+                  if (nomeEmpresa) return nomeEmpresa;
+
+                  const emp = (processo as any)?.empresa;
+                  if (typeof emp === 'string') return emp;
+                  if (emp && typeof emp === 'object') {
+                    return emp.razao_social || emp.apelido || emp.codigo || 'Processo';
+                  }
+
+                  return 'Processo';
+                })()}
                 {departamento?.nome ? ` • ${departamento.nome}` : ''}
               </p>
             </div>
