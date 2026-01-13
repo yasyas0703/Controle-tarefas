@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { SistemaProvider } from "@/app/context/SistemaContext";
 import { ThemeProvider } from "@/app/context/ThemeContext";
 import { ModalManagerProvider } from "@/app/components/modals/ModalManager";
@@ -26,6 +27,7 @@ export default function RootLayout({
                 <ThemeToggle />
               </div>
               {children}
+              <Analytics />
             </ModalManagerProvider>
           </SistemaProvider>
         </ThemeProvider>
