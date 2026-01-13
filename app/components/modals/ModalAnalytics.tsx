@@ -77,7 +77,7 @@ export default function ModalAnalytics({ onClose }: ModalAnalyticsProps) {
         totalProcessos: analyticsData.totalProcessos || processos.length,
         processosFinalizados: analyticsData.processosFinalizadosPeriodo || processosFinalizados,
         taxaSucesso: analyticsData.taxaConclusao || taxaSucesso,
-        tempoMedioTotal: 0
+        tempoMedioTotal: analyticsData.tempoMedioTotalDias || 0
       },
       tempoMedioPorDepartamento,
       gargalos: Object.entries(tempoMedioPorDepartamento)

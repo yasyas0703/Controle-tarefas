@@ -58,6 +58,21 @@ export async function POST(request: NextRequest) {
     const role: Role = (Object.values(Role) as string[]).includes(requestedRoleRaw)
       ? (requestedRoleRaw as Role)
       : Role.USUARIO;
+
+    const departamentoIdRaw = data?.departamentoId;
+    const departamentoId = Number.isFinite(Number(departamentoIdRaw)) ? Number(departamentoIdRaw) : undefined;
+
+    // Usuário/gerente sempre precisam de departamento
+    if ((role === Role.USUARIO || role === Role.GERENTE) && typeof departamentoId !== 'number') {
+      return NextResponse.json({ error: 'Departamento é obrigatório para usuário/gerente' }, { status: 400 });
+    }
+
+    if (typeof departamentoId === 'number') {
+      const dept = await prisma.departamento.findUnique({ where: { id: departamentoId }, select: { id: true, ativo: true } });
+      if (!dept || !dept.ativo) {
+        return NextResponse.json({ error: 'Departamento inválido' }, { status: 400 });
+      }
+    }
     
     const nome = String(data.nome || '').trim();
     const email = String(data.email || '').trim();
@@ -77,6 +92,54 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Se já existir usuário com este email:
+    // - se estiver inativo, reativa e atualiza dados
+    // - se estiver ativo, retorna 409 com detalhes
+    const existente = await prisma.usuario.findUnique({
+      where: { email },
+      select: { id: true, nome: true, email: true, ativo: true },
+    });
+    if (existente) {
+      if (!existente.ativo) {
+        const senhaHash = await hashPassword(senha);
+        const usuarioReativado = await prisma.usuario.update({
+          where: { id: existente.id },
+          data: {
+            nome,
+            senha: senhaHash,
+            role,
+            departamentoId: typeof departamentoId === 'number' ? departamentoId : null,
+            permissoes: data.permissoes || [],
+            ativo: true,
+          },
+          select: {
+            id: true,
+            nome: true,
+            email: true,
+            role: true,
+            ativo: true,
+            departamento: {
+              select: { id: true, nome: true },
+            },
+          },
+        });
+        return NextResponse.json({ ...usuarioReativado, reativado: true });
+      }
+
+      return NextResponse.json(
+        {
+          error: 'Email já cadastrado',
+          details: {
+            usuarioId: existente.id,
+            nome: existente.nome,
+            email: existente.email,
+            ativo: existente.ativo,
+          },
+        },
+        { status: 409 }
+      );
+    }
     
     const senhaHash = await hashPassword(senha);
     
@@ -86,7 +149,7 @@ export async function POST(request: NextRequest) {
         email,
         senha: senhaHash,
         role,
-        departamentoId: data.departamentoId || null,
+        departamentoId: typeof departamentoId === 'number' ? departamentoId : null,
         permissoes: data.permissoes || [],
         ativo: data.ativo !== undefined ? data.ativo : true,
       },

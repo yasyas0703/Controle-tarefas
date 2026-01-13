@@ -93,6 +93,8 @@ export async function POST(request: NextRequest) {
         nome: usuario.nome,
         email: usuario.email,
         role: usuario.role,
+        ativo: usuario.ativo,
+        departamentoId: usuario.departamentoId,
         permissoes: usuario.permissoes,
       },
       token,

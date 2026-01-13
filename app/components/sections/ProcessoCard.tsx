@@ -45,9 +45,33 @@ export default function ProcessoCard({
 }: ProcessoCardProps) {
   const { tags, atualizarProcesso, usuarioLogado } = useSistema();
 
+  const departamentoUsuario =
+    typeof (usuarioLogado as any)?.departamentoId === 'number'
+      ? (usuarioLogado as any).departamentoId
+      : typeof (usuarioLogado as any)?.departamento_id === 'number'
+        ? (usuarioLogado as any).departamento_id
+        : undefined;
+
+  const isDeptDoUsuario =
+    typeof departamentoUsuario === 'number' &&
+    typeof processo?.departamentoAtual === 'number' &&
+    processo.departamentoAtual === departamentoUsuario;
+
+  // Usuário normal: só mostra ações no card do próprio departamento
+  const podeExibirAcoesNoCard = usuarioLogado?.role !== 'usuario' || isDeptDoUsuario;
+
   const podeEditarProcesso = temPermissaoSistema(usuarioLogado, 'editar_processo', { departamentoAtual: processo.departamentoAtual });
   const podeExcluirProcesso = temPermissaoSistema(usuarioLogado, 'excluir_processo', { departamentoAtual: processo.departamentoAtual });
   const podeMover = temPermissaoSistema(usuarioLogado, 'mover_processo', { departamentoAtual: processo.departamentoAtual });
+
+  const podeAcessarTags =
+    podeExibirAcoesNoCard &&
+    (temPermissaoSistema(usuarioLogado, 'gerenciar_tags', { departamentoAtual: processo.departamentoAtual }) ||
+      temPermissaoSistema(usuarioLogado, 'aplicar_tags', { departamentoAtual: processo.departamentoAtual }));
+
+  const podeComentar =
+    podeExibirAcoesNoCard &&
+    temPermissaoSistema(usuarioLogado, 'comentar', { departamentoAtual: processo.departamentoAtual });
 
   const getPriorityColor = (prioridade: string) => {
     switch ((prioridade || '').toLowerCase()) {
@@ -90,7 +114,7 @@ export default function ProcessoCard({
         <div className="flex-1 min-w-0 mr-2">
           {processo.nomeServico && (
             <div
-              className="text-medium font-semibold text-blue-600 mb-1 leading-tight truncate-1 cursor-help"
+              className="text-medium font-semibold text-blue-600 mb-1 leading-tight truncate cursor-help"
               title={processo.nomeServico}
             >
               {processo.nomeServico}
@@ -99,7 +123,7 @@ export default function ProcessoCard({
 
           <div className="flex items-center gap-1 mb-0.5">
             <div
-              className="font-base text-sm text-gray-700 truncate-1 flex-1 cursor-help"
+              className="font-base text-sm text-gray-700 truncate flex-1 cursor-help"
               title={processo.nomeEmpresa}
             >
               {processo.nomeEmpresa || 'Nova Empresa'}
@@ -121,41 +145,45 @@ export default function ProcessoCard({
             )}
           </div>
 
-          <p className="text-xs text-gray-600 truncate-1 cursor-help" title={processo.cliente}>
+          <p className="text-xs text-gray-600 truncate cursor-help" title={processo.cliente}>
             {processo.cliente || 'Sem responsável'}
           </p>
         </div>
 
         <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onTags(processo);
-            }}
-            className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg text-xs hover:bg-indigo-200 transition-colors flex items-center gap-1 flex-shrink-0"
-            title="Gerenciar Tags"
-          >
-            <Star size={10} />
-            {(processo.tags || []).length > 0 && (
-              <span className="bg-indigo-500 text-white rounded-full w-3 h-3 text-[10px] flex items-center justify-center flex-shrink-0">
-                {(processo.tags || []).length}
-              </span>
-            )}
-          </button>
+          {podeAcessarTags && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onTags(processo);
+              }}
+              className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg text-xs hover:bg-indigo-200 transition-colors flex items-center gap-1 flex-shrink-0"
+              title="Tags"
+            >
+              <Star size={10} />
+              {(processo.tags || []).length > 0 && (
+                <span className="bg-indigo-500 text-white rounded-full w-3 h-3 text-[10px] flex items-center justify-center flex-shrink-0">
+                  {(processo.tags || []).length}
+                </span>
+              )}
+            </button>
+          )}
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onComentarios(processo);
-            }}
-            className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg text-xs hover:bg-purple-200 transition-colors flex items-center gap-1 flex-shrink-0"
-            title="Comentários"
-          >
-            <MessageSquare size={10} />
-            {(processo.comentarios || []).length > 0 && (
-              <span className="text-[10px]">({(processo.comentarios || []).length})</span>
-            )}
-          </button>
+          {podeComentar && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onComentarios(processo);
+              }}
+              className="bg-purple-100 text-purple-700 px-2 py-1 rounded-lg text-xs hover:bg-purple-200 transition-colors flex items-center gap-1 flex-shrink-0"
+              title="Comentários"
+            >
+              <MessageSquare size={10} />
+              {(processo.comentarios || []).length > 0 && (
+                <span className="text-[10px]">({(processo.comentarios || []).length})</span>
+              )}
+            </button>
+          )}
 
           {podeExcluirProcesso && (
             <button
@@ -222,31 +250,35 @@ export default function ProcessoCard({
       <div className="grid grid-cols-2 gap-1 mt-3">
         {processo.status === 'em_andamento' && (
           <>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onQuestionario(processo);
-              }}
-              className="w-full bg-white border border-gray-300 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
-              title="Abrir Questionário"
-            >
-              <FileText size={10} />
-              Form
-            </button>
+            {podeExibirAcoesNoCard && (
+              <>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onQuestionario(processo);
+                  }}
+                  className="w-full bg-white border border-gray-300 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
+                  title="Abrir Questionário"
+                >
+                  <FileText size={10} />
+                  Form
+                </button>
 
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDocumentos(processo);
-              }}
-              className="w-full bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 transition-colors flex items-center justify-center gap-1"
-              title="Upload de Documentos"
-            >
-              <Upload size={10} />
-              Docs
-            </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDocumentos(processo);
+                  }}
+                  className="w-full bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 transition-colors flex items-center justify-center gap-1"
+                  title="Upload de Documentos"
+                >
+                  <Upload size={10} />
+                  Docs
+                </button>
+              </>
+            )}
 
-            {podeMover && (
+            {podeExibirAcoesNoCard && podeMover && (
               <>
                 {fluxo.length > 0 && idxAtual < fluxo.length - 1 && (
                   <button

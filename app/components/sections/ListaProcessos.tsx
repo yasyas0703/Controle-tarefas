@@ -165,6 +165,19 @@ export default function ListaProcessos({
     }
   };
 
+  const calcularPrazo = (processo: Processo): Date | string | undefined => {
+    const prazo = (processo as any).prazoEstimado || processo.dataEntrega;
+    if (prazo) return prazo;
+
+    const inicio = (processo.dataInicio || processo.criadoEm) as any;
+    if (!inicio) return undefined;
+
+    const d = new Date(inicio);
+    if (Number.isNaN(d.getTime())) return undefined;
+    d.setDate(d.getDate() + 15);
+    return d;
+  };
+
   const getDepartamentoAtual = (processo: Processo) => {
     return departamentos.find(dept => dept.id === processo.departamentoAtual);
   };
@@ -196,7 +209,7 @@ export default function ListaProcessos({
         <h2 className="text-xl font-bold text-gray-900">Processos Detalhados</h2>
       </div>
 
-      <div className="divide-y divide-gray-100">
+      <div className="divide-y divide-gray-100 dark:divide-gray-600">
         {processosFiltrados.map((processo) => {
           const isFinalizado = processo.status === 'finalizado';
           const isUltimoDepartamento = processo.departamentoAtualIndex === (processo.fluxoDepartamentos?.length || 1) - 1;
@@ -299,7 +312,7 @@ export default function ListaProcessos({
                       <div className="process-detail-text">
                         <div className="text-xs text-gray-500">Prazo</div>
                         <div className="text-sm font-medium text-gray-900">
-                          {formatarData((processo as any).prazoEstimado || processo.dataEntrega)}
+                          {formatarData(calcularPrazo(processo) as any)}
                         </div>
                       </div>
                     </div>
@@ -330,7 +343,7 @@ export default function ListaProcessos({
 
                   {/* Departamento Atual (só para processos em andamento) */}
                   {processo.status === 'em_andamento' && departamentoAtual && (
-                    <div className="bg-white border-l-4 border-blue-500 rounded-lg p-5 shadow-sm mb-6">
+                    <div className="bg-white dark:bg-[var(--card)] border-l-4 border-blue-500 rounded-lg p-5 shadow-sm mb-6 dark:border dark:border-[var(--border)]">
                       <div className="flex items-center gap-4">
                         <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${departamentoAtual.cor || 'from-blue-500 to-cyan-500'} flex items-center justify-center flex-shrink-0`}>
                           {IconeDept ? <IconeDept size={24} className="text-white" /> : <User size={24} className="text-white" />}
@@ -345,9 +358,9 @@ export default function ListaProcessos({
                           </div>
                         </div>
 
-                        <div className="bg-blue-50 rounded-lg px-4 py-3 text-center">
-                          <div className="text-2xl font-bold text-blue-600">{processo.progresso || 0}%</div>
-                          <div className="text-xs text-gray-500">Completo</div>
+                        <div className="bg-blue-50 dark:bg-blue-500/10 rounded-lg px-4 py-3 text-center border border-transparent dark:border-[var(--border)]">
+                          <div className="text-2xl font-bold text-blue-600 dark:text-blue-300">{processo.progresso || 0}%</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">Completo</div>
                         </div>
                       </div>
 
@@ -431,7 +444,7 @@ export default function ListaProcessos({
                             className="bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl"
                           >
                             <ArrowRight size={16} />
-                            Avançar ({(processo.departamentoAtualIndex || 0) + 2}/{processo.fluxoDepartamentos?.length || 1})
+                            Avançar ({(processo.departamentoAtualIndex || 0) + 1}/{processo.fluxoDepartamentos?.length || 1})
                           </button>
                         )}
 
@@ -469,13 +482,21 @@ export default function ListaProcessos({
                   </div>
 
                   {onExcluir && (
-                    <button
-                      onClick={() => onExcluir(processo)}
-                      className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
-                      title="Excluir processo"
-                    >
-                      <X size={20} />
-                    </button>
+                    (() => {
+                      const podeExcluir = temPermissao(usuarioLogado, 'excluir_processo', {
+                        departamentoAtual: processo.departamentoAtual,
+                      });
+                      if (!podeExcluir) return null;
+                      return (
+                        <button
+                          onClick={() => onExcluir(processo)}
+                          className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+                          title="Excluir processo"
+                        >
+                          <X size={20} />
+                        </button>
+                      );
+                    })()
                   )}
                 </div>
               </div>

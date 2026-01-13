@@ -4,6 +4,18 @@ import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
+function parseDateMaybe(value: any): Date | undefined {
+  if (!value) return undefined;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
 function jsonBigInt(data: unknown, init?: { status?: number }) {
   return new NextResponse(
     JSON.stringify(data, (_key, value) => (typeof value === 'bigint' ? value.toString() : value)),
@@ -30,6 +42,8 @@ export async function GET(
       include: {
         empresa: true,
         tags: { include: { tag: true } },
+        // `responsavel` é um campo recém-adicionado; em alguns ambientes o TS pode resolver um Prisma Client antigo.
+        ...({ responsavel: { select: { id: true, nome: true, email: true } } } as any),
         comentarios: {
           include: { 
             autor: { select: { id: true, nome: true, email: true } },
@@ -99,8 +113,12 @@ export async function PUT(
     }
 
     if (roleUpper === 'GERENTE') {
-      const departamentoUsuario = (user as any).departamento_id;
-      if (typeof departamentoUsuario === 'number' && processoAntigo.departamentoAtual !== departamentoUsuario) {
+      const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
+      const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw)) ? Number(departamentoUsuarioRaw) : undefined;
+      if (typeof departamentoUsuario !== 'number') {
+        return NextResponse.json({ error: 'Usuário sem departamento definido' }, { status: 403 });
+      }
+      if (processoAntigo.departamentoAtual !== departamentoUsuario) {
         return NextResponse.json({ error: 'Sem permissão para editar processo de outro departamento' }, { status: 403 });
       }
 
@@ -127,6 +145,17 @@ export async function PUT(
       }
     }
     
+    const novoInicio = parseDateMaybe(data?.dataInicio);
+
+    const dataEntregaFoiEnviada = Object.prototype.hasOwnProperty.call(data ?? {}, 'dataEntrega');
+    const entregaParsed = parseDateMaybe(data?.dataEntrega);
+    const entregaVaziaOuNula = dataEntregaFoiEnviada && (data?.dataEntrega === null || data?.dataEntrega === '');
+
+    const inicioBaseParaPrazo =
+      novoInicio ?? processoAntigo.dataInicio ?? processoAntigo.criadoEm ?? new Date();
+
+    const entregaCalculada = entregaVaziaOuNula ? addDays(inicioBaseParaPrazo, 15) : undefined;
+
     const processo = await prisma.processo.update({
       where: { id: parseInt(params.id) },
       data: {
@@ -145,6 +174,9 @@ export async function PUT(
         ...(data.descricao !== undefined && { descricao: data.descricao }),
         ...(data.notasCriador !== undefined && { notasCriador: data.notasCriador }),
         ...(data.progresso !== undefined && { progresso: data.progresso }),
+        ...(novoInicio !== undefined && { dataInicio: novoInicio }),
+        ...(dataEntregaFoiEnviada && entregaParsed !== undefined && { dataEntrega: entregaParsed }),
+        ...(entregaCalculada !== undefined && { dataEntrega: entregaCalculada }),
         dataAtualizacao: new Date(),
       },
       include: {
@@ -194,6 +226,25 @@ export async function PUT(
             dataTimestamp: BigInt(Date.now()),
           },
         });
+
+        // Notificação persistida para o criador
+        try {
+          if (processoAntigo.criadoPorId) {
+            const nomeEmpresa = processo.nomeEmpresa || 'Empresa';
+            const nomeServico = processo.nomeServico ? ` - ${processo.nomeServico}` : '';
+            await prisma.notificacao.create({
+              data: {
+                usuarioId: processoAntigo.criadoPorId,
+                mensagem: `Seu processo foi finalizado: ${nomeEmpresa}${nomeServico}`,
+                tipo: 'SUCESSO',
+                processoId: processo.id,
+                link: `/`,
+              },
+            });
+          }
+        } catch (e) {
+          console.error('Erro ao criar notificação de finalização:', e);
+        }
       }
     }
     
@@ -216,14 +267,33 @@ export async function DELETE(
     const { user, error } = await requireAuth(request);
     if (!user) return error;
 
-    // Apenas ADMIN pode excluir processo
-    if (!requireRole(user, ['ADMIN'])) {
+    const roleUpper = String((user as any).role || '').toUpperCase();
+    const processoId = parseInt(params.id);
+
+    if (roleUpper === 'USUARIO') {
       return NextResponse.json({ error: 'Sem permissão para excluir' }, { status: 403 });
     }
-    
-    await prisma.processo.delete({
-      where: { id: parseInt(params.id) },
-    });
+
+    if (roleUpper === 'GERENTE') {
+      const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
+      const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw)) ? Number(departamentoUsuarioRaw) : undefined;
+      if (typeof departamentoUsuario !== 'number') {
+        return NextResponse.json({ error: 'Usuário sem departamento definido' }, { status: 403 });
+      }
+
+      const processo = await prisma.processo.findUnique({ where: { id: processoId }, select: { id: true, departamentoAtual: true } });
+      if (!processo) {
+        return NextResponse.json({ error: 'Processo não encontrado' }, { status: 404 });
+      }
+
+      if (processo.departamentoAtual !== departamentoUsuario) {
+        return NextResponse.json({ error: 'Sem permissão para excluir processo de outro departamento' }, { status: 403 });
+      }
+    } else if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão para excluir' }, { status: 403 });
+    }
+
+    await prisma.processo.delete({ where: { id: processoId } });
     
     return NextResponse.json({ message: 'Processo excluído com sucesso' });
   } catch (error) {

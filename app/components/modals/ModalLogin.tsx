@@ -35,12 +35,20 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
       
       if (response.usuario) {
         // Mapeia o formato do backend para o formato esperado pelo frontend
+        const deptId =
+          typeof (response.usuario as any).departamentoId === 'number'
+            ? (response.usuario as any).departamentoId
+            : typeof (response.usuario as any).departamento?.id === 'number'
+              ? (response.usuario as any).departamento.id
+              : undefined;
         const usuario = {
           id: response.usuario.id,
           nome: response.usuario.nome,
           email: response.usuario.email,
           role: response.usuario.role.toLowerCase() as 'admin' | 'gerente' | 'usuario',
-          ativo: response.usuario.ativo,
+          ativo: (response.usuario as any).ativo,
+          departamentoId: deptId,
+          departamento_id: deptId,
           permissoes: response.usuario.permissoes || [],
         };
         onLogin(usuario);

@@ -4,6 +4,18 @@ import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
+function parseDateMaybe(value: any): Date | undefined {
+  if (!value) return undefined;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
 function sanitizeJson(value: any): any {
   if (typeof value === 'bigint') {
     return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString();
@@ -48,6 +60,9 @@ export async function GET(request: NextRequest) {
       },
       include: {
         empresa: true,
+        // `responsavel` é um campo recém-adicionado; em alguns ambientes o TS pode resolver um Prisma Client antigo.
+        // O cast mantém o runtime correto e evita erro de "excess property".
+        ...({ responsavel: { select: { id: true, nome: true, email: true } } } as any),
         tags: {
           include: { tag: true },
         },
@@ -100,31 +115,58 @@ export async function POST(request: NextRequest) {
     const data = await request.json();
 
     const roleUpper = String((user as any).role || '').toUpperCase();
-    const departamentoUsuario = (user as any).departamento_id;
+    const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
+    const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw)) ? Number(departamentoUsuarioRaw) : undefined;
 
-    const fluxo: number[] = Array.isArray(data?.fluxoDepartamentos)
-      ? data.fluxoDepartamentos.map((x: any) => Number(x)).filter((x: any) => Number.isFinite(x))
-      : [];
-    const departamentoInicial = Number(
-      Number.isFinite(Number(data?.departamentoAtual))
-        ? Number(data.departamentoAtual)
-        : fluxo.length > 0
-          ? fluxo[0]
-          : NaN
-    );
+    const fluxoRaw: any[] = Array.isArray(data?.fluxoDepartamentos) ? data.fluxoDepartamentos : [];
+    const fluxoParsed: number[] = fluxoRaw.map((x: any) => Number(x)).filter((x: any) => Number.isFinite(x));
+
+    const departamentoAtualParsed = Number(data?.departamentoAtual);
+    const departamentoAtualNum = Number.isFinite(departamentoAtualParsed) ? departamentoAtualParsed : undefined;
+
+    // Garante que o processo sempre nasce em um departamento ATIVO e existente.
+    // Isso evita casos em que o template tem ids antigos/inválidos e a solicitação "some" do kanban.
+    const departamentosAtivos = await prisma.departamento.findMany({
+      where: { ativo: true },
+      select: { id: true },
+      orderBy: { ordem: 'asc' },
+    });
+    const deptIds = new Set<number>(departamentosAtivos.map((d) => d.id));
+
+    const fluxo = fluxoParsed.filter((id) => deptIds.has(id));
+    const departamentoInicial =
+      (typeof departamentoAtualNum === 'number' && deptIds.has(departamentoAtualNum)
+        ? departamentoAtualNum
+        : fluxo[0] ?? departamentosAtivos[0]?.id);
+
+    if (!departamentoInicial || !Number.isFinite(departamentoInicial)) {
+      return NextResponse.json({ error: 'Departamento inicial inválido' }, { status: 400 });
+    }
+
+    const fluxoFinal = fluxo.length > 0 ? fluxo : [departamentoInicial];
+    const idxInicial = Math.max(0, fluxoFinal.indexOf(departamentoInicial));
 
     const personalizado = Boolean(data?.personalizado);
 
-    // Usuário comum: pode criar via templates, mas não personalizada
-    if (roleUpper === 'USUARIO' && personalizado) {
-      return NextResponse.json({ error: 'Sem permissão para criar solicitação personalizada' }, { status: 403 });
+    // Usuário normal NÃO pode criar solicitação personalizada
+    if (personalizado && roleUpper === 'USUARIO') {
+      return NextResponse.json(
+        { error: 'Sem permissão para criar solicitação personalizada' },
+        { status: 403 }
+      );
+    }
+
+    // Usuário comum pode criar solicitação (inclusive personalizada) desde que o fluxo comece no dept dele
+    // (a validação por departamento acontece abaixo).
+
+    // Usuário comum e gerente devem ter departamento definido
+    if ((roleUpper === 'USUARIO' || roleUpper === 'GERENTE') && typeof departamentoUsuario !== 'number') {
+      return NextResponse.json({ error: 'Usuário sem departamento definido' }, { status: 403 });
     }
 
     // Usuário comum e gerente: só podem criar solicitação cujo primeiro dept seja o deles
-    if ((roleUpper === 'USUARIO' || roleUpper === 'GERENTE') && typeof departamentoUsuario === 'number' && Number.isFinite(departamentoInicial)) {
-      if (departamentoInicial !== departamentoUsuario) {
-        return NextResponse.json({ error: 'Sem permissão para criar solicitação para outro departamento' }, { status: 403 });
-      }
+    if ((roleUpper === 'USUARIO' || roleUpper === 'GERENTE') && departamentoInicial !== departamentoUsuario) {
+      return NextResponse.json({ error: 'Sem permissão para criar solicitação para outro departamento' }, { status: 403 });
     }
 
     const toTipoCampo = (tipo: any) => {
@@ -154,24 +196,44 @@ export async function POST(request: NextRequest) {
       }
     };
     
+    const dataInicio = parseDateMaybe(data?.dataInicio) ?? new Date();
+    const dataEntrega = parseDateMaybe(data?.dataEntrega) ?? addDays(dataInicio, 15);
+
+    const responsavelIdRaw = data?.responsavelId;
+    const responsavelId = Number.isFinite(Number(responsavelIdRaw)) ? Number(responsavelIdRaw) : undefined;
+
+    let responsavelNome: string | undefined;
+
+    // Se veio responsavelId, valida se existe e está ativo
+    if (typeof responsavelId === 'number') {
+      const resp = await prisma.usuario.findUnique({ where: { id: responsavelId }, select: { id: true, ativo: true, nome: true } });
+      if (!resp || !resp.ativo) {
+        return NextResponse.json({ error: 'Responsável inválido' }, { status: 400 });
+      }
+      responsavelNome = resp.nome;
+    }
+
     const processo = await prisma.processo.create({
       data: {
         nome: data.nome,
         nomeServico: data.nomeServico,
         nomeEmpresa: data.nomeEmpresa,
-        cliente: data.cliente,
+        cliente: String(data.cliente || '').trim() || responsavelNome,
         email: data.email,
         telefone: data.telefone,
+        ...(typeof responsavelId === 'number' ? ({ responsavelId } as any) : {}),
         empresaId: data.empresaId,
         status: data.status || 'EM_ANDAMENTO',
         prioridade: data.prioridade || 'MEDIA',
-        departamentoAtual: data.departamentoAtual,
-        departamentoAtualIndex: data.departamentoAtualIndex || 0,
-        fluxoDepartamentos: data.fluxoDepartamentos || [],
+        departamentoAtual: departamentoInicial,
+        departamentoAtualIndex: Number.isFinite(Number(data?.departamentoAtualIndex)) ? Number(data.departamentoAtualIndex) : idxInicial,
+        fluxoDepartamentos: fluxoFinal,
         descricao: data.descricao,
         notasCriador: data.notasCriador,
         criadoPorId: user.id,
         progresso: data.progresso || 0,
+        dataInicio,
+        dataEntrega,
       },
       include: {
         empresa: true,
@@ -179,8 +241,58 @@ export async function POST(request: NextRequest) {
         criadoPor: {
           select: { id: true, nome: true, email: true },
         },
+        ...({ responsavel: { select: { id: true, nome: true, email: true } } } as any),
       },
     });
+
+    // Notificação persistida: somente gerentes do departamento e responsável (se definido)
+    try {
+      const responsavelIdRaw = data?.responsavelId;
+      const responsavelId = Number.isFinite(Number(responsavelIdRaw)) ? Number(responsavelIdRaw) : undefined;
+
+      // gerentes do dept inicial
+      const gerentes = await prisma.usuario.findMany({
+        where: {
+          ativo: true,
+          role: 'GERENTE',
+          departamentoId: departamentoInicial,
+        },
+        select: { id: true },
+      });
+
+      const ids = new Set<number>(gerentes.map((g) => g.id));
+
+      // responsável escolhido
+      if (typeof responsavelId === 'number') {
+        const resp = await prisma.usuario.findUnique({
+          where: { id: responsavelId },
+          select: { id: true, ativo: true },
+        });
+        if (resp?.ativo) ids.add(resp.id);
+      }
+
+      // não notifica o próprio criador
+      ids.delete(user.id);
+      const destinatarios = Array.from(ids).map((id) => ({ id }));
+
+      if (destinatarios.length > 0) {
+        const nomeEmpresa = processo.nomeEmpresa || 'Empresa';
+        const nomeServico = processo.nomeServico ? ` - ${processo.nomeServico}` : '';
+        const mensagem = `Nova solicitação criada: ${nomeEmpresa}${nomeServico}`;
+
+        await prisma.notificacao.createMany({
+          data: destinatarios.map((u) => ({
+            usuarioId: u.id,
+            mensagem,
+            tipo: 'INFO',
+            processoId: processo.id,
+            link: `/`,
+          })),
+        });
+      }
+    } catch (e) {
+      console.error('Erro ao criar notificações de criação:', e);
+    }
 
     // Persistir questionários por departamento (se fornecido pelo front)
     // Estrutura esperada: { [departamentoId]: Questionario[] }

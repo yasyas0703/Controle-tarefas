@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { Loader2, Search, X } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { Empresa } from '@/app/types';
 import ModalBase from './ModalBase';
 import { cepSchema, cpfSchema, cnpjSchema } from '@/app/utils/validation';
+import { api } from '@/app/utils/api';
 
 interface ModalCadastrarEmpresaProps {
   onClose: () => void;
@@ -37,6 +38,58 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
     cadastrada: empresaCadastrada,
   });
   const [erros, setErros] = useState<Record<string, string>>({});
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false);
+  const [cnpjLookupError, setCnpjLookupError] = useState<string>('');
+
+  const cnpjDigits = useMemo(() => String(formData.cnpj || '').replace(/\D/g, ''), [formData.cnpj]);
+  const podeBuscarCnpj = cnpjDigits.length === 14 && !buscandoCnpj;
+
+  const handleBuscarCnpj = async () => {
+    const digits = String(formData.cnpj || '').replace(/\D/g, '');
+    if (digits.length !== 14) {
+      setCnpjLookupError('Digite um CNPJ com 14 dígitos para buscar.');
+      return;
+    }
+
+    const parsed = cnpjSchema.safeParse(String(formData.cnpj || ''));
+    if (!parsed.success) {
+      setCnpjLookupError('CNPJ inválido. Verifique e tente novamente.');
+      return;
+    }
+
+    setBuscandoCnpj(true);
+    setCnpjLookupError('');
+    try {
+      const data = await api.consultarCnpj(digits);
+
+      setFormData((prev) => {
+        const cepDigits = String(data?.cep || '').replace(/\D/g, '');
+        const cepFormatado = cepDigits.length === 8 ? `${cepDigits.slice(0, 5)}-${cepDigits.slice(5, 8)}` : String(data?.cep || '');
+        const numeroDigits = String(data?.numero || '').replace(/\D/g, '');
+
+        return {
+          ...prev,
+          razao_social: String(prev.razao_social || '').trim() ? prev.razao_social : (data?.razao_social || ''),
+          apelido: String(prev.apelido || '').trim() ? prev.apelido : (data?.nome_fantasia || ''),
+          data_abertura: String(prev.data_abertura || '').trim() ? prev.data_abertura : (data?.data_abertura || ''),
+          estado: String(prev.estado || '').trim() ? prev.estado : (data?.estado || ''),
+          cidade: String(prev.cidade || '').trim() ? prev.cidade : (data?.cidade || ''),
+          bairro: String(prev.bairro || '').trim() ? prev.bairro : (data?.bairro || ''),
+          logradouro: String(prev.logradouro || '').trim() ? prev.logradouro : (data?.logradouro || ''),
+          numero: String(prev.numero || '').trim() ? prev.numero : (numeroDigits || ''),
+          cep: String(prev.cep || '').trim() ? prev.cep : (cepFormatado || ''),
+          email: String(prev.email || '').trim() ? prev.email : (data?.email || ''),
+          telefone: String(prev.telefone || '').trim() ? prev.telefone : (data?.telefone || ''),
+        };
+      });
+
+      setEmpresaCadastrada(true);
+    } catch (error: any) {
+      setCnpjLookupError(error?.message || 'Não foi possível consultar esse CNPJ agora.');
+    } finally {
+      setBuscandoCnpj(false);
+    }
+  };
 
   const handleChange = (field: keyof Empresa, value: any) => {
     setFormData((prev) => ({
@@ -211,30 +264,46 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   CPF/CNPJ {empresaCadastrada && <span className="text-red-500">*</span>}
                 </label>
-                <input
-                  type="text"
-                  value={String(formData.cnpj || '')}
-                  onChange={(e) => {
-                    const valorFormatado = formatarCPFCNPJ(e.target.value);
-                    handleChange('cnpj', valorFormatado);
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={String(formData.cnpj || '')}
+                    onChange={(e) => {
+                      const valorFormatado = formatarCPFCNPJ(e.target.value);
+                      handleChange('cnpj', valorFormatado);
 
-                    const digits = valorFormatado.replace(/\D/g, '');
-                    setEmpresaCadastrada(digits.length > 0);
-                  }}
-                  onKeyDown={(e) => {
-                    if (
-                      e.ctrlKey || e.metaKey ||
-                      ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) ||
-                      /^[0-9]$/.test(e.key)
-                    ) return;
-                    e.preventDefault();
-                  }}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-green-500 ${erros.cnpj ? 'border-red-500' : 'border-gray-300 dark:border-[var(--border)]'} bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]`}
-                  placeholder={empresaCadastrada ? "000.000.000-00 ou 00.000.000/0000-00" : "Opcional"}
-                  required={false}
-                  maxLength={18}
-                />
+                      const digits = valorFormatado.replace(/\D/g, '');
+                      setEmpresaCadastrada(digits.length > 0);
+                    }}
+                    onKeyDown={(e) => {
+                      if (
+                        e.ctrlKey || e.metaKey ||
+                        ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) ||
+                        /^[0-9]$/.test(e.key)
+                      ) return;
+                      e.preventDefault();
+                    }}
+                    className={`w-full px-4 py-3 pr-12 border rounded-xl focus:ring-2 focus:ring-green-500 ${erros.cnpj ? 'border-red-500' : 'border-gray-300 dark:border-[var(--border)]'} bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]`}
+                    placeholder={empresaCadastrada ? "000.000.000-00 ou 00.000.000/0000-00" : "Opcional"}
+                    required={false}
+                    maxLength={18}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleBuscarCnpj}
+                    disabled={!podeBuscarCnpj}
+                    title={cnpjDigits.length === 14 ? 'Buscar dados do CNPJ' : 'Digite um CNPJ com 14 dígitos'}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg border border-gray-200 dark:border-[var(--border)] bg-white dark:bg-[var(--card)] hover:bg-gray-50 dark:hover:bg-[var(--muted)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="Buscar dados do CNPJ"
+                  >
+                    {buscandoCnpj ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
+                  </button>
+                </div>
                 {erros.cnpj && <p className="mt-1 text-sm text-red-500">{erros.cnpj}</p>}
+                {!erros.cnpj && cnpjLookupError && (
+                  <p className="mt-1 text-sm text-red-500">{cnpjLookupError}</p>
+                )}
               </div>
 
               {/* Código */}

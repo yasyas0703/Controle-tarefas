@@ -294,7 +294,20 @@ const normalizeProcesso = (raw: any) => {
 async function parseError(response: Response) {
   try {
     const data = await response.json();
-    return data?.error || data?.message || 'Erro na requisição';
+    if (data?.error) return String(data.error);
+    if (data?.message) return String(data.message);
+
+    // Algumas rotas retornam detalhes adicionais
+    if (typeof data?.details === 'string' && data.details.trim()) return String(data.details).slice(0, 300);
+    if (data?.details && typeof data.details === 'object') {
+      try {
+        return JSON.stringify(data.details).slice(0, 300);
+      } catch {
+        // ignore
+      }
+    }
+
+    return 'Erro na requisição';
   } catch {
     return 'Erro na requisição';
   }
@@ -364,6 +377,21 @@ export const api = {
       return data;
     } catch (error) {
       console.error('Erro ao fazer login:', error);
+      throw error;
+    }
+  },
+
+  // ========== CONSULTAS EXTERNAS (PROXY) ==========
+  consultarCnpj: async (cnpj: string) => {
+    try {
+      const digits = String(cnpj || '').replace(/\D/g, '');
+      const response = await fetchAutenticado(`${API_URL}/cnpj/${digits}`);
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao consultar CNPJ:', error);
       throw error;
     }
   },
@@ -911,8 +939,18 @@ export const api = {
         body: JSON.stringify(usuario),
       });
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Erro ao criar usuário');
+        const error = await response.json().catch(() => ({} as any));
+        let msg = (error as any).error || 'Erro ao criar usuário';
+        const details = (error as any).details;
+        if (details && typeof details === 'object') {
+          const nome = typeof details.nome === 'string' ? details.nome : '';
+          const email = typeof details.email === 'string' ? details.email : '';
+          const id = typeof details.usuarioId === 'number' ? details.usuarioId : null;
+          if (nome || email || typeof id === 'number') {
+            msg = `${msg}${email ? `: ${email}` : ''}${nome ? ` (usuário: ${nome})` : ''}${typeof id === 'number' ? ` [id ${id}]` : ''}`;
+          }
+        }
+        throw new Error(msg);
       }
       return await response.json();
     } catch (error) {
@@ -928,8 +966,18 @@ export const api = {
         body: JSON.stringify(usuario),
       });
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Erro ao atualizar usuário');
+        const error = await response.json().catch(() => ({} as any));
+        let msg = (error as any).error || 'Erro ao atualizar usuário';
+        const details = (error as any).details;
+        if (details && typeof details === 'object') {
+          const nome = typeof details.nome === 'string' ? details.nome : '';
+          const email = typeof details.email === 'string' ? details.email : '';
+          const uid = typeof details.usuarioId === 'number' ? details.usuarioId : null;
+          if (nome || email || typeof uid === 'number') {
+            msg = `${msg}${email ? `: ${email}` : ''}${nome ? ` (usuário: ${nome})` : ''}${typeof uid === 'number' ? ` [id ${uid}]` : ''}`;
+          }
+        }
+        throw new Error(msg);
       }
       return await response.json();
     } catch (error) {
@@ -976,6 +1024,38 @@ export const api = {
       return await response.json();
     } catch (error) {
       console.error('Erro ao marcar notificação como lida:', error);
+      throw error;
+    }
+  },
+
+  excluirNotificacao: async (id: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/notificacoes/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any)?.error || 'Erro ao excluir notificação');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao excluir notificação:', error);
+      throw error;
+    }
+  },
+
+  // ========== USUÁRIOS (seleção de responsável) ==========
+  getUsuariosResponsaveis: async (departamentoId?: number) => {
+    try {
+      const qs = Number.isFinite(departamentoId as any) ? `?departamentoId=${departamentoId}` : '';
+      const response = await fetchAutenticado(`${API_URL}/usuarios/responsaveis${qs}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any)?.error || 'Erro ao buscar usuários');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao buscar usuários responsáveis:', error);
       throw error;
     }
   },

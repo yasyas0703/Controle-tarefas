@@ -62,9 +62,9 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       return;
     }
 
-    // Validar que gerente precisa ter departamento
-    if (novoUsuario.role === 'gerente' && !novoUsuario.departamentoId) {
-      await mostrarAlerta('Atenção', 'Gerente deve ter um departamento associado.', 'aviso');
+    // Validar que gerente/usuário precisam ter departamento
+    if ((novoUsuario.role === 'gerente' || novoUsuario.role === 'usuario') && !novoUsuario.departamentoId) {
+      await mostrarAlerta('Atenção', 'Usuário/Gerente deve ter um departamento associado.', 'aviso');
       return;
     }
 
@@ -88,7 +88,7 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       }));
       setUsuarios(usuariosConvertidos || []);
       
-      adicionarNotificacao('Usuário criado com sucesso', 'sucesso');
+      adicionarNotificacao(usuario?.reativado ? 'Usuário reativado com sucesso' : 'Usuário criado com sucesso', 'sucesso');
       setNovoUsuario({ nome: '', email: '', senha: '', role: 'usuario', departamentoId: undefined, permissoes: [] });
     } catch (error: any) {
       const errorMessage = error.message || 'Erro ao criar usuário';
@@ -233,6 +233,8 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                     </label>
                     <input
                       type="text"
+                      name="nome_usuario"
+                      autoComplete="off"
                       placeholder="Nome do usuário"
                       value={editandoUsuario ? editandoUsuario.nome : novoUsuario.nome}
                       onChange={(e) => editandoUsuario 
@@ -249,6 +251,8 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                     </label>
                     <input
                       type="password"
+                      name={editandoUsuario ? 'nova_senha_usuario' : 'senha_novo_usuario'}
+                      autoComplete="new-password"
                       placeholder={editandoUsuario ? "Nova senha (opcional)" : "Senha"}
                       value={editandoUsuario ? (editandoUsuario.senha || '') : novoUsuario.senha}
                       onChange={(e) => editandoUsuario
@@ -266,6 +270,8 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                   </label>
                   <input
                     type="email"
+                    name={editandoUsuario ? 'email_usuario_edicao' : 'email_usuario_criacao'}
+                    autoComplete="off"
                     placeholder="email@empresa.com"
                     value={editandoUsuario ? editandoUsuario.email : novoUsuario.email}
                     onChange={(e) => editandoUsuario
@@ -299,7 +305,9 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                     </select>
                   </div>
 
-                  {(editandoUsuario ? editandoUsuario.role === 'gerente' : novoUsuario.role === 'gerente') && (
+                  {(editandoUsuario
+                    ? editandoUsuario.role === 'gerente' || editandoUsuario.role === 'usuario'
+                    : novoUsuario.role === 'gerente' || novoUsuario.role === 'usuario') && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Departamento *
@@ -391,6 +399,7 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                         </div>
                         <div>
                           <div className="font-medium dark:text-[var(--fg)]">{user.nome}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{user.email}</div>
                           <div className="text-sm text-gray-600 dark:text-gray-300">
                             {user.role === 'admin' && 'Administrador'}
                             {user.role === 'gerente' && `Gerente - ${(user as any).departamento?.nome || 'N/A'}`}

@@ -15,6 +15,8 @@ export default function NotificacoesPanel({ onClose }: NotificacoesPanelProps) {
     marcarNotificacaoComoLida,
     marcarTodasNotificacoesComoLidas,
     adicionarNotificacao,
+    notificacoesNavegadorAtivas,
+    ativarNotificacoesNavegador,
   } = useSistema();
 
   const [marcandoIds, setMarcandoIds] = useState<Record<number, boolean>>({});
@@ -93,6 +95,22 @@ export default function NotificacoesPanel({ onClose }: NotificacoesPanelProps) {
           )}
         </h3>
         <div className="flex gap-2">
+          {!notificacoesNavegadorAtivas && (
+            <button
+              onClick={async () => {
+                try {
+                  const ok = await ativarNotificacoesNavegador();
+                  if (ok) adicionarNotificacao('Notificações do navegador ativadas', 'sucesso');
+                } catch (e: any) {
+                  adicionarNotificacao(e?.message || 'Erro ao ativar notificações do navegador', 'erro');
+                }
+              }}
+              className="text-xs text-cyan-700 hover:text-cyan-900"
+              title="Ativar notificações do Chrome enquanto o sistema estiver aberto"
+            >
+              Ativar notificação do navegador
+            </button>
+          )}
           {notificacoesArray.some((n) => !n.lida) && (
             <button
               onClick={marcarTodasComoLidas}

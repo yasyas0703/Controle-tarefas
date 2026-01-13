@@ -27,6 +27,7 @@ model Usuario {
   atualizadoEm  DateTime  @updatedAt
   
   processosCriados  Processo[] @relation("ProcessoCriadoPor")
+  processosResponsavel Processo[] @relation("ProcessoResponsavel")
   comentarios       Comentario[]
   historicoEventos  HistoricoEvento[]
   respostasQuestionario RespostaQuestionario[]
@@ -125,6 +126,9 @@ model Processo {
   
   criadoPorId             Int?
   criadoPor               Usuario?  @relation("ProcessoCriadoPor", fields: [criadoPorId], references: [id])
+
+  responsavelId           Int?
+  responsavel             Usuario?  @relation("ProcessoResponsavel", fields: [responsavelId], references: [id])
   
   criadoEm                DateTime  @default(now())
   dataCriacao             DateTime  @default(now())
@@ -148,6 +152,7 @@ model Processo {
   @@index([departamentoAtual])
   @@index([empresaId])
   @@index([criadoPorId])
+  @@index([responsavelId])
   @@index([dataCriacao])
 }
 

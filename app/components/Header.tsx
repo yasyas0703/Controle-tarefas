@@ -24,7 +24,7 @@ export default function Header({
   onSelecionarTemplate,
   onLogout,
 }: HeaderProps) {
-  const { notificacoes, usuarioLogado } = useSistema();
+  const { notificacoes, usuarioLogado, realtimeInfo } = useSistema();
   const [showNotifications, setShowNotifications] = useState(false);
   
   // Garantir que notificacoes seja sempre um array
@@ -34,6 +34,23 @@ export default function Header({
   const temPermissao = (permissao: string, contexto: any = {}) => {
     return verificarPermissao(usuarioLogado, permissao, contexto);
   };
+
+  const realtimeStatus = (() => {
+    if (!usuarioLogado) return null;
+    if (!realtimeInfo) return { label: 'Realtime: desconhecido', className: 'bg-gray-100 text-gray-700' };
+
+    const statuses = [realtimeInfo.processos, realtimeInfo.core, realtimeInfo.notificacoes];
+    if (statuses.some(s => s === 'connecting')) {
+      return { label: 'Realtime: reconectando', className: 'bg-blue-100 text-blue-800' };
+    }
+    if (statuses.some(s => s === 'fallback')) {
+      return { label: 'Realtime: fallback', className: 'bg-yellow-100 text-yellow-800' };
+    }
+    if (statuses.every(s => s === 'connected')) {
+      return { label: 'Realtime: conectado', className: 'bg-green-100 text-green-800' };
+    }
+    return { label: 'Realtime: desligado', className: 'bg-gray-100 text-gray-700' };
+  })();
 
   return (
     <div className="bg-white shadow-lg border-b border-gray-200">
@@ -73,6 +90,14 @@ export default function Header({
 
           {/* Ações e Botões */}
           <div className="flex items-center justify-end gap-3 flex-wrap">
+            {realtimeStatus && (
+              <span
+                className={`px-3 py-2 rounded-xl text-xs font-semibold ${realtimeStatus.className}`}
+                title="Status do Supabase Realtime (com fallback polling quando necessário)"
+              >
+                {realtimeStatus.label}
+              </span>
+            )}
             {/* Notificações */}
             <div className="relative">
               <button

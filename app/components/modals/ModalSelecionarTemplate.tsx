@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, FileText, Info, MoreVertical, Trash2, Mail, Phone, ClipboardList } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { Template } from '@/app/types';
+import { api } from '@/app/utils/api';
 
 interface ModalSelecionarTemplateProps {
   onClose: () => void;
@@ -22,7 +23,9 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
   } = useSistema();
   
   const [empresaSelecionada, setEmpresaSelecionada] = useState<any>(null);
-  const [responsavel, setResponsavel] = useState("");
+  const [responsavelId, setResponsavelId] = useState<number | null>(null);
+  const [usuariosResponsaveis, setUsuariosResponsaveis] = useState<Array<{ id: number; nome: string; email: string; role: string; ativo?: boolean }>>([]);
+  const [erroUsuariosResponsaveis, setErroUsuariosResponsaveis] = useState<string | null>(null);
   const [templateSelecionado, setTemplateSelecionado] = useState<number | null>(null);
   const [templateComTooltip, setTemplateComTooltip] = useState<number | null>(null);
   const [templateComTooltipNome, setTemplateComTooltipNome] = useState<number | null>(null);
@@ -31,6 +34,35 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
   const templatesDisponiveis: Template[] = templates || [];
 
   const empresasDisponiveis = empresas || [];
+
+  useEffect(() => {
+    let ativo = true;
+    if (!usuarioLogado) return;
+    if (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'gerente') return;
+
+    setErroUsuariosResponsaveis(null);
+
+    (async () => {
+      try {
+        const data = await api.getUsuariosResponsaveis();
+        if (!ativo) return;
+        setUsuariosResponsaveis(Array.isArray(data) ? data : []);
+      } catch {
+        if (!ativo) return;
+        setUsuariosResponsaveis([]);
+        setErroUsuariosResponsaveis('Não foi possível carregar os usuários responsáveis.');
+      }
+    })();
+
+    return () => {
+      ativo = false;
+    };
+  }, [usuarioLogado]);
+
+  const responsavelSelecionado = useMemo(() => {
+    if (typeof responsavelId !== 'number') return null;
+    return usuariosResponsaveis.find((u) => u.id === responsavelId) ?? null;
+  }, [usuariosResponsaveis, responsavelId]);
 
   const handleCriar = async () => {
     if (!empresaSelecionada) {
@@ -60,6 +92,12 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
       }
     })();
 
+    const deptIds = new Set<number>((departamentos || []).map((d: any) => Number(d.id)).filter((x: any) => Number.isFinite(x)));
+    const fluxoNormalizado = (Array.isArray(fluxo) ? fluxo : [])
+      .map((x: any) => Number(x))
+      .filter((x: any) => Number.isFinite(x))
+      .filter((id: number) => (deptIds.size > 0 ? deptIds.has(id) : true));
+
     const questionariosPorDept = (() => {
       const v: any = (template as any).questionariosPorDepartamento ?? (template as any).questionarios_por_departamento;
       if (v && typeof v === 'object' && !Array.isArray(v)) return v as any;
@@ -71,15 +109,40 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
       }
     })();
 
-    if (fluxo.length === 0) {
-      void mostrarAlerta('Template inválido', 'Fluxo vazio.', 'aviso');
+    if (fluxoNormalizado.length === 0) {
+      void mostrarAlerta('Template inválido', 'Fluxo vazio ou com departamentos inválidos.', 'aviso');
       return;
     }
 
+    // Responsável: somente via seleção.
+    // - ADMIN/GERENTE: obrigatório selecionar um usuário.
+    // - USUARIO: usa o próprio usuário logado.
+    const responsavelIdFinal = (() => {
+      const role = usuarioLogado?.role;
+      if (role === 'usuario') {
+        const id = Number((usuarioLogado as any)?.id);
+        return Number.isFinite(id) ? id : null;
+      }
+      return typeof responsavelId === 'number' ? responsavelId : null;
+    })();
+
+    if (usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente') {
+      if (typeof responsavelIdFinal !== 'number') {
+        void mostrarAlerta('Atenção', 'Selecione o responsável (usuário).', 'aviso');
+        return;
+      }
+    }
+
     // Validar se gerente/usuário está tentando criar solicitação para outro departamento
-    if ((usuarioLogado?.role === 'gerente' || usuarioLogado?.role === 'usuario') && usuarioLogado.departamento_id) {
-      const primeiroDepartamento = fluxo[0];
-      if (primeiroDepartamento !== usuarioLogado.departamento_id) {
+    if (usuarioLogado?.role === 'gerente' || usuarioLogado?.role === 'usuario') {
+      const deptUsuario = (usuarioLogado as any).departamentoId ?? (usuarioLogado as any).departamento_id;
+      const deptUsuarioNum = Number.isFinite(Number(deptUsuario)) ? Number(deptUsuario) : undefined;
+      if (typeof deptUsuarioNum !== 'number') {
+        void mostrarAlerta('Erro', 'Usuário sem departamento definido.', 'erro');
+        return;
+      }
+      const primeiroDepartamento = fluxoNormalizado[0];
+      if (primeiroDepartamento !== deptUsuarioNum) {
         void mostrarAlerta('Erro', 'Você só pode criar solicitações para seu próprio departamento.', 'erro');
         return;
       }
@@ -92,9 +155,10 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
         nomeEmpresa: empresaSelecionada?.razao_social || empresaSelecionada?.nome || 'Empresa',
         empresa: empresaSelecionada?.razao_social || empresaSelecionada?.nome || 'Empresa',
         empresaId: empresaSelecionada?.id,
-        cliente: responsavel,
-        fluxoDepartamentos: fluxo,
-        departamentoAtual: fluxo[0],
+        cliente: (usuariosResponsaveis.find((u) => u.id === responsavelIdFinal)?.nome || '').trim(),
+        responsavelId: typeof responsavelIdFinal === 'number' ? responsavelIdFinal : undefined,
+        fluxoDepartamentos: fluxoNormalizado,
+        departamentoAtual: fluxoNormalizado[0],
         departamentoAtualIndex: 0,
         questionariosPorDepartamento: questionariosPorDept as any,
         personalizado: false,
@@ -221,15 +285,44 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Responsável
+                  Responsável (usuário)
                 </label>
-                <input
-                  type="text"
-                  value={responsavel}
-                  onChange={(e) => setResponsavel(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500"
-                  placeholder="Nome do responsável"
-                />
+                <select
+                  value={responsavelId ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) {
+                      setResponsavelId(null);
+                      return;
+                    }
+                    const id = Number(v);
+                    setResponsavelId(Number.isFinite(id) ? id : null);
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required={usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente'}
+                  disabled={usuarioLogado?.role === 'usuario'}
+                >
+                  <option value="">
+                    {usuarioLogado?.role === 'usuario'
+                      ? 'Responsável será você'
+                      : 'Selecione um usuário'}
+                  </option>
+                  {usuariosResponsaveis.map((u) => (
+                    <option key={u.id} value={u.id} disabled={u.ativo === false}>
+                      {u.nome} ({u.email}){u.ativo === false ? ' (inativo)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {erroUsuariosResponsaveis && (
+                  <p className="text-xs text-red-600 mt-2">
+                    {erroUsuariosResponsaveis}
+                  </p>
+                )}
+                {(usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente') && usuariosResponsaveis.length === 0 && !erroUsuariosResponsaveis && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    Nenhum usuário encontrado para seleção.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -238,8 +331,8 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
                 <div className="text-sm space-y-1">
                   <p className="font-semibold text-gray-900">{empresaSelecionada.razao_social}</p>
                   <p className="text-gray-600">📄 CNPJ: {empresaSelecionada.cnpj}</p>
-                  {responsavel && (
-                    <p className="text-gray-600">👤 Responsável: {responsavel}</p>
+                  {responsavelSelecionado?.nome && (
+                    <p className="text-gray-600">👤 Responsável: {responsavelSelecionado.nome}</p>
                   )}
                   {empresaSelecionada.email && (
                     <p className="text-gray-600 flex items-center gap-2"><Mail size={14} /> {empresaSelecionada.email}</p>

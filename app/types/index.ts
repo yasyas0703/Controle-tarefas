@@ -39,6 +39,8 @@ export interface Processo {
   empresaId?: number;
   personalizado?: boolean;
   templateId?: number;
+  responsavelId?: number;
+  responsavel?: Pick<Usuario, 'id' | 'nome' | 'email'>;
 }
 
 export interface Departamento {
@@ -69,6 +71,7 @@ export interface Usuario {
   nome: string;
   email: string;
   role: 'admin' | 'gerente' | 'usuario';
+  departamentoId?: number;
   departamento_id?: number;
   permissoes?: string[];
   ativo?: boolean;

@@ -56,7 +56,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-[1050] p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-6 rounded-t-2xl">
           <div className="flex justify-between items-center">
             <div>
@@ -83,20 +83,20 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
         </div>
 
         <div className="p-6 space-y-8">
-          <div className="bg-gray-50 rounded-xl p-6">
-            <h4 className="font-bold text-gray-800 mb-4">Informações Gerais</h4>
+          <div className="bg-gray-50 dark:bg-[var(--muted)] rounded-xl p-6 border border-transparent dark:border-[var(--border)]">
+            <h4 className="font-bold text-gray-800 dark:text-[var(--fg)] mb-4">Informações Gerais</h4>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <span className="font-medium text-gray-600">Cliente:</span>
-                <div className="text-gray-800">{processo?.cliente || '-'}</div>
+                <span className="font-medium text-gray-600 dark:text-gray-300">Cliente:</span>
+                <div className="text-gray-800 dark:text-[var(--fg)]">{processo?.cliente || '-'}</div>
               </div>
               <div>
-                <span className="font-medium text-gray-600">Status:</span>
-                <div className="text-gray-800">{processo?.status || '-'}</div>
+                <span className="font-medium text-gray-600 dark:text-gray-300">Status:</span>
+                <div className="text-gray-800 dark:text-[var(--fg)]">{processo?.status || '-'}</div>
               </div>
               <div>
-                <span className="font-medium text-gray-600">Prioridade:</span>
-                <div className="text-gray-800">{prioridadeTexto(processo?.prioridade)}</div>
+                <span className="font-medium text-gray-600 dark:text-gray-300">Prioridade:</span>
+                <div className="text-gray-800 dark:text-[var(--fg)]">{prioridadeTexto(processo?.prioridade)}</div>
               </div>
             </div>
           </div>
@@ -123,8 +123,8 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
             const IconeDept = getIconeDepartamento(dept.icone);
 
             return (
-              <div key={dept.id} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-                <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <div key={dept.id} className="bg-white dark:bg-[var(--card)] rounded-xl p-6 border border-gray-200 dark:border-[var(--border)] shadow-sm">
+                <h4 className="font-bold text-gray-800 dark:text-[var(--fg)] mb-4 flex items-center gap-2">
                   {IconeDept ? <IconeDept size={20} /> : null}
                   {dept.nome} {dept.responsavel ? `- ${dept.responsavel}` : ''}
                 </h4>
@@ -135,7 +135,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                       if (!anexos.length) return null;
                       return (
                         <div key={pergunta.id} className="md:col-span-2">
-                          <div className="bg-gray-50 rounded-lg p-4">
+                          <div className="bg-gray-50 dark:bg-[var(--muted)] rounded-lg p-4 border border-transparent dark:border-[var(--border)]">
                             <label className="block text-sm font-medium text-gray-600 mb-3">
                               {pergunta.label}
                             </label>
@@ -143,12 +143,12 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                               {anexos.map((doc: any) => (
                                 <div
                                   key={doc.id}
-                                  className="bg-white rounded-lg p-3 border border-gray-200 flex items-center justify-between gap-3"
+                                  className="bg-white dark:bg-[var(--card)] rounded-lg p-3 border border-gray-200 dark:border-[var(--border)] flex items-center justify-between gap-3"
                                 >
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2 min-w-0">
                                       <FileText size={16} className="text-gray-400 flex-shrink-0" />
-                                      <span className="font-medium text-sm text-gray-800 truncate">{doc.nome}</span>
+                                      <span className="font-medium text-sm text-gray-800 dark:text-[var(--fg)] truncate">{doc.nome}</span>
                                     </div>
                                     <div className="text-xs text-gray-500 mt-1">{formatarDataHora(doc.dataUpload)}</div>
                                   </div>
@@ -163,7 +163,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                                     <a
                                       href={doc.url}
                                       download={doc.nome}
-                                      className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                                      className="p-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-[var(--muted)] rounded"
                                       title="Baixar"
                                     >
                                       <Download size={14} />
@@ -181,9 +181,9 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                     if (resposta === undefined || resposta === null || String(resposta) === '') return null;
                     return (
                       <div key={pergunta.id} className={pergunta.tipo === 'textarea' ? 'md:col-span-2' : ''}>
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          <label className="block text-sm font-medium text-gray-600 mb-2">{pergunta.label}</label>
-                          <div className="text-gray-800">
+                        <div className="bg-gray-50 dark:bg-[var(--muted)] rounded-lg p-4 border border-transparent dark:border-[var(--border)]">
+                          <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">{pergunta.label}</label>
+                          <div className="text-gray-800 dark:text-[var(--fg)]">
                             {pergunta.tipo === 'textarea' ? (
                               <div className="whitespace-pre-wrap">{String(resposta)}</div>
                             ) : (
@@ -199,11 +199,11 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
             );
           })}
 
-          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-            <h4 className="font-bold text-gray-800 mb-4">Histórico Completo</h4>
+          <div className="bg-white dark:bg-[var(--card)] rounded-xl p-6 border border-gray-200 dark:border-[var(--border)] shadow-sm">
+            <h4 className="font-bold text-gray-800 dark:text-[var(--fg)] mb-4">Histórico Completo</h4>
             <div className="space-y-4">
               {((processo?.historico || processo?.historicoEvento || []) as any[]).map((item: any, index: number) => (
-                <div key={index} className="flex items-start gap-4 p-4 bg-gray-50 rounded-xl">
+                <div key={index} className="flex items-start gap-4 p-4 bg-gray-50 dark:bg-[var(--muted)] rounded-xl border border-transparent dark:border-[var(--border)]">
                   <div className="mt-1">
                     {item.tipo === 'inicio' && <Calendar className="text-blue-500" size={16} />}
                     {item.tipo === 'conclusao' && <CheckCircle className="text-green-500" size={16} />}
@@ -213,9 +213,9 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                     {item.tipo === 'comentario' && <MessageSquare className="text-gray-600" size={16} />}
                   </div>
                   <div className="flex-1">
-                    <div className="font-medium text-gray-900">{item.acao}</div>
-                    <div className="text-sm text-gray-600 mt-1">
-                      <span className="bg-gray-200 px-2 py-1 rounded">{item.departamento}</span>
+                    <div className="font-medium text-gray-900 dark:text-[var(--fg)]">{item.acao}</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                      <span className="bg-gray-200 dark:bg-[var(--card)] px-2 py-1 rounded border border-transparent dark:border-[var(--border)]">{item.departamento}</span>
                       <span className="mx-2">•</span>
                       <span>{item.responsavel}</span>
                     </div>
@@ -226,8 +226,8 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
             </div>
           </div>
 
-          <div className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm">
-            <h4 className="font-bold text-gray-800 mb-4 flex items-center justify-between">
+          <div className="bg-white dark:bg-[var(--card)] rounded-xl p-6 border border-gray-200 dark:border-[var(--border)] shadow-sm">
+            <h4 className="font-bold text-gray-800 dark:text-[var(--fg)] mb-4 flex items-center justify-between">
               <span>Documentos do Processo</span>
               <button
                 onClick={() => {
@@ -244,7 +244,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
             {documentos.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {documentos.map((doc: any) => (
-                  <div key={doc.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div key={doc.id} className="bg-gray-50 dark:bg-[var(--muted)] rounded-lg p-4 border border-gray-200 dark:border-[var(--border)]">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <FileText size={16} className="text-gray-400" />
@@ -254,7 +254,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                         <button onClick={() => setShowPreviewDocumento(doc)} className="p-1 text-cyan-600 hover:bg-cyan-100 rounded">
                           <Eye size={14} />
                         </button>
-                        <a href={doc.url} download={doc.nome} className="p-1 text-gray-600 hover:bg-gray-100 rounded">
+                        <a href={doc.url} download={doc.nome} className="p-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-[var(--card)] rounded">
                           <Download size={14} />
                         </a>
                       </div>

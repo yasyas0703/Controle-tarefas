@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
 
-    if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
+    if (!requireRole(user, ['ADMIN', 'GERENTE', 'USUARIO'])) {
       return NextResponse.json({ error: 'Sem permissão para criar tags' }, { status: 403 });
     }
 

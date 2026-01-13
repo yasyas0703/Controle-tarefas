@@ -16,8 +16,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR">
-      <body className="min-h-screen transition-colors">
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className="min-h-screen transition-colors" suppressHydrationWarning>
         <ThemeProvider>
           <SistemaProvider>
             <ModalManagerProvider>

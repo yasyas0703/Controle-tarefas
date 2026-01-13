@@ -39,8 +39,12 @@ export async function POST(
     }
 
     if (roleUpper === 'GERENTE') {
-      const departamentoUsuario = (user as any).departamento_id;
-      if (typeof departamentoUsuario === 'number' && processo.departamentoAtual !== departamentoUsuario) {
+      const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
+      const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw)) ? Number(departamentoUsuarioRaw) : undefined;
+      if (typeof departamentoUsuario !== 'number') {
+        return NextResponse.json({ error: 'Usuário sem departamento definido' }, { status: 403 });
+      }
+      if (processo.departamentoAtual !== departamentoUsuario) {
         return NextResponse.json({ error: 'Sem permissão para mover processo de outro departamento' }, { status: 403 });
       }
     }
@@ -118,6 +122,48 @@ export async function POST(
         dataTimestamp: BigInt(Date.now()),
       },
     });
+
+    // Criar notificações persistidas: somente gerentes do dept destino e responsável do processo (se definido)
+    try {
+      const gerentesDestino = await prisma.usuario.findMany({
+        where: {
+          ativo: true,
+          role: 'GERENTE',
+          departamentoId: proximoDepartamentoId,
+        },
+        select: { id: true },
+      });
+
+      const ids = new Set<number>(gerentesDestino.map((u) => u.id));
+
+      // responsável do processo (se existir)
+      if (typeof (processoAtualizado as any).responsavelId === 'number') {
+        ids.add((processoAtualizado as any).responsavelId);
+      }
+
+      // evita notificar quem moveu
+      ids.delete(user.id);
+
+      const destinatarios = Array.from(ids);
+      if (destinatarios.length > 0) {
+        const nomeEmpresa = processoAtualizado.nomeEmpresa || 'Empresa';
+        const nomeServico = processoAtualizado.nomeServico ? ` - ${processoAtualizado.nomeServico}` : '';
+        const mensagem = `Processo no seu departamento: ${nomeEmpresa}${nomeServico}`;
+
+        await prisma.notificacao.createMany({
+          data: destinatarios.map((id) => ({
+            usuarioId: id,
+            mensagem,
+            tipo: 'INFO',
+            processoId: processoId,
+            link: `/`,
+          })),
+        });
+      }
+    } catch (e) {
+      // Não derruba a movimentação se notificação falhar
+      console.error('Erro ao criar notificações de movimentação:', e);
+    }
     
     return NextResponse.json(processoAtualizado);
   } catch (error) {

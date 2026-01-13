@@ -7,11 +7,24 @@ import { useSistema } from '@/app/context/SistemaContext';
 export default function SecaoAlertas() {
   const { processos } = useSistema();
 
+  const calcularPrazo = (p: any): Date | undefined => {
+    if (p?.dataEntrega) {
+      const d = new Date(p.dataEntrega);
+      return Number.isNaN(d.getTime()) ? undefined : d;
+    }
+
+    const inicio = p?.dataInicio || p?.criadoEm || p?.dataCriacao;
+    if (!inicio) return undefined;
+    const d = new Date(inicio);
+    if (Number.isNaN(d.getTime())) return undefined;
+    d.setDate(d.getDate() + 15);
+    return d;
+  };
+
   const processosEmRisco = processos.filter((p) => {
-    if (!p.dataEntrega) return false;
-    const diasRestantes = Math.ceil(
-      (new Date(p.dataEntrega).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-    );
+    const prazo = calcularPrazo(p);
+    if (!prazo) return false;
+    const diasRestantes = Math.ceil((prazo.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
     return diasRestantes < 5 && p.status === 'em_andamento';
   });
 
@@ -44,7 +57,7 @@ export default function SecaoAlertas() {
                         'Empresa'}
                   </strong>{' '}
                   - Entrega em{' '}
-                  {new Date(p.dataEntrega!).toLocaleDateString('pt-BR')}
+                  {(calcularPrazo(p) ?? new Date(p.dataEntrega!)).toLocaleDateString('pt-BR')}
                 </span>
               </div>
             ))}

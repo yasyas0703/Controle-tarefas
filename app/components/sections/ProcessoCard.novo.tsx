@@ -107,7 +107,7 @@ export default function ProcessoCard({
               className="font-semibold text-gray-900 text-sm truncate cursor-help" 
               title={processo.nomeServico || processo.nome || 'Serviço'}
             >
-              {processo.nomeServico?.substring(0, 15)}...
+              {processo.nomeServico || processo.nome || 'Serviço'}
             </h3>
             <p 
               className="text-xs text-gray-600 truncate cursor-help" 

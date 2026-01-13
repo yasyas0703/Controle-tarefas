@@ -56,6 +56,16 @@ export default function DepartamentosGrid({
   const [dragOverDept, setDragOverDept] = useState<number | null>(null);
   const [menuDeptAberto, setMenuDeptAberto] = useState<number | null>(null);
 
+  const isAdmin = usuarioLogado?.role === 'admin';
+  const isUsuarioNormal = usuarioLogado?.role === 'usuario';
+
+  const departamentoUsuario =
+    typeof (usuarioLogado as any)?.departamentoId === 'number'
+      ? (usuarioLogado as any).departamentoId
+      : typeof (usuarioLogado as any)?.departamento_id === 'number'
+        ? (usuarioLogado as any).departamento_id
+        : undefined;
+
   const handleQuestionario = (processo: any) => {
     setShowQuestionario({
       processoId: processo.id,
@@ -149,43 +159,45 @@ export default function DepartamentosGrid({
                   </div>
 
                   <div className="flex flex-col gap-2 flex-shrink-0">
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setMenuDeptAberto((prev) => (prev === dept.id ? null : dept.id))}
-                        className="p-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-all"
-                        title="Menu"
-                      >
-                        <MoreVertical size={16} />
-                      </button>
+                    {isAdmin && (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setMenuDeptAberto((prev) => (prev === dept.id ? null : dept.id))}
+                          className="p-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-all"
+                          title="Menu"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
 
-                      {menuDeptAberto === dept.id && (
-                        <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuDeptAberto(null);
-                              onEditarDepartamento(dept);
-                            }}
-                            className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <Edit size={16} className="text-gray-500" />
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMenuDeptAberto(null);
-                              onExcluirDepartamento(dept);
-                            }}
-                            className="w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                          >
-                            <Trash2 size={16} className="text-red-500" />
-                            Excluir
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                        {menuDeptAberto === dept.id && (
+                          <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuDeptAberto(null);
+                                onEditarDepartamento(dept);
+                              }}
+                              className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              <Edit size={16} className="text-gray-500" />
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setMenuDeptAberto(null);
+                                onExcluirDepartamento(dept);
+                              }}
+                              className="w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                            >
+                              <Trash2 size={16} className="text-red-500" />
+                              Excluir
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <button
                       onClick={() => onGaleria(dept)}
                       className="p-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-all"
@@ -248,6 +260,21 @@ export default function DepartamentosGrid({
                         departamentoOrigemId: dept.id,
                         departamentoAtual: dept.id
                       });
+
+                      const isDeptDoUsuario =
+                        typeof departamentoUsuario === 'number' &&
+                        typeof processo?.departamentoAtual === 'number' &&
+                        processo.departamentoAtual === departamentoUsuario;
+
+                      const className = isUsuarioNormal
+                        ? `cursor-pointer transition-all ${isDeptDoUsuario ? '' : 'opacity-50'}`
+                        : `${podeArrastar ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-75'} transition-all ${
+                            dragState.draggedItem?.id === processo.id ? 'opacity-50' : ''
+                          }`;
+
+                      const title = isUsuarioNormal
+                        ? (isDeptDoUsuario ? 'Clique para ver detalhes' : 'Somente leitura (outro departamento)')
+                        : (podeArrastar ? 'Arraste para mover' : 'Apenas gerentes podem mover processos');
                       
                       return (
                       <div
@@ -255,12 +282,8 @@ export default function DepartamentosGrid({
                         draggable={podeArrastar}
                         onDragStart={(e) => handleDragStart(e, processo, dept.id)}
                         onDragEnd={handleDragEnd}
-                        className={`${podeArrastar ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed opacity-75'} transition-all ${
-                          dragState.draggedItem?.id === processo.id
-                            ? 'opacity-50'
-                            : ''
-                        }`}
-                        title={podeArrastar ? 'Arraste para mover' : 'Apenas gerentes podem mover processos'}
+                        className={className}
+                        title={title}
                       >
                         <ProcessoCard
                           processo={processo}

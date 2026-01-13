@@ -57,10 +57,18 @@ export default function ProcessoDetalhado({
     return 'Empresa não informada';
   }, [processo]);
 
-  const formatarData = (data: Date | string) => {
+  const formatarData = (data?: Date | string | null) => {
     if (!data) return 'N/A';
     return new Date(data).toLocaleDateString('pt-BR');
   };
+
+  const inicio = (processo.dataInicio || processo.criadoEm) as any;
+  const prazo = (processo.dataEntrega || (inicio ? (() => {
+    const d = new Date(inicio);
+    if (Number.isNaN(d.getTime())) return undefined;
+    d.setDate(d.getDate() + 15);
+    return d;
+  })() : undefined)) as any;
 
   const statusCor = processo.status === 'finalizado' 
     ? 'bg-green-100 text-green-800' 
@@ -135,11 +143,11 @@ export default function ProcessoDetalhado({
           </div>
           <div className="border-l-4 border-green-500 pl-4">
             <p className="text-sm text-gray-600 mb-1">Inicio</p>
-            <p className="font-bold text-gray-800">{formatarData(processo.criadoEm)}</p>
+            <p className="font-bold text-gray-800">{formatarData(inicio)}</p>
           </div>
           <div className="border-l-4 border-orange-500 pl-4">
             <p className="text-sm text-gray-600 mb-1">Prazo</p>
-            <p className="font-bold text-gray-800">{formatarData(processo.dataEntrega)}</p>
+            <p className="font-bold text-gray-800">{formatarData(prazo)}</p>
           </div>
         </div>
 

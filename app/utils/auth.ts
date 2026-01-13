@@ -47,6 +47,7 @@ export async function getUserFromToken(token: string) {
         nome: true,
         email: true,
         role: true,
+        departamentoId: true,
         permissoes: true,
         ativo: true,
       },

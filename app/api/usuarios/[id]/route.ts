@@ -100,11 +100,29 @@ export async function PUT(
       }
     }
     
+    const nextRoleUpper = data.role ? String(data.role).toUpperCase() : undefined;
+    const roleFinalUpper = nextRoleUpper ?? String(target.role).toUpperCase();
+
+    const departamentoIdRaw = data?.departamentoId;
+    const departamentoId = Number.isFinite(Number(departamentoIdRaw)) ? Number(departamentoIdRaw) : undefined;
+
+    // Se está definindo/alterando para USUARIO/GERENTE, exige departamento
+    if ((roleFinalUpper === 'USUARIO' || roleFinalUpper === 'GERENTE') && typeof departamentoId !== 'number') {
+      return NextResponse.json({ error: 'Departamento é obrigatório para usuário/gerente' }, { status: 400 });
+    }
+
+    if (typeof departamentoId === 'number') {
+      const dept = await prisma.departamento.findUnique({ where: { id: departamentoId }, select: { id: true, ativo: true } });
+      if (!dept || !dept.ativo) {
+        return NextResponse.json({ error: 'Departamento inválido' }, { status: 400 });
+      }
+    }
+
     const updateData: any = {
       nome: data.nome,
       email: data.email,
-      role: data.role ? String(data.role).toUpperCase() : undefined,
-      departamentoId: data.departamentoId || null,
+      role: nextRoleUpper,
+      departamentoId: typeof departamentoId === 'number' ? departamentoId : null,
       permissoes: data.permissoes || [],
       ativo: data.ativo !== undefined ? data.ativo : true,
     };

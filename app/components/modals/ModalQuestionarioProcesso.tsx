@@ -396,11 +396,11 @@ export default function ModalQuestionarioProcesso({
               </h5>
 
               {docsAnexados.length === 0 ? (
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 text-center">
+                <div className="bg-blue-50 border border-blue-100 dark:bg-blue-500/10 dark:border-[var(--border)] rounded-xl p-5 text-center">
                   <FileText size={26} className="mx-auto text-blue-300 mb-2" />
-                  <p className="text-sm text-blue-700">Nenhum documento anexado ainda</p>
+                  <p className="text-sm text-blue-700 dark:text-[var(--fg)]">Nenhum documento anexado ainda</p>
                   {!bloqueado && (
-                    <p className="text-xs text-blue-500 mt-1">
+                    <p className="text-xs text-blue-500 dark:text-gray-400 mt-1">
                       Clique em &quot;Anexar Arquivo&quot; para enviar documentos
                     </p>
                   )}
@@ -410,17 +410,17 @@ export default function ModalQuestionarioProcesso({
                   {docsAnexados.map((doc: any) => (
                     <div
                       key={doc.id}
-                      className="bg-blue-50 border border-blue-200 rounded-xl p-3 hover:shadow-md transition-all"
+                      className="bg-blue-50 border border-blue-200 dark:bg-blue-500/10 dark:border-[var(--border)] rounded-xl p-3 hover:shadow-md transition-all"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <div className="w-10 h-10 bg-blue-100 dark:bg-blue-500/20 rounded-lg flex items-center justify-center flex-shrink-0">
                             <FileText size={20} className="text-blue-600" />
                           </div>
 
                           <div className="flex-1 min-w-0">
                             <div
-                              className="text-sm font-semibold text-gray-900 truncate"
+                              className="text-sm font-semibold text-gray-900 dark:text-[var(--fg)] truncate"
                               title={doc.nome}
                             >
                               {doc.nome}
@@ -629,7 +629,7 @@ export default function ModalQuestionarioProcesso({
 
       <div
         ref={modalContainerRef}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
       >
         <div className={`bg-gradient-to-r ${departamento.cor} p-6 rounded-t-2xl`}>
           <div className="flex justify-between items-center gap-4">
@@ -668,7 +668,7 @@ export default function ModalQuestionarioProcesso({
         >
           {respostasAnteriores.length > 0 && (
             <div className="mb-8 space-y-6">
-              <h4 className="font-semibold text-gray-800 mb-4 flex items-center gap-2 text-lg">
+              <h4 className="font-semibold text-gray-800 dark:text-[var(--fg)] mb-4 flex items-center gap-2 text-lg">
                 <Eye size={18} className="text-blue-500" />
                 {somenteLeitura
                   ? 'Respostas do Questionário'
@@ -696,9 +696,9 @@ export default function ModalQuestionarioProcesso({
                   return (
                     <div
                       key={deptId}
-                      className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200 shadow-sm"
+                      className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-[var(--muted)] dark:to-[var(--card)] rounded-xl p-6 border-2 border-blue-200 dark:border-[var(--border)] shadow-sm"
                     >
-                      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-200">
+                      <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-200 dark:border-[var(--border)]">
                         <div
                           className={`w-12 h-12 rounded-lg bg-gradient-to-br ${deptAnt.cor} flex items-center justify-center`}
                         >
@@ -729,7 +729,7 @@ export default function ModalQuestionarioProcesso({
                         {docsDept.map((doc: any) => (
                           <div
                             key={doc.id}
-                            className="flex items-center justify-between bg-white border border-blue-100 rounded-lg p-3"
+                            className="flex items-center justify-between bg-white dark:bg-[var(--card)] border border-blue-100 dark:border-[var(--border)] rounded-lg p-3"
                           >
                             <div className="flex items-center gap-3 flex-1 min-w-0">
                               <FileText size={20} className="text-blue-600 flex-shrink-0" />
@@ -750,7 +750,7 @@ export default function ModalQuestionarioProcesso({
                               <button
                                 type="button"
                                 onClick={() => baixarDocumento(doc)}
-                                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                                className="p-2 text-gray-600 hover:bg-gray-100 dark:hover:bg-[var(--muted)] rounded-lg"
                                 title="Baixar"
                               >
                                 <Download size={16} />
@@ -795,9 +795,9 @@ export default function ModalQuestionarioProcesso({
                 return (
                   <div
                     key={deptId}
-                    className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200 shadow-sm"
+                    className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-[var(--muted)] dark:to-[var(--card)] rounded-xl p-6 border-2 border-blue-200 dark:border-[var(--border)] shadow-sm"
                   >
-                    <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-200">
+                    <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-200 dark:border-[var(--border)]">
                       <div
                         className={`w-12 h-12 rounded-lg bg-gradient-to-br ${deptAnt.cor} flex items-center justify-center`}
                       >
@@ -832,7 +832,7 @@ export default function ModalQuestionarioProcesso({
                             return (
                               <div
                                 key={pergunta.id}
-                                className="bg-white rounded-lg p-4 border border-blue-100 shadow-sm h-full flex flex-col"
+                                className="bg-white dark:bg-[var(--card)] rounded-lg p-4 border border-blue-100 dark:border-[var(--border)] shadow-sm h-full flex flex-col"
                               >
                                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                                   {pergunta.label}
@@ -851,7 +851,7 @@ export default function ModalQuestionarioProcesso({
                                           docs.map((doc: any) => (
                                             <div
                                               key={doc.id}
-                                              className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-3"
+                                              className="flex items-center justify-between bg-blue-50 border border-blue-200 dark:bg-blue-500/10 dark:border-[var(--border)] rounded-lg p-3"
                                             >
                                               <div className="flex items-center gap-3 flex-1">
                                                 <FileText size={20} className="text-blue-600" />
@@ -892,7 +892,7 @@ export default function ModalQuestionarioProcesso({
                                       })()}
                                     </div>
                                   ) : resposta === undefined || resposta === null || String(resposta).trim() === '' ? (
-                                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center text-sm text-yellow-700 h-full flex items-center justify-center">
+                                    <div className="bg-yellow-50 border border-yellow-200 dark:bg-yellow-500/10 dark:border-[var(--border)] rounded-lg p-3 text-center text-sm text-yellow-700 dark:text-yellow-200 h-full flex items-center justify-center">
                                       ⚠️ Não respondido
                                     </div>
                                   ) : pergunta.tipo === 'textarea' ? (
@@ -900,14 +900,14 @@ export default function ModalQuestionarioProcesso({
                                       {String(resposta)}
                                     </div>
                                   ) : pergunta.tipo === 'select' ? (
-                                    <div className="bg-blue-100 text-blue-800 px-3 py-2 rounded-lg text-sm font-medium inline-block">
+                                    <div className="bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-[var(--fg)] px-3 py-2 rounded-lg text-sm font-medium inline-block">
                                       {String(resposta)}
                                     </div>
                                   ) : pergunta.tipo === 'boolean' ? (
                                     <div
                                       className={`${String(resposta) === 'Sim'
-                                        ? 'bg-green-100 text-green-800'
-                                        : 'bg-red-100 text-red-800'} px-3 py-2 rounded-lg text-sm font-medium inline-block`}
+                                        ? 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-[var(--fg)]'
+                                        : 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-[var(--fg)]'} px-3 py-2 rounded-lg text-sm font-medium inline-block`}
                                     >
                                       {String(resposta)}
                                     </div>
@@ -927,7 +927,7 @@ export default function ModalQuestionarioProcesso({
                 );
               })}
 
-              <hr className="my-6 border-gray-300" />
+              <hr className="my-6 border-gray-300 dark:border-[var(--border)]" />
             </div>
           )}
 
@@ -949,8 +949,8 @@ export default function ModalQuestionarioProcesso({
                 <Eye size={18} className="text-blue-500" />
                 Respostas do Questionário (somente leitura)
               </h4>
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200 shadow-sm">
-                <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-200">
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-[var(--muted)] dark:to-[var(--card)] rounded-xl p-6 border-2 border-blue-200 dark:border-[var(--border)] shadow-sm">
+                <div className="flex items-center gap-3 mb-6 pb-4 border-b border-blue-200 dark:border-[var(--border)]">
                   <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${departamento.cor} flex items-center justify-center`}>
                     {(() => {
                       const Icone = getDepartamentoIcone(departamento.icone);
@@ -992,7 +992,7 @@ export default function ModalQuestionarioProcesso({
                           return (
                             <div
                               key={pergunta.id}
-                              className="bg-white rounded-lg p-4 border border-blue-100 shadow-sm h-full flex flex-col"
+                              className="bg-white dark:bg-[var(--card)] rounded-lg p-4 border border-blue-100 dark:border-[var(--border)] shadow-sm h-full flex flex-col"
                             >
                               <label className="block text-sm font-semibold text-gray-700 mb-2">
                                 {pergunta.label}
@@ -1005,7 +1005,7 @@ export default function ModalQuestionarioProcesso({
                                 {pergunta.tipo === 'file' ? (
                                   renderCampo(pergunta)
                                 ) : !resposta ? (
-                                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center text-sm text-yellow-700 h-full flex items-center justify-center">
+                                  <div className="bg-yellow-50 border border-yellow-200 dark:bg-yellow-500/10 dark:border-[var(--border)] rounded-lg p-3 text-center text-sm text-yellow-700 dark:text-yellow-200 h-full flex items-center justify-center">
                                     ⚠️ Não respondido
                                   </div>
                                 ) : pergunta.tipo === 'textarea' ? (
@@ -1013,14 +1013,14 @@ export default function ModalQuestionarioProcesso({
                                     {String(resposta)}
                                   </div>
                                 ) : pergunta.tipo === 'select' ? (
-                                  <div className="bg-blue-100 text-blue-800 px-3 py-2 rounded-lg text-sm font-medium inline-block">
+                                  <div className="bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-[var(--fg)] px-3 py-2 rounded-lg text-sm font-medium inline-block">
                                     {String(resposta)}
                                   </div>
                                 ) : pergunta.tipo === 'boolean' ? (
                                   <div
-                                    className={`${String(resposta) === 'Sim'
-                                      ? 'bg-green-100 text-green-800'
-                                      : 'bg-red-100 text-red-800'} px-3 py-2 rounded-lg text-sm font-medium inline-block`}
+                                      className={`${String(resposta) === 'Sim'
+                                      ? 'bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-[var(--fg)]'
+                                      : 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-[var(--fg)]'} px-3 py-2 rounded-lg text-sm font-medium inline-block`}
                                   >
                                     {String(resposta)}
                                   </div>

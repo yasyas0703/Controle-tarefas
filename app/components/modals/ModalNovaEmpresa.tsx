@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, ArrowRight, Edit, Plus, ClipboardList, Mail, Phone } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { Empresa } from '@/app/types';
 import ModalBase from './ModalBase';
+import { api } from '@/app/utils/api';
 // (Telefone/email inputs ainda não presentes aqui; removendo imports não utilizados)
 
 interface ModalNovaEmpresaProps {
@@ -15,7 +16,9 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
   const { departamentos, usuarioLogado, criarProcesso, empresas, criarTemplate, mostrarAlerta } = useSistema();
   
   const [nomeEmpresa, setNomeEmpresa] = useState("");
-  const [cliente, setCliente] = useState("");
+  const [responsavelId, setResponsavelId] = useState<number | null>(null);
+  const [usuariosResponsaveis, setUsuariosResponsaveis] = useState<Array<{ id: number; nome: string; email: string; role: string; ativo?: boolean }>>([]);
+  const [erroUsuariosResponsaveis, setErroUsuariosResponsaveis] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [telefone, setTelefone] = useState("");
   const [nomeServico, setNomeServico] = useState("");
@@ -26,6 +29,30 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
   const [editandoPergunta, setEditandoPergunta] = useState<any>(null);
   const [fluxoDepartamentos, setFluxoDepartamentos] = useState<number[]>([]);
   const [salvarComoTemplateChecked, setSalvarComoTemplateChecked] = useState(false);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!usuarioLogado) return;
+    if (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'gerente') return;
+
+    setErroUsuariosResponsaveis(null);
+
+    (async () => {
+      try {
+        const data = await api.getUsuariosResponsaveis();
+        if (!ativo) return;
+        setUsuariosResponsaveis(Array.isArray(data) ? data : []);
+      } catch {
+        if (!ativo) return;
+        setUsuariosResponsaveis([]);
+        setErroUsuariosResponsaveis('Não foi possível carregar os usuários responsáveis.');
+      }
+    })();
+
+    return () => {
+      ativo = false;
+    };
+  }, [usuarioLogado]);
 
   const tiposCampo = [
     { valor: "text", label: "Texto Simples" },
@@ -131,6 +158,11 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (usuarioLogado?.role === 'usuario') {
+      void mostrarAlerta('Sem permissão', 'Usuário normal não pode criar solicitação personalizada.', 'aviso');
+      return;
+    }
+
     if (!empresaSelecionada) {
       void mostrarAlerta('Atenção', 'Selecione uma empresa.', 'aviso');
       return;
@@ -141,28 +173,42 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
       return;
     }
 
+    if (typeof responsavelId !== 'number') {
+      void mostrarAlerta('Atenção', 'Selecione o responsável (usuário).', 'aviso');
+      return;
+    }
+
     if (fluxoDepartamentos.length === 0) {
       void mostrarAlerta('Atenção', 'Adicione pelo menos um departamento ao fluxo!', 'aviso');
       return;
     }
 
     // Gerente só pode criar solicitações para o próprio departamento
-    if (usuarioLogado?.role === 'gerente' && usuarioLogado.departamento_id) {
+    // (Usuário normal já retorna acima.)
+    if (usuarioLogado?.role === 'gerente') {
+      const deptUsuario = (usuarioLogado as any).departamentoId ?? (usuarioLogado as any).departamento_id;
+      const deptUsuarioNum = Number.isFinite(Number(deptUsuario)) ? Number(deptUsuario) : undefined;
+      if (typeof deptUsuarioNum !== 'number') {
+        void mostrarAlerta('Erro', 'Usuário sem departamento definido.', 'erro');
+        return;
+      }
       const primeiroDepartamento = fluxoDepartamentos[0];
-      if (primeiroDepartamento !== usuarioLogado.departamento_id) {
-        void mostrarAlerta('Erro', 'Gerente só pode criar solicitações para seu próprio departamento.', 'erro');
+      if (primeiroDepartamento !== deptUsuarioNum) {
+        void mostrarAlerta('Erro', 'Você só pode criar solicitações para seu próprio departamento.', 'erro');
         return;
       }
     }
 
     try {
+      const responsavelSelecionado = usuariosResponsaveis.find((u) => u.id === responsavelId) ?? null;
       await criarProcesso({
         nome: nomeServico,
         nomeServico,
         nomeEmpresa: nomeEmpresa || empresaSelecionada?.razao_social || empresaSelecionada?.apelido || 'Nova Empresa',
         empresa: nomeEmpresa || empresaSelecionada?.razao_social || empresaSelecionada?.apelido || 'Nova Empresa',
         empresaId: empresaSelecionada.id,
-        cliente,
+        cliente: (responsavelSelecionado?.nome || '').trim(),
+        responsavelId,
         email,
         telefone,
         fluxoDepartamentos,
@@ -249,15 +295,45 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Responsável
+                  Responsável (usuário)
                 </label>
-                <input
-                  type="text"
-                  value={cliente}
-                  onChange={(e) => setCliente(e.target.value)}
+                <select
+                  value={responsavelId ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) {
+                      setResponsavelId(null);
+                      return;
+                    }
+                    const id = Number(v);
+                    setResponsavelId(Number.isFinite(id) ? id : null);
+                  }}
                   className="w-full px-4 py-3 border border-gray-300 dark:border-[var(--border)] rounded-xl focus:ring-2 focus:ring-cyan-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
-                  placeholder="Nome do responsável"
-                />
+                  required={usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente'}
+                  disabled={usuarioLogado?.role === 'usuario'}
+                >
+                  <option value="">Selecione um usuário</option>
+                  {usuariosResponsaveis.map((u) => (
+                    <option key={u.id} value={u.id} disabled={u.ativo === false}>
+                      {u.nome} ({u.email}){u.ativo === false ? ' (inativo)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {usuarioLogado?.role === 'usuario' && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    Usuário normal não pode criar solicitação personalizada.
+                  </p>
+                )}
+                {erroUsuariosResponsaveis && (
+                  <p className="text-xs text-red-600 mt-2">
+                    {erroUsuariosResponsaveis}
+                  </p>
+                )}
+                {(usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente') && usuariosResponsaveis.length === 0 && !erroUsuariosResponsaveis && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    Nenhum usuário encontrado para seleção.
+                  </p>
+                )}
               </div>
             </div>
 

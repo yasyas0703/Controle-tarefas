@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 
 interface ModalBaseProps {
@@ -39,24 +39,34 @@ export default function ModalBase({
   dialogClassName,
   initialFocusSelector,
 }: ModalBaseProps) {
+  const [mounted, setMounted] = useState(false);
+  const [container, setContainer] = useState<HTMLElement | null>(null);
   const mountRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const lastFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef<(() => void) | null>(null);
 
-  const container = useMemo(() => {
-    if (typeof document === 'undefined') return null;
-    const el = document.createElement('div');
-    el.setAttribute('data-portal', 'modal');
-    return el;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!container || typeof document === 'undefined') return;
-    mountRef.current = container;
-    document.body.appendChild(container);
+    if (!mounted || typeof document === 'undefined') return;
+
+    const el = document.createElement('div');
+    el.setAttribute('data-portal', 'modal');
+    mountRef.current = el;
+    setContainer(el);
+    document.body.appendChild(el);
+
     return () => {
       const node = mountRef.current;
       mountRef.current = null;
+      setContainer(null);
       if (!node) return;
 
       // Em dev (React 18 StrictMode/Fast Refresh) o cleanup pode rodar mais de uma vez.
@@ -69,26 +79,28 @@ export default function ModalBase({
         // no-op: nó já foi removido por outro ciclo
       }
     };
-  }, [container]);
+  }, [mounted]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!mounted || !isOpen || typeof document === 'undefined') return;
     lastFocusedRef.current = (document.activeElement as HTMLElement) || null;
     const dialog = dialogRef.current;
+    if (!dialog) return;
 
     const focusTarget = initialFocusSelector
       ? dialog?.querySelector(initialFocusSelector)
       : dialog?.querySelector('[autofocus]');
 
-    const first = (focusTarget as HTMLElement) || getFocusableElements(dialog as HTMLElement)[0];
+    const first = (focusTarget as HTMLElement) || getFocusableElements(dialog)[0];
     first?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current?.();
       } else if (e.key === 'Tab') {
-        const focusables = getFocusableElements(dialog as HTMLElement);
+        if (!dialog) return;
+        const focusables = getFocusableElements(dialog);
         if (focusables.length === 0) return;
         const currentIndex = focusables.indexOf(document.activeElement as HTMLElement);
         let nextIndex = currentIndex;
@@ -110,13 +122,15 @@ export default function ModalBase({
       document.body.style.overflow = '';
       lastFocusedRef.current?.focus?.();
     };
-  }, [isOpen, initialFocusSelector, onClose]);
+  }, [mounted, isOpen, initialFocusSelector]);
 
   const handleBackdropClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose();
-  }, [onClose]);
+    if (e.target === e.currentTarget) onCloseRef.current?.();
+  }, []);
 
-  if (!isOpen || !container) return null;
+  // Importante: durante SSR o modal não existe; no primeiro render do client também retornamos null.
+  // Só renderizamos portal após mount para evitar erro de hidratação.
+  if (!mounted || !isOpen || !container) return null;
 
   const backdropStyle: React.CSSProperties = { zIndex };
   const dialogStyle: React.CSSProperties = { zIndex: zIndex + 1 };

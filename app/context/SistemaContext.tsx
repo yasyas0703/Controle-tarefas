@@ -1,9 +1,19 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Departamento, Processo, Tag, Usuario, Notificacao, Empresa, Template } from '@/app/types';
 import type { TipoAlerta } from '@/app/components/modals/ModalAlerta';
 import { api } from '@/app/utils/api';
+import { getSupabaseBrowserClient } from '@/app/utils/supabaseBrowser';
+
+type RealtimeGroupStatus = 'disabled' | 'connecting' | 'connected' | 'fallback';
+
+type RealtimeInfo = {
+  enabled: boolean;
+  processos: RealtimeGroupStatus;
+  core: RealtimeGroupStatus;
+  notificacoes: RealtimeGroupStatus;
+};
 
 type ShowListarEmpresasState =
   | null
@@ -21,6 +31,7 @@ interface SistemaContextType {
   usuarios: Usuario[];
   notificacoes: Notificacao[];
   usuarioLogado: Usuario | null;
+  realtimeInfo: RealtimeInfo;
 
   // Modals
   showNovaEmpresa: boolean;
@@ -75,6 +86,8 @@ interface SistemaContextType {
   removerNotificacao: (id: number) => void;
   marcarNotificacaoComoLida: (id: number) => Promise<void>;
   marcarTodasNotificacoesComoLidas: () => Promise<void>;
+  notificacoesNavegadorAtivas: boolean;
+  ativarNotificacoesNavegador: () => Promise<boolean>;
   mostrarAlerta: (titulo: string, mensagem: string, tipo?: TipoAlerta) => Promise<void>;
   mostrarConfirmacao: (config: {
     titulo: string;
@@ -130,6 +143,31 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [usuarioLogado, setUsuarioLogado] = useState<Usuario | null>(null);
+  const notificacoesRef = useRef<Notificacao[]>([]);
+  const realtimeProcessosTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const processosPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const processosRealtimeStatusRef = useRef<'idle' | 'subscribed' | 'error'>('idle');
+
+  const realtimeCoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const corePollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const coreRealtimeStatusRef = useRef<'idle' | 'subscribed' | 'error'>('idle');
+  const realtimeNotificacoesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificacoesPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const notificacoesRealtimeStatusRef = useRef<'idle' | 'subscribed' | 'error'>('idle');
+  const [realtimeInfo, setRealtimeInfo] = useState<RealtimeInfo>({
+    enabled: false,
+    processos: 'disabled',
+    core: 'disabled',
+    notificacoes: 'disabled',
+  });
+  const [notificacoesNavegadorAtivas, setNotificacoesNavegadorAtivas] = useState<boolean>(() => {
+    try {
+      if (typeof window === 'undefined') return false;
+      return window.localStorage.getItem('notificacoesNavegadorAtivas') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // Estados de Modals
   const [showNovaEmpresa, setShowNovaEmpresa] = useState(false);
@@ -212,9 +250,66 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     setNotificacoes(prev => [novaNotificacao, ...prev]);
   }, []);
 
+  const ativarNotificacoesNavegador = useCallback(async () => {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') {
+      adicionarNotificacao('Seu navegador não suporta notificações', 'erro');
+      return false;
+    }
+
+    if (Notification.permission === 'granted') {
+      try {
+        window.localStorage.setItem('notificacoesNavegadorAtivas', 'true');
+      } catch {
+        // noop
+      }
+      setNotificacoesNavegadorAtivas(true);
+      return true;
+    }
+
+    if (Notification.permission === 'denied') {
+      adicionarNotificacao('Notificações bloqueadas no navegador. Libere nas permissões do site.', 'erro');
+      return false;
+    }
+
+    const perm = await Notification.requestPermission();
+    const ok = perm === 'granted';
+    try {
+      window.localStorage.setItem('notificacoesNavegadorAtivas', ok ? 'true' : 'false');
+    } catch {
+      // noop
+    }
+    setNotificacoesNavegadorAtivas(ok);
+    if (!ok) {
+      adicionarNotificacao('Permissão de notificação não concedida', 'info');
+    }
+    return ok;
+  }, [adicionarNotificacao]);
+
+  useEffect(() => {
+    notificacoesRef.current = notificacoes;
+  }, [notificacoes]);
+
   const removerNotificacao = useCallback((id: number) => {
-    setNotificacoes(prev => prev.filter(n => n.id !== id));
-  }, []);
+    const notif = notificacoes.find(n => n.id === id);
+
+    // Se for local, só remove do estado
+    if (!notif || notif.origem === 'local') {
+      setNotificacoes(prev => prev.filter(n => n.id !== id));
+      return;
+    }
+
+    // Se for do banco, apaga no backend e só então remove do estado.
+    // (Se falhar, mantemos no UI e avisamos.)
+    api
+      .excluirNotificacao(id)
+      .then(() => {
+        setNotificacoes(prev => prev.filter(n => n.id !== id));
+      })
+      .catch((error: any) => {
+        console.error('Erro ao excluir notificação:', error);
+        adicionarNotificacao(error?.message || 'Erro ao excluir notificação', 'erro');
+      });
+  }, [notificacoes, adicionarNotificacao]);
 
   function normalizarNotificacoesDoBackend(dados: any): Notificacao[] {
     const arr = Array.isArray(dados) ? dados : [];
@@ -300,55 +395,487 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!usuarioLogado) return;
 
+    let cancelled = false;
+
     async function carregarDados() {
       try {
-        // Carregar departamentos
-        const departamentosData = await api.getDepartamentos();
-        setDepartamentos(departamentosData || []);
+        // Carrega o essencial em paralelo (reduz tempo de bloqueio inicial)
+        const [departamentosRes, tagsRes, processosRes] = await Promise.allSettled([
+          api.getDepartamentos(),
+          api.getTags(),
+          api.getProcessos(),
+        ]);
 
-        // Carregar tags
-        const tagsData = await api.getTags();
-        setTags(tagsData || []);
+        if (cancelled) return;
 
-        // Carregar processos
-        const processosData = await api.getProcessos();
-        setProcessos(processosData || []);
-
-        // Carregar empresas (todas, sem filtro)
-        const empresasData = await api.getEmpresas();
-        console.log('📊 Empresas carregadas:', empresasData?.length || 0, empresasData);
-        setEmpresas(empresasData || []);
-
-        // Carregar templates
-        const templatesData = await api.getTemplates();
-        setTemplates(templatesData || []);
-
-        // Carregar usuários (se admin)
-        if (usuarioLogado.role === 'admin') {
-          const usuariosData = await api.getUsuarios();
-          setUsuarios(usuariosData || []);
+        if (departamentosRes.status === 'fulfilled') {
+          setDepartamentos(departamentosRes.value || []);
         }
 
-        // Carregar notificações
-        try {
-          const notificacoesData = await api.getNotificacoes();
-          const normalizadas = normalizarNotificacoesDoBackend(notificacoesData);
-          setNotificacoes(prev => {
-            const locais = prev.filter(n => n.origem === 'local');
-            return [...normalizadas, ...locais];
-          });
-        } catch (error) {
-          console.error('Erro ao carregar notificações:', error);
-          // Mantém locais, mas não zera tudo
-          setNotificacoes(prev => prev.filter(n => n.origem === 'local'));
+        if (tagsRes.status === 'fulfilled') {
+          setTags(tagsRes.value || []);
+        }
+
+        if (processosRes.status === 'fulfilled') {
+          setProcessos(processosRes.value || []);
+        }
+
+        // Carrega notificações sem bloquear a tela
+        void (async () => {
+          try {
+            const notificacoesData = await api.getNotificacoes();
+            if (cancelled) return;
+            const normalizadas = normalizarNotificacoesDoBackend(notificacoesData);
+            setNotificacoes(prev => {
+              const locais = prev.filter(n => n.origem === 'local');
+              return [...normalizadas, ...locais];
+            });
+          } catch (error) {
+            if (cancelled) return;
+            console.error('Erro ao carregar notificações:', error);
+            // Mantém locais, mas não zera tudo
+            setNotificacoes(prev => prev.filter(n => n.origem === 'local'));
+          }
+        })();
+
+        // Carrega itens mais pesados depois (não bloqueia o primeiro render)
+        void (async () => {
+          const [empresasRes, templatesRes] = await Promise.allSettled([
+            api.getEmpresas(),
+            api.getTemplates(),
+          ]);
+
+          if (cancelled) return;
+
+          if (empresasRes.status === 'fulfilled') {
+            if (process.env.NODE_ENV !== 'production') {
+              try {
+                console.log('📊 Empresas carregadas:', empresasRes.value?.length || 0);
+              } catch {
+                // ignore
+              }
+            }
+            setEmpresas(empresasRes.value || []);
+          }
+
+          if (templatesRes.status === 'fulfilled') {
+            setTemplates(templatesRes.value || []);
+          }
+        })();
+
+        // Admin: usuários também em background
+        if (usuarioLogado.role === 'admin') {
+          void (async () => {
+            const usuariosRes = await Promise.allSettled([api.getUsuarios()]);
+            if (cancelled) return;
+            const r = usuariosRes[0];
+            if (r.status === 'fulfilled') setUsuarios(r.value || []);
+          })();
         }
       } catch (error) {
         console.error('Erro ao carregar dados:', error);
       }
     }
 
-    carregarDados();
+    void carregarDados();
+
+    return () => {
+      cancelled = true;
+    };
   }, [usuarioLogado]);
+
+  // Realtime: quando outro usuário mexer em um card (Processo), atualiza a lista automaticamente.
+  // Implementação intencionalmente simples: ao receber qualquer evento na tabela, faz um refresh via API.
+  // (Podemos evoluir para aplicar patch incremental sem refetch depois.)
+  useEffect(() => {
+    if (!usuarioLogado) return;
+
+    const supabase = getSupabaseBrowserClient();
+    setRealtimeInfo(prev => ({
+      ...prev,
+      enabled: !!supabase,
+      processos: supabase ? 'connecting' : 'fallback',
+    }));
+    const startPolling = () => {
+      if (processosPollingRef.current) return;
+      processosPollingRef.current = setInterval(() => {
+        void refreshProcessos();
+      }, 5000);
+      setRealtimeInfo(prev => ({ ...prev, processos: 'fallback' }));
+      if (process.env.NODE_ENV !== 'production') {
+        try {
+          console.log('[realtime] fallback polling ON (5s)');
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const stopPolling = () => {
+      if (!processosPollingRef.current) return;
+      clearInterval(processosPollingRef.current);
+      processosPollingRef.current = null;
+      if (process.env.NODE_ENV !== 'production') {
+        try {
+          console.log('[realtime] fallback polling OFF');
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    let ativo = true;
+
+    const refreshProcessos = async () => {
+      try {
+        const processosData = await api.getProcessos();
+        if (!ativo) return;
+        setProcessos(processosData || []);
+      } catch {
+        // silencioso: se falhar momentaneamente, mantém estado atual
+      }
+    };
+
+    const scheduleRefresh = () => {
+      if (realtimeProcessosTimerRef.current) return;
+      realtimeProcessosTimerRef.current = setTimeout(() => {
+        realtimeProcessosTimerRef.current = null;
+        void refreshProcessos();
+      }, 250);
+    };
+
+    // Se não há config do Supabase no browser, ativa polling e pronto.
+    if (!supabase) {
+      startPolling();
+      return () => {
+        ativo = false;
+        stopPolling();
+      };
+    }
+
+    processosRealtimeStatusRef.current = 'idle';
+
+    const channel = supabase
+      .channel('realtime-processos')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Processo' }, (payload) => {
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            console.log('[realtime] Processo change', payload?.eventType);
+          } catch {
+            // ignore
+          }
+        }
+        scheduleRefresh();
+      })
+      // O board também depende de outras tabelas (tags/comentários/histórico).
+      // Ao mudar qualquer uma delas, fazemos refresh da lista.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'HistoricoFluxo' }, () => scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'HistoricoEvento' }, () => scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ProcessoTag' }, () => scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Comentario' }, () => scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Documento' }, () => scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Notificacao' }, () => scheduleRefresh())
+      .subscribe((status) => {
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            console.log('[realtime] status', status);
+          } catch {
+            // ignore
+          }
+        }
+
+        if (status === 'SUBSCRIBED') {
+          processosRealtimeStatusRef.current = 'subscribed';
+          setRealtimeInfo(prev => ({ ...prev, enabled: true, processos: 'connected' }));
+          stopPolling();
+          // Faz um refresh ao conectar, pra sincronizar.
+          scheduleRefresh();
+          return;
+        }
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          processosRealtimeStatusRef.current = 'error';
+          setRealtimeInfo(prev => ({ ...prev, enabled: true, processos: 'fallback' }));
+          startPolling();
+        }
+      });
+
+    // Se em alguns segundos não conectar, habilita polling como fallback.
+    const fallbackTimer = setTimeout(() => {
+      if (processosRealtimeStatusRef.current !== 'subscribed') startPolling();
+    }, 5000);
+
+    return () => {
+      ativo = false;
+      clearTimeout(fallbackTimer);
+      if (realtimeProcessosTimerRef.current) {
+        clearTimeout(realtimeProcessosTimerRef.current);
+        realtimeProcessosTimerRef.current = null;
+      }
+      stopPolling();
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [usuarioLogado, setProcessos]);
+
+  // Realtime (core): departamentos/tags/empresas/templates (ex.: deletar dept precisa refletir sem F5)
+  useEffect(() => {
+    if (!usuarioLogado) return;
+
+    const supabase = getSupabaseBrowserClient();
+
+    setRealtimeInfo(prev => ({
+      ...prev,
+      enabled: !!supabase,
+      core: supabase ? 'connecting' : 'fallback',
+    }));
+
+    let ativo = true;
+
+    const refreshCore = async () => {
+      try {
+        const [departamentosData, tagsData, empresasData, templatesData] = await Promise.all([
+          api.getDepartamentos().catch(() => []),
+          api.getTags().catch(() => []),
+          api.getEmpresas().catch(() => []),
+          api.getTemplates().catch(() => []),
+        ]);
+        if (!ativo) return;
+        setDepartamentos(departamentosData || []);
+        setTags(tagsData || []);
+        setEmpresas(empresasData || []);
+        setTemplates(templatesData || []);
+      } catch {
+        // silencioso
+      }
+    };
+
+    const scheduleRefreshCore = () => {
+      if (realtimeCoreTimerRef.current) return;
+      realtimeCoreTimerRef.current = setTimeout(() => {
+        realtimeCoreTimerRef.current = null;
+        void refreshCore();
+      }, 250);
+    };
+
+    const startCorePolling = () => {
+      if (corePollingRef.current) return;
+      corePollingRef.current = setInterval(() => {
+        void refreshCore();
+      }, 8000);
+      setRealtimeInfo(prev => ({ ...prev, core: 'fallback' }));
+      if (process.env.NODE_ENV !== 'production') {
+        try {
+          console.log('[realtime] core fallback polling ON (8s)');
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const stopCorePolling = () => {
+      if (!corePollingRef.current) return;
+      clearInterval(corePollingRef.current);
+      corePollingRef.current = null;
+    };
+
+    // Sem supabase no browser: polling como fallback.
+    if (!supabase) {
+      startCorePolling();
+      return () => {
+        ativo = false;
+        stopCorePolling();
+      };
+    }
+
+    coreRealtimeStatusRef.current = 'idle';
+
+    const channel = supabase
+      .channel('realtime-core')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Departamento' }, () => scheduleRefreshCore())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Empresa' }, () => scheduleRefreshCore())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Tag' }, () => scheduleRefreshCore())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Template' }, () => scheduleRefreshCore())
+      .subscribe((status) => {
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            console.log('[realtime] core status', status);
+          } catch {
+            // ignore
+          }
+        }
+
+        if (status === 'SUBSCRIBED') {
+          coreRealtimeStatusRef.current = 'subscribed';
+          setRealtimeInfo(prev => ({ ...prev, enabled: true, core: 'connected' }));
+          stopCorePolling();
+          scheduleRefreshCore();
+          return;
+        }
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          coreRealtimeStatusRef.current = 'error';
+          setRealtimeInfo(prev => ({ ...prev, enabled: true, core: 'fallback' }));
+          startCorePolling();
+        }
+      });
+
+    const fallbackTimer = setTimeout(() => {
+      if (coreRealtimeStatusRef.current !== 'subscribed') startCorePolling();
+    }, 5000);
+
+    return () => {
+      ativo = false;
+      clearTimeout(fallbackTimer);
+      if (realtimeCoreTimerRef.current) {
+        clearTimeout(realtimeCoreTimerRef.current);
+        realtimeCoreTimerRef.current = null;
+      }
+      stopCorePolling();
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [usuarioLogado, setDepartamentos, setEmpresas, setTags, setTemplates]);
+
+  // Notificações: realtime (Supabase) + fallback polling.
+  useEffect(() => {
+    if (!usuarioLogado) {
+      setRealtimeInfo(prev => ({ ...prev, notificacoes: 'disabled' }));
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+    setRealtimeInfo(prev => ({
+      ...prev,
+      enabled: !!supabase,
+      notificacoes: supabase ? 'connecting' : 'fallback',
+    }));
+
+    let ativo = true;
+    const intervalMs = 15000;
+
+    const stopPolling = () => {
+      if (!notificacoesPollingRef.current) return;
+      clearInterval(notificacoesPollingRef.current);
+      notificacoesPollingRef.current = null;
+    };
+
+    const startPolling = () => {
+      if (notificacoesPollingRef.current) return;
+      notificacoesPollingRef.current = setInterval(() => {
+        void tick();
+      }, intervalMs);
+      setRealtimeInfo(prev => ({ ...prev, notificacoes: 'fallback' }));
+    };
+
+    const tick = async () => {
+      try {
+        const notificacoesData = await api.getNotificacoes();
+        if (!ativo) return;
+
+        const normalizadas = normalizarNotificacoesDoBackend(notificacoesData);
+
+        // Detectar novas notificações do banco (ids que ainda não existiam no estado)
+        const prevDbIds = new Set(
+          notificacoesRef.current
+            .filter(n => n.origem === 'db')
+            .map(n => n.id)
+        );
+        const novas = normalizadas.filter(n => !prevDbIds.has(n.id) && !n.lida);
+
+        setNotificacoes(prev => {
+          const locais = prev.filter(n => n.origem === 'local');
+          return [...normalizadas, ...locais];
+        });
+
+        // Notificação do navegador (apenas enquanto o Chrome estiver aberto)
+        const enabled = notificacoesNavegadorAtivas;
+        if (enabled && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          for (const n of novas) {
+            try {
+              new Notification('Sistema - Nova notificação', {
+                body: String(n.mensagem ?? ''),
+              });
+            } catch {
+              // se falhar, ignora
+            }
+          }
+        }
+      } catch {
+        // Silencioso: não queremos poluir o usuário por erro intermitente
+      }
+    };
+
+    const scheduleTick = () => {
+      if (realtimeNotificacoesTimerRef.current) return;
+      realtimeNotificacoesTimerRef.current = setTimeout(() => {
+        realtimeNotificacoesTimerRef.current = null;
+        void tick();
+      }, 250);
+    };
+
+    // roda uma vez rápido
+    void tick();
+
+    // Sem supabase no browser: polling como fallback.
+    if (!supabase) {
+      startPolling();
+      return () => {
+        ativo = false;
+        stopPolling();
+      };
+    }
+
+    notificacoesRealtimeStatusRef.current = 'idle';
+
+    const channel = supabase
+      .channel(`realtime-notificacoes-${usuarioLogado.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'Notificacao', filter: `usuarioId=eq.${usuarioLogado.id}` },
+        () => scheduleTick()
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          notificacoesRealtimeStatusRef.current = 'subscribed';
+          setRealtimeInfo(prev => ({ ...prev, enabled: true, notificacoes: 'connected' }));
+          stopPolling();
+          scheduleTick();
+          return;
+        }
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          notificacoesRealtimeStatusRef.current = 'error';
+          setRealtimeInfo(prev => ({ ...prev, enabled: true, notificacoes: 'fallback' }));
+          startPolling();
+        }
+      });
+
+    const fallbackTimer = setTimeout(() => {
+      if (notificacoesRealtimeStatusRef.current !== 'subscribed') startPolling();
+    }, 5000);
+
+    return () => {
+      ativo = false;
+      clearTimeout(fallbackTimer);
+      if (realtimeNotificacoesTimerRef.current) {
+        clearTimeout(realtimeNotificacoesTimerRef.current);
+        realtimeNotificacoesTimerRef.current = null;
+      }
+      stopPolling();
+      try {
+        supabase.removeChannel(channel);
+      } catch {
+        // ignore
+      }
+    };
+  }, [usuarioLogado, notificacoesNavegadorAtivas]);
 
   useEffect(() => {
     try {
@@ -622,6 +1149,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     usuarios,
     notificacoes,
     usuarioLogado,
+    realtimeInfo,
 
     showNovaEmpresa,
     showQuestionario,
@@ -674,6 +1202,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     removerNotificacao,
     marcarNotificacaoComoLida,
     marcarTodasNotificacoesComoLidas,
+    notificacoesNavegadorAtivas,
+    ativarNotificacoesNavegador,
     mostrarAlerta,
     mostrarConfirmacao,
     criarEmpresa,

@@ -35,6 +35,14 @@ export async function GET(request: NextRequest) {
 // POST /api/notificacoes - Criar notificação (geralmente usado pelo sistema)
 export async function POST(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    const roleUpper = String((user as any).role || '').toUpperCase();
+    if (roleUpper !== 'ADMIN') {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
     const data = await request.json();
     
     const notificacao = await prisma.notificacao.create({

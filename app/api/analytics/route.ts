@@ -5,6 +5,10 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const fetchCache = 'force-no-store';
 
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 // GET /api/analytics
 export async function GET(request: NextRequest) {
   try {
@@ -49,6 +53,19 @@ export async function GET(request: NextRequest) {
         },
       },
     });
+
+    // Processos criados no período e finalizados no período (taxa não passa de 100%)
+    const processosFinalizadosCriadosPeriodo = await prisma.processo.count({
+      where: {
+        status: 'FINALIZADO',
+        dataCriacao: {
+          gte: dataInicio,
+        },
+        dataFinalizacao: {
+          gte: dataInicio,
+        },
+      },
+    });
     
     // Tempo médio por departamento
     const historicosFluxo = await prisma.historicoFluxo.findMany({
@@ -85,11 +102,17 @@ export async function GET(request: NextRequest) {
         totalProcessos: tempos.length,
       })
     );
+
+    const todosTempos = Object.values(tempoPorDepartamento).flat();
+    const tempoMedioTotalDias =
+      todosTempos.length > 0
+        ? todosTempos.reduce((a, b) => a + b, 0) / todosTempos.length
+        : 0;
     
     // Taxa de conclusão
     const taxaConclusao =
       processosCriadosPeriodo > 0
-        ? (processosFinalizadosPeriodo / processosCriadosPeriodo) * 100
+        ? (processosFinalizadosCriadosPeriodo / processosCriadosPeriodo) * 100
         : 0;
     
     return NextResponse.json({
@@ -104,8 +127,10 @@ export async function GET(request: NextRequest) {
       })),
       processosCriadosPeriodo,
       processosFinalizadosPeriodo,
+      processosFinalizadosCriadosPeriodo,
       tempoMedioPorDepartamento,
-      taxaConclusao: Math.round(taxaConclusao * 100) / 100,
+      tempoMedioTotalDias: round2(tempoMedioTotalDias),
+      taxaConclusao: round2(taxaConclusao),
       periodo: periodoDias,
     });
   } catch (error) {

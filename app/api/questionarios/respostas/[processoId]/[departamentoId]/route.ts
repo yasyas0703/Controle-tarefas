@@ -3,7 +3,6 @@ import { prisma } from '@/app/utils/prisma';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/questionarios/respostas/:processoId/:departamentoId
 export async function GET(
   request: NextRequest,
   { params }: { params: { processoId: string; departamentoId: string } }

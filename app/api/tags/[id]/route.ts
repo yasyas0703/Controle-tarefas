@@ -13,7 +13,7 @@ export async function PUT(
     const { user, error } = await requireAuth(request);
     if (!user) return error;
 
-    if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
+    if (!requireRole(user, ['ADMIN', 'GERENTE', 'USUARIO'])) {
       return NextResponse.json({ error: 'Sem permissão para editar tags' }, { status: 403 });
     }
 
@@ -53,7 +53,7 @@ export async function DELETE(
     const { user, error } = await requireAuth(request);
     if (!user) return error;
 
-    if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
+    if (!requireRole(user, ['ADMIN', 'GERENTE', 'USUARIO'])) {
       return NextResponse.json({ error: 'Sem permissão para excluir tags' }, { status: 403 });
     }
 
