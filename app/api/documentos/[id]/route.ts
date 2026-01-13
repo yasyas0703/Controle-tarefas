@@ -4,6 +4,8 @@ import { deleteFile } from '@/app/utils/supabase';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 
 // DELETE /api/documentos/:id
 export async function DELETE(

@@ -3,6 +3,8 @@ import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 
 // GET /api/notificacoes
 export async function GET(request: NextRequest) {

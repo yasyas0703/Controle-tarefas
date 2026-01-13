@@ -4,6 +4,7 @@ import { verifyPassword, generateToken } from '@/app/utils/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 export const fetchCache = 'force-no-store';
 
 export async function POST(request: NextRequest) {

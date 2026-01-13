@@ -4,6 +4,8 @@ import { uploadFile, deleteFile } from '@/app/utils/supabase';
 import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 
 function jsonBigInt(data: unknown, init?: { status?: number }) {
   return new NextResponse(

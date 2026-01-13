@@ -5,6 +5,8 @@ import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 import { Role } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 
 // GET /api/usuarios
 export async function GET(request: NextRequest) {

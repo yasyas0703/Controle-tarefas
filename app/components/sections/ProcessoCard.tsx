@@ -179,8 +179,8 @@ export default function ProcessoCard({
               title="Comentários"
             >
               <MessageSquare size={10} />
-              {(processo.comentarios || []).length > 0 && (
-                <span className="text-[10px]">({(processo.comentarios || []).length})</span>
+              {(((processo as any).comentariosCount ?? (processo.comentarios || []).length) as number) > 0 && (
+                <span className="text-[10px]">({(processo as any).comentariosCount ?? (processo.comentarios || []).length})</span>
               )}
             </button>
           )}

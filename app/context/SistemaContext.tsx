@@ -999,14 +999,22 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           notasCriador: dados.notasCriador,
         });
 
-        // Recarregar processos para garantir que apareça no departamento
-        try {
-          const processosData = await api.getProcessos();
-          setProcessos(processosData || []);
-        } catch (err) {
-          // Se falhar ao recarregar, adiciona o novo processo manualmente
-          setProcessos(prev => [...prev, novo]);
-        }
+        // UI otimista: insere imediatamente (não bloqueia a experiência)
+        setProcessos(prev => {
+          const arr = Array.isArray(prev) ? prev : [];
+          if (arr.some(p => p.id === novo.id)) return arr;
+          return [novo, ...arr];
+        });
+
+        // Refresh em background (não aguarda) para sincronizar com o backend
+        void (async () => {
+          try {
+            const processosData = await api.getProcessos();
+            setProcessos(processosData || []);
+          } catch {
+            // silencioso
+          }
+        })();
         
         adicionarNotificacao('Processo criado com sucesso', 'sucesso');
         return novo;

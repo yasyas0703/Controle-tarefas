@@ -216,8 +216,8 @@ export default function ListaProcessos({
           const departamentoAtual = getDepartamentoAtual(processo);
           const nomeEmpresa = getNomeEmpresa(processo);
           const nomeServico = processo.nome || processo.nomeServico || 'Processo';
-          const comentariosCount = (processo.comentarios || []).length;
-          const documentosCount = (processo.documentos || []).length;
+          const comentariosCount = (processo as any).comentariosCount ?? (processo.comentarios || []).length;
+          const documentosCount = (processo as any).documentosCount ?? (processo.documentos || []).length;
           const podeAvancar = Boolean(onAvancar) && temPermissao(usuarioLogado, 'mover_processo', { departamentoAtual: processo.departamentoAtual });
           const podeFinalizar =
             Boolean(onFinalizar) && temPermissao(usuarioLogado, 'finalizar_processo', { departamentoAtual: processo.departamentoAtual, isUltimoDepartamento });

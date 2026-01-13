@@ -3,6 +3,7 @@ import { requireAuth } from '@/app/utils/routeAuth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const preferredRegion = 'gru1';
 
 function onlyDigits(value: string) {
   return String(value || '').replace(/\D/g, '');

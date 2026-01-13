@@ -40,8 +40,22 @@ export function verifyToken(token: string): TokenPayload {
 export async function getUserFromToken(token: string) {
   try {
     const payload = verifyToken(token);
+
+    // Cache simples por instância (útil em Vercel/Serverless quando o runtime está "quente")
+    // Evita bater no banco a cada request apenas para buscar o usuário.
+    const userId = payload.userId;
+    const cacheTtlMs = Number(process.env.AUTH_USER_CACHE_TTL_MS || 60_000);
+    const globalAny = globalThis as any;
+    globalAny.__authUserCache = globalAny.__authUserCache || new Map<number, { expiresAt: number; value: any }>();
+    const cache: Map<number, { expiresAt: number; value: any }> = globalAny.__authUserCache;
+
+    if (Number.isFinite(cacheTtlMs) && cacheTtlMs > 0) {
+      const hit = cache.get(userId);
+      if (hit && hit.expiresAt > Date.now()) return hit.value;
+    }
+
     const user = await prisma.usuario.findUnique({
-      where: { id: payload.userId },
+      where: { id: userId },
       select: {
         id: true,
         nome: true,
@@ -52,6 +66,10 @@ export async function getUserFromToken(token: string) {
         ativo: true,
       },
     });
+
+    if (Number.isFinite(cacheTtlMs) && cacheTtlMs > 0) {
+      cache.set(userId, { expiresAt: Date.now() + cacheTtlMs, value: user });
+    }
     return user;
   } catch {
     return null;

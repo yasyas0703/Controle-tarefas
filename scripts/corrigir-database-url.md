@@ -15,13 +15,13 @@ Você tem duas opções:
 Se você está usando `pooler.supabase.com`, use a porta **6543**:
 
 ```env
-DATABASE_URL="postgresql://postgres:SUA_SENHA@aws-1-sa-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+DATABASE_URL="postgresql://postgres:SUA_SENHA@aws-1-sa-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10"
 ```
 
 **Importante:**
 - Usuário deve ser apenas `postgres` (não `postgres.xxx`)
 - Porta deve ser `6543`
-- Adicione `?pgbouncer=true&connection_limit=1`
+- Adicione `?pgbouncer=true&connection_limit=10` (evite `1`, pois pode serializar requisições e deixar o app “em fila”)
 
 ### Opção 2: Usar Direct Connection
 
@@ -79,7 +79,7 @@ Se funcionar, você verá: ✅ Conexão estabelecida com sucesso!
 
 Para Connection Pooling (recomendado):
 ```env
-DATABASE_URL="postgresql://postgres:minhasenha123@aws-1-sa-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+DATABASE_URL="postgresql://postgres:minhasenha123@aws-1-sa-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=10"
 ```
 
 Para Direct Connection:

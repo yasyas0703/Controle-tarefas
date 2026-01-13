@@ -3,6 +3,8 @@ import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 
 function parseDateMaybe(value: any): Date | undefined {
   if (!value) return undefined;
@@ -51,38 +53,50 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const departamentoId = searchParams.get('departamentoId');
     const empresaId = searchParams.get('empresaId');
+    const liteParam = searchParams.get('lite');
+    const lite = liteParam === null ? true : !(liteParam === '0' || liteParam.toLowerCase() === 'false');
     
+    const baseWhere = {
+      ...(status && { status: toPrismaStatus(status) as any }),
+      ...(departamentoId && { departamentoAtual: parseInt(departamentoId) }),
+      ...(empresaId && { empresaId: parseInt(empresaId) }),
+    };
+
     const processos = await prisma.processo.findMany({
-      where: {
-        ...(status && { status: toPrismaStatus(status) as any }),
-        ...(departamentoId && { departamentoAtual: parseInt(departamentoId) }),
-        ...(empresaId && { empresaId: parseInt(empresaId) }),
-      },
-      include: {
-        empresa: true,
-        // `responsavel` é um campo recém-adicionado; em alguns ambientes o TS pode resolver um Prisma Client antigo.
-        // O cast mantém o runtime correto e evita erro de "excess property".
-        ...({ responsavel: { select: { id: true, nome: true, email: true } } } as any),
-        tags: {
-          include: { tag: true },
-        },
-        comentarios: {
-          include: { autor: { select: { id: true, nome: true, email: true } } },
-          orderBy: { criadoEm: 'desc' },
-          take: 5,
-        },
-        documentos: {
-          take: 5,
-        },
-        historicoEventos: {
-          include: { responsavel: { select: { id: true, nome: true } } },
-          orderBy: { data: 'desc' },
-          take: 10,
-        },
-        criadoPor: {
-          select: { id: true, nome: true, email: true },
-        },
-      },
+      where: baseWhere,
+      include: lite
+        ? {
+            empresa: true,
+            ...({ responsavel: { select: { id: true, nome: true, email: true } } } as any),
+            tags: { include: { tag: true } },
+            _count: { select: { comentarios: true, documentos: true } },
+            criadoPor: { select: { id: true, nome: true, email: true } },
+          }
+        : {
+            empresa: true,
+            // `responsavel` é um campo recém-adicionado; em alguns ambientes o TS pode resolver um Prisma Client antigo.
+            // O cast mantém o runtime correto e evita erro de "excess property".
+            ...({ responsavel: { select: { id: true, nome: true, email: true } } } as any),
+            tags: {
+              include: { tag: true },
+            },
+            comentarios: {
+              include: { autor: { select: { id: true, nome: true, email: true } } },
+              orderBy: { criadoEm: 'desc' },
+              take: 5,
+            },
+            documentos: {
+              take: 5,
+            },
+            historicoEventos: {
+              include: { responsavel: { select: { id: true, nome: true } } },
+              orderBy: { data: 'desc' },
+              take: 10,
+            },
+            criadoPor: {
+              select: { id: true, nome: true, email: true },
+            },
+          },
       orderBy: { dataCriacao: 'desc' },
     });
 
@@ -203,6 +217,7 @@ export async function POST(request: NextRequest) {
     const responsavelId = Number.isFinite(Number(responsavelIdRaw)) ? Number(responsavelIdRaw) : undefined;
 
     let responsavelNome: string | undefined;
+    let responsavelAtivoId: number | undefined;
 
     // Se veio responsavelId, valida se existe e está ativo
     if (typeof responsavelId === 'number') {
@@ -211,6 +226,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Responsável inválido' }, { status: 400 });
       }
       responsavelNome = resp.nome;
+      responsavelAtivoId = resp.id;
     }
 
     const processo = await prisma.processo.create({
@@ -247,9 +263,6 @@ export async function POST(request: NextRequest) {
 
     // Notificação persistida: somente gerentes do departamento e responsável (se definido)
     try {
-      const responsavelIdRaw = data?.responsavelId;
-      const responsavelId = Number.isFinite(Number(responsavelIdRaw)) ? Number(responsavelIdRaw) : undefined;
-
       // gerentes do dept inicial
       const gerentes = await prisma.usuario.findMany({
         where: {
@@ -262,14 +275,8 @@ export async function POST(request: NextRequest) {
 
       const ids = new Set<number>(gerentes.map((g) => g.id));
 
-      // responsável escolhido
-      if (typeof responsavelId === 'number') {
-        const resp = await prisma.usuario.findUnique({
-          where: { id: responsavelId },
-          select: { id: true, ativo: true },
-        });
-        if (resp?.ativo) ids.add(resp.id);
-      }
+      // responsável escolhido (já validado acima)
+      if (typeof responsavelAtivoId === 'number') ids.add(responsavelAtivoId);
 
       // não notifica o próprio criador
       ids.delete(user.id);

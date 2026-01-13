@@ -35,8 +35,18 @@ export default function ProcessoDetalhado({
 
   const historico = ((processo as any)?.historico || (processo as any)?.historicoEvento || []) as any[];
   const ultimasAtividades = Array.isArray(historico) ? historico.slice(0, 3) : [];
-  const comentariosCount = Array.isArray((processo as any)?.comentarios) ? (processo as any).comentarios.length : 0;
-  const documentosCount = Array.isArray((processo as any)?.documentos) ? (processo as any).documentos.length : 0;
+  const comentariosCount =
+    typeof (processo as any)?.comentariosCount === 'number'
+      ? (processo as any).comentariosCount
+      : Array.isArray((processo as any)?.comentarios)
+        ? (processo as any).comentarios.length
+        : 0;
+  const documentosCount =
+    typeof (processo as any)?.documentosCount === 'number'
+      ? (processo as any).documentosCount
+      : Array.isArray((processo as any)?.documentos)
+        ? (processo as any).documentos.length
+        : 0;
   const tagsMetadata = Array.isArray((processo as any)?.tagsMetadata) ? (processo as any).tagsMetadata : [];
 
   const nomeEmpresa = React.useMemo(() => {

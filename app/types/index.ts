@@ -27,12 +27,13 @@ export interface Processo {
   historicoFluxo?: HistoricoFluxo[];
   historico?: HistoricoEvento[];
   historicoEvento?: HistoricoEvento[];
+  comentariosCount?: number;
+  documentosCount?: number;
   questionarios?: Questionario[];
   questionariosPorDepartamento?: Record<number, Questionario[]>;
   questionarioSolicitacao?: Questionario[];
   documentos?: Documento[];
   comentarios?: Comentario[];
-  comentariosCount?: number;
   criadoPor?: string;
   progresso?: number;
   respostasHistorico?: Record<number, RespostaQuestionario>;

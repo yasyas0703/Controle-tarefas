@@ -3,6 +3,7 @@ import { prisma } from '@/app/utils/prisma';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 export const fetchCache = 'force-no-store';
 
 function round2(value: number) {

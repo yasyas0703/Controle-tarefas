@@ -3,6 +3,8 @@ import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 
 // GET /api/departamentos/:id
 export async function GET(

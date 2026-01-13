@@ -4,6 +4,7 @@ import { requireAuth } from '@/app/utils/routeAuth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const preferredRegion = 'gru1';
 export const fetchCache = 'force-no-store';
 
 // GET /api/usuarios/responsaveis

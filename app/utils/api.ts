@@ -154,6 +154,20 @@ const normalizeProcesso = (raw: any) => {
     mencoes: Array.isArray(c.mencoes) ? c.mencoes : [],
   }));
 
+  const comentariosCount =
+    typeof raw?._count?.comentarios === 'number'
+      ? raw._count.comentarios
+      : Array.isArray(raw?.comentarios)
+        ? raw.comentarios.length
+        : 0;
+
+  const documentosCount =
+    typeof raw?._count?.documentos === 'number'
+      ? raw._count.documentos
+      : Array.isArray(raw?.documentos)
+        ? raw.documentos.length
+        : 0;
+
   const questionariosArray = Array.isArray(raw?.questionarios) ? raw.questionarios : [];
 
   const historicoEventosArray = Array.isArray(raw?.historicoEventos) ? raw.historicoEventos : [];
@@ -283,6 +297,9 @@ const normalizeProcesso = (raw: any) => {
     tags: tagsIds,
     tagsMetadata,
     comentarios,
+    comentariosCount,
+    documentos: Array.isArray(raw?.documentos) ? raw.documentos : [],
+    documentosCount,
     questionarios,
     questionariosPorDepartamento,
     respostasHistorico,
@@ -399,7 +416,7 @@ export const api = {
   // ========== PROCESSOS ==========
   getProcessos: async () => {
     try {
-      const response = await fetchAutenticado(`${API_URL}/processos`);
+      const response = await fetchAutenticado(`${API_URL}/processos?lite=1`);
       if (!response.ok) {
         throw new Error(await parseError(response));
       }
