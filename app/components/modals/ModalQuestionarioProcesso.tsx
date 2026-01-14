@@ -53,12 +53,20 @@ export default function ModalQuestionarioProcesso({
 
   // DEBUG: log dos parâmetros e questionário
   console.log('DEBUG ModalQuestionarioProcesso', { processoId, departamentoId, processo });
-  const questionarioAtual: Questionario[] =
-    ((processo?.questionariosPorDepartamento as any)?.[String(departamentoId)] as any) ||
-    (processo?.questionarioSolicitacao as any) ||
-    (processo as any)?.questionario ||
-    (processo as any)?.questionarios ||
-    [];
+  // Priorizar questionariosPorDepartamento corretamente
+  let questionarioAtual: Questionario[] = [];
+  if (processo?.questionariosPorDepartamento && processo.questionariosPorDepartamento[String(departamentoId)]) {
+    questionarioAtual = processo.questionariosPorDepartamento[String(departamentoId)];
+  } else if (processo?.questionariosPorDepartamento && processo.questionariosPorDepartamento[departamentoId]) {
+    questionarioAtual = processo.questionariosPorDepartamento[departamentoId];
+  } else if ((processo as any)?.questionarioSolicitacao) {
+    questionarioAtual = (processo as any).questionarioSolicitacao;
+  } else if ((processo as any)?.questionario) {
+    questionarioAtual = (processo as any).questionario;
+  } else if ((processo as any)?.questionarios) {
+    questionarioAtual = (processo as any).questionarios;
+  }
+  console.log('DEBUG questionarioAtual', questionarioAtual);
   console.log('DEBUG questionarioAtual', questionarioAtual);
 
   React.useEffect(() => {
