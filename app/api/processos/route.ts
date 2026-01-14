@@ -146,11 +146,15 @@ export async function POST(request: NextRequest) {
 
     // Garante que o processo sempre nasce em um departamento ATIVO e existente.
     // Isso evita casos em que o template tem ids antigos/inválidos e a solicitação "some" do kanban.
-    const departamentosAtivos = await prisma.departamento.findMany({
+    // Paraleliza busca de departamentos e gerentes (se possível)
+    const departamentosPromise = prisma.departamento.findMany({
       where: { ativo: true },
       select: { id: true },
       orderBy: { ordem: 'asc' },
     });
+
+    // Só pode buscar gerentes depois de saber o departamentoInicial, então paralelização só é possível para departamentos
+    const departamentosAtivos = await departamentosPromise;
     console.log('[LOG] prisma.departamento.findMany:', Date.now() - t0, 'ms');
     const deptIds = new Set<number>(departamentosAtivos.map((d) => d.id));
 
@@ -244,50 +248,54 @@ export async function POST(request: NextRequest) {
     }
 
     const tProcesso = Date.now();
-    const processo = await prisma.processo.create({
-      data: {
-        nome: data.nome,
-        nomeServico: data.nomeServico,
-        nomeEmpresa: data.nomeEmpresa,
-        cliente: String(data.cliente || '').trim() || responsavelNome,
-        email: data.email,
-        telefone: data.telefone,
-        ...(typeof responsavelId === 'number' ? ({ responsavelId } as any) : {}),
-        empresaId: data.empresaId,
-        status: data.status || 'EM_ANDAMENTO',
-        prioridade: data.prioridade || 'MEDIA',
-        departamentoAtual: departamentoInicial,
-        departamentoAtualIndex: Number.isFinite(Number(data?.departamentoAtualIndex)) ? Number(data.departamentoAtualIndex) : idxInicial,
-        fluxoDepartamentos: fluxoFinal,
-        descricao: data.descricao,
-        notasCriador: data.notasCriador,
-        criadoPorId: user.id,
-        progresso: data.progresso || 0,
-        dataInicio,
-        dataEntrega,
-      },
-      select: {
-        id: true,
-        nome: true,
-        nomeServico: true,
-        nomeEmpresa: true,
-        cliente: true,
-        email: true,
-        telefone: true,
-        responsavelId: true,
-        empresaId: true,
-        status: true,
-        prioridade: true,
-        departamentoAtual: true,
-        departamentoAtualIndex: true,
-        fluxoDepartamentos: true,
-        descricao: true,
-        notasCriador: true,
-        criadoPorId: true,
-        progresso: true,
-        dataInicio: true,
-        dataEntrega: true,
-      },
+    // Agrupa as escritas principais em uma transação para reduzir overhead
+    const processo = await prisma.$transaction(async (tx) => {
+      const proc = await tx.processo.create({
+        data: {
+          nome: data.nome,
+          nomeServico: data.nomeServico,
+          nomeEmpresa: data.nomeEmpresa,
+          cliente: String(data.cliente || '').trim() || responsavelNome,
+          email: data.email,
+          telefone: data.telefone,
+          ...(typeof responsavelId === 'number' ? ({ responsavelId } as any) : {}),
+          empresaId: data.empresaId,
+          status: data.status || 'EM_ANDAMENTO',
+          prioridade: data.prioridade || 'MEDIA',
+          departamentoAtual: departamentoInicial,
+          departamentoAtualIndex: Number.isFinite(Number(data?.departamentoAtualIndex)) ? Number(data.departamentoAtualIndex) : idxInicial,
+          fluxoDepartamentos: fluxoFinal,
+          descricao: data.descricao,
+          notasCriador: data.notasCriador,
+          criadoPorId: user.id,
+          progresso: data.progresso || 0,
+          dataInicio,
+          dataEntrega,
+        },
+        select: {
+          id: true,
+          nome: true,
+          nomeServico: true,
+          nomeEmpresa: true,
+          cliente: true,
+          email: true,
+          telefone: true,
+          responsavelId: true,
+          empresaId: true,
+          status: true,
+          prioridade: true,
+          departamentoAtual: true,
+          departamentoAtualIndex: true,
+          fluxoDepartamentos: true,
+          descricao: true,
+          notasCriador: true,
+          criadoPorId: true,
+          progresso: true,
+          dataInicio: true,
+          dataEntrega: true,
+        },
+      });
+      return proc;
     });
     console.log('[LOG] prisma.processo.create:', Date.now() - t0, 'ms');
 
