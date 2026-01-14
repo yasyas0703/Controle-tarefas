@@ -44,7 +44,6 @@ export async function GET(
       include: {
         empresa: true,
         tags: { include: { tag: true } },
-        // `responsavel` é um campo recém-adicionado; em alguns ambientes o TS pode resolver um Prisma Client antigo.
         ...({ responsavel: { select: { id: true, nome: true, email: true } } } as any),
         comentarios: {
           include: { 
@@ -77,11 +76,29 @@ export async function GET(
         },
       },
     });
-    
+
     if (!processo) {
       return jsonBigInt({ error: 'Processo não encontrado' }, { status: 404 });
     }
-    
+
+    // Buscar todos os questionários por departamento vinculados a este processo
+    const questionariosPorDepartamento = await prisma.questionarioDepartamento.findMany({
+      where: {
+        processoId: processo.id,
+      },
+      orderBy: { ordem: 'asc' },
+    });
+
+    // Montar objeto agrupado por departamentoId
+    const questionariosPorDeptObj = {};
+    for (const q of questionariosPorDepartamento) {
+      if (!questionariosPorDeptObj[q.departamentoId]) questionariosPorDeptObj[q.departamentoId] = [];
+      questionariosPorDeptObj[q.departamentoId].push(q);
+    }
+
+    // Adicionar ao processo
+    (processo as any).questionariosPorDepartamento = questionariosPorDeptObj;
+
     return jsonBigInt(processo);
   } catch (error) {
     console.error('Erro ao buscar processo:', error);
