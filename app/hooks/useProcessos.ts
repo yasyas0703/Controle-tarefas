@@ -78,7 +78,7 @@ export const useProcessos = () => {
     setError(null);
     try {
       await api.excluirProcesso(id);
-      setProcessos(processos.filter(p => p.id !== id));
+      // Não atualiza localmente, deixa o realtime do Supabase atualizar a lista
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao excluir processo');
       throw err;

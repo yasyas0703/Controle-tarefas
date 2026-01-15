@@ -599,16 +599,20 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
     const channel = supabase
       .channel('realtime-processos')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'Processo' }, (payload) => {
-        if (process.env.NODE_ENV !== 'production') {
-          try {
-            console.log('[realtime] Processo change', payload?.eventType);
-          } catch {
-            // ignore
-          }
-        }
-        scheduleRefresh();
-      })
+ .on('postgres_changes', { event: '*', schema: 'public', table: 'Processo' }, (payload) => {
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[realtime] Processo change', payload?.eventType, payload);
+  }
+  
+  // DELETE: remove imediatamente do estado
+  if (payload?.eventType === 'DELETE' && payload.old?.id) {
+    setProcessos(prev => prev.filter(p => p.id !== payload.old.id));
+    return; // não precisa fazer refresh
+  }
+  
+  // INSERT/UPDATE: faz refresh normal
+  scheduleRefresh();
+})
       // O board também depende de outras tabelas (tags/comentários/histórico).
       // Ao mudar qualquer uma delas, fazemos refresh da lista.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'HistoricoFluxo' }, () => scheduleRefresh())
@@ -926,7 +930,13 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       // noop
     }
   }, [templates]);
-
+// TESTE TEMPORÁRIO - adicione após o useEffect de processos
+useEffect(() => {
+  const supabase = getSupabaseBrowserClient();
+  console.log('🔍 [DEBUG] Supabase client:', supabase ? 'OK' : 'NULL');
+  console.log('🔍 [DEBUG] SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+  console.log('🔍 [DEBUG] SUPABASE_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Definida' : 'Não definida');
+}, []);
   const criarEmpresa = useCallback(async (dados: Partial<Empresa>) => {
     try {
       const nova = await api.salvarEmpresa(dados);
