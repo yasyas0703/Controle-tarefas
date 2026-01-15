@@ -47,13 +47,13 @@ export default function ProcessoCard({
   const getPriorityColor = (priority: 'alta' | 'media' | 'baixa') => {
     switch (priority) {
       case 'alta':
-        return 'bg-red-100 text-red-700 border-red-300';
+        return 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 border-red-300 dark:border-red-700';
       case 'media':
-        return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+        return 'bg-yellow-100 dark:bg-yellow-700 text-yellow-800 dark:text-yellow-300 border-yellow-300 dark:border-yellow-700';
       case 'baixa':
-        return 'bg-green-100 text-green-700 border-green-300';
+        return 'bg-green-100 dark:bg-green-700 text-green-900 dark:text-green-300 border-green-300 dark:border-green-700 ring-1 ring-green-100';
       default:
-        return 'bg-gray-100 text-gray-700 border-gray-300';
+        return 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600';
     }
   };
 

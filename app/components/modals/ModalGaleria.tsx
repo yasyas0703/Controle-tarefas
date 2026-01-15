@@ -22,17 +22,58 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
 
   React.useEffect(() => {
     let cancelled = false;
-    if (typeof processoId !== 'number') return;
+    // If opened for a specific processo, fetch its documents from backend.
+    if (typeof processoId === 'number') {
+      void (async () => {
+        try {
+          setCarregando(true);
+          const list = await api.getDocumentos(processoId);
+          if (cancelled) return;
+          const filtrados = (Array.isArray(list) ? list : [])
+            .filter((d: any) => (typeof departamentoId === 'number' ? Number(d.departamentoId) === Number(departamentoId) : true))
+            .sort((a: any, b: any) => new Date(b.dataUpload as any).getTime() - new Date(a.dataUpload as any).getTime());
+          setDocsCarregados(filtrados as any);
+        } finally {
+          if (!cancelled) setCarregando(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
 
+    // If opened for a department (no processoId), try to load documents from all processes
+    // that report having documents. This ensures recently uploaded files appear even when
+    // the `processos` state is using a lite fetch that doesn't include all documentos.
     void (async () => {
       try {
         setCarregando(true);
-        const list = await api.getDocumentos(processoId);
-        if (cancelled) return;
-        const filtrados = (Array.isArray(list) ? list : [])
-          .filter((d: any) => (typeof departamentoId === 'number' ? Number(d.departamentoId) === Number(departamentoId) : true))
-          .sort((a: any, b: any) => new Date(b.dataUpload as any).getTime() - new Date(a.dataUpload as any).getTime());
-        setDocsCarregados(filtrados as any);
+        // Collect processoIds that may have documents
+        const possiveisProcessos: number[] = (processos || [])
+          .filter((p: any) => Number(p.documentosCount || 0) > 0)
+          .map((p: any) => Number(p.id))
+          .filter((id: number) => Number.isFinite(id));
+
+        const acumulado: any[] = [];
+        for (const pid of possiveisProcessos) {
+          try {
+            const list = await api.getDocumentos(pid);
+            const arr = Array.isArray(list) ? list : [];
+            for (const d of arr) {
+              if (typeof departamentoId === 'number' && Number(d.departamentoId) !== Number(departamentoId)) continue;
+              acumulado.push(d);
+            }
+          } catch (err) {
+            // ignore per-process failures
+          }
+        }
+
+        if (!cancelled) {
+          const uniq = acumulado
+            .filter(Boolean)
+            .sort((a: any, b: any) => new Date(b.dataUpload as any).getTime() - new Date(a.dataUpload as any).getTime());
+          setDocsCarregados(uniq as any);
+        }
       } finally {
         if (!cancelled) setCarregando(false);
       }
@@ -46,6 +87,10 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
   const documentos: Documento[] = React.useMemo(() => {
     // Se temos processoId, preferimos a fonte do backend (lista completa)
     if (typeof processoId === 'number') return docsCarregados;
+
+    // If opened per-department and we fetched docsCarregados by querying each processo,
+    // prefer that list when available to ensure newest files are shown.
+    if (Array.isArray(docsCarregados) && docsCarregados.length > 0) return docsCarregados;
 
     const all = (processos || []).flatMap((p) => (p.documentos || []) as Documento[]);
 

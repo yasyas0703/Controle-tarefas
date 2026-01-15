@@ -43,7 +43,7 @@ export default function ProcessoCard({
   onVerDetalhes,
   onDragStart,
 }: ProcessoCardProps) {
-  const { tags, atualizarProcesso, usuarioLogado } = useSistema();
+  const { tags, atualizarProcesso, usuarioLogado, mostrarAlerta } = useSistema();
 
   const departamentoUsuario =
     typeof (usuarioLogado as any)?.departamentoId === 'number'
@@ -60,7 +60,8 @@ export default function ProcessoCard({
   // Usuário normal: só mostra ações no card do próprio departamento
   const podeExibirAcoesNoCard = usuarioLogado?.role !== 'usuario' || isDeptDoUsuario;
 
-  const podeEditarProcesso = temPermissaoSistema(usuarioLogado, 'editar_processo', { departamentoAtual: processo.departamentoAtual });
+  const podeEditarProcesso = temPermissaoSistema(usuarioLogado, 'editar_processo', { departamentoAtual: processo.departamentoAtual })
+    || (String(usuarioLogado?.role).toLowerCase() === 'usuario' && isDeptDoUsuario);
   const podeExcluirProcesso = temPermissaoSistema(usuarioLogado, 'excluir_processo', { departamentoAtual: processo.departamentoAtual });
   const podeMover = temPermissaoSistema(usuarioLogado, 'mover_processo', { departamentoAtual: processo.departamentoAtual });
 
@@ -76,17 +77,35 @@ export default function ProcessoCard({
   const getPriorityColor = (prioridade: string) => {
     switch ((prioridade || '').toLowerCase()) {
       case 'alta':
-        return 'bg-red-100 text-red-700 border-red-300';
+        return 'bg-red-50 dark:bg-red-900/10 text-red-900 dark:text-red-300 border-red-200 dark:border-red-700';
       case 'media':
-        return 'bg-yellow-100 text-yellow-700 border-yellow-300';
+        return 'bg-yellow-50 dark:bg-yellow-700/10 text-yellow-900 dark:text-yellow-300 border-yellow-200 dark:border-yellow-700';
       case 'baixa':
-        return 'bg-green-100 text-green-700 border-green-300';
+        return 'bg-green-50 dark:bg-green-700/10 text-green-900 dark:text-green-300 border-green-200 dark:border-green-700 ring-1 ring-green-50';
       default:
-        return 'bg-gray-100 text-gray-700 border-gray-300';
+        return 'bg-gray-50 dark:bg-gray-800/10 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600';
     }
   };
 
-  const prioridade = (processo.prioridade || 'media') as 'alta' | 'media' | 'baixa';
+  const [isDark, setIsDark] = React.useState(false);
+
+  React.useEffect(() => {
+    try {
+      const prefersDark = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const docDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+      setIsDark(!!(docDark || prefersDark));
+    } catch (e) {
+      setIsDark(false);
+    }
+  }, []);
+
+  // Removed inline dark-mode color overrides to rely on Tailwind classes
+
+  const [prioridade, setPrioridade] = React.useState((processo.prioridade || 'media') as 'alta' | 'media' | 'baixa');
+
+  React.useEffect(() => {
+    setPrioridade((processo.prioridade || 'media') as 'alta' | 'media' | 'baixa');
+  }, [processo.prioridade]);
   const statusLabel = processo.status === 'finalizado' ? 'Finalizado' : 'Em Andamento';
 
   const fluxo = processo.fluxoDepartamentos || [];
@@ -121,26 +140,31 @@ export default function ProcessoCard({
             </div>
           )}
 
-          <div className="flex items-center gap-1 mb-0.5">
+          <div className="mb-0.5">
             <div
-              className="font-base text-sm text-gray-700 truncate flex-1 cursor-help"
+              className="font-base text-sm text-gray-700 truncate cursor-help"
               title={processo.nomeEmpresa}
             >
               {processo.nomeEmpresa || 'Nova Empresa'}
             </div>
 
             {(processo.tags || []).length > 0 && (
-              <div className="flex gap-1 flex-shrink-0">
-                {(processo.tags || []).map((tagId) => {
-                  const tag = tags.find((t) => t.id === tagId);
-                  return tag ? (
-                    <div
-                      key={tagId}
-                      className={`w-2 h-2 rounded-full ${tag.cor} border border-white shadow-sm`}
-                      title={tag.nome}
-                    />
-                  ) : null;
-                })}
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {((processo.tags || []) as number[])
+                  .slice(0, 6)
+                  .map((tagId) => {
+                    const tag = tags.find((t) => t.id === tagId);
+                    return tag ? (
+                      <div
+                        key={tagId}
+                        className={`w-2 h-2 rounded-full ${tag.cor} border border-white shadow-sm flex-shrink-0`}
+                        title={tag.nome}
+                      />
+                    ) : null;
+                  })}
+                {(processo.tags || []).length > 6 && (
+                  <span className="text-[10px] text-gray-600">+{(processo.tags || []).length - 6}</span>
+                )}
               </div>
             )}
           </div>
@@ -207,22 +231,34 @@ export default function ProcessoCard({
             <>
               <select
                 value={prioridade}
-                onChange={(e) => {
+                onChange={async (e) => {
                   e.stopPropagation();
-                  atualizarProcesso(processo.id, { prioridade: e.target.value as any });
+                  const novoValor = e.target.value as any;
+                  const antigo = prioridade;
+                  // atualização otimista localmente
+                  setPrioridade(novoValor);
+                  try {
+                    console.debug('[ProcessoCard] atualizando prioridade', { id: processo.id, de: antigo, para: novoValor, role: usuarioLogado?.role, isDeptDoUsuario });
+                    await atualizarProcesso(processo.id, { prioridade: novoValor });
+                  } catch (err: any) {
+                    // reverter em caso de erro
+                    setPrioridade(antigo);
+                    console.error('Erro ao atualizar prioridade:', err);
+                    mostrarAlerta('Erro', err?.message || 'Falha ao atualizar prioridade', 'erro');
+                  }
                 }}
-                className={`text-xs px-3 py-1 rounded-full border cursor-pointer appearance-none pr-8 ${getPriorityColor(
+                className={`text-xs px-3 py-1 rounded-full border cursor-pointer appearance-none pr-8 font-semibold ${getPriorityColor(
                   prioridade
                 )}`}
                 onClick={(e) => e.stopPropagation()}
               >
-                <option value="baixa" className="text-green-600 bg-white">
+                <option value="baixa" className="text-green-900 bg-green-50">
                   BAIXA
                 </option>
-                <option value="media" className="text-yellow-600 bg-white">
+                <option value="media" className="text-yellow-900 bg-yellow-50">
                   MEDIA
                 </option>
-                <option value="alta" className="text-red-600 bg-white">
+                <option value="alta" className="text-red-900 bg-red-50">
                   ALTA
                 </option>
               </select>
@@ -230,8 +266,15 @@ export default function ProcessoCard({
                 <ChevronDown size={12} />
               </div>
             </>
-          ) : (
-            <span className={`text-xs px-3 py-1 rounded-full border ${getPriorityColor(prioridade)}`}>{prioridade.toUpperCase()}</span>
+            ) : (
+            <span
+              className={`text-xs px-3 py-1 rounded-full border font-semibold bg-white ${
+                prioridade === 'alta' ? 'text-red-900 border-red-200' : prioridade === 'media' ? 'text-yellow-900 border-yellow-200' : 'text-green-900 border-green-200'
+              }`}
+              style={{ backgroundColor: '#fff' }}
+            >
+              {prioridade.toUpperCase()}
+            </span>
           )}
         </div>
 

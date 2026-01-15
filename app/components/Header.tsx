@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Bell, Download, TrendingUp, Plus, FileText, Users, User, X } from 'lucide-react';
+import { Bell, Download, TrendingUp, Plus, FileText, Users, User, X, RefreshCw } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { temPermissao as verificarPermissao } from '@/app/utils/permissions';
 import NotificacoesPanel from './NotificacoesPanel';
@@ -24,7 +24,7 @@ export default function Header({
   onSelecionarTemplate,
   onLogout,
 }: HeaderProps) {
-  const { notificacoes, usuarioLogado, realtimeInfo } = useSistema();
+  const { notificacoes, usuarioLogado, realtimeInfo, setProcessos, setTags, setDepartamentos, setEmpresas, adicionarNotificacao, setGlobalLoading } = useSistema();
   const [showNotifications, setShowNotifications] = useState(false);
   
   // Garantir que notificacoes seja sempre um array
@@ -54,8 +54,8 @@ export default function Header({
 
   return (
     <div className="bg-white shadow-lg border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between gap-6">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="flex items-center justify-between gap-6">
           {/* Logo e Título */}
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <div className="bg-gradient-to-br from-cyan-400 to-blue-600 p-[2px] rounded-2xl shadow-xl">
@@ -90,18 +90,7 @@ export default function Header({
 
           {/* Ações e Botões */}
           <div className="flex items-center justify-end gap-3 flex-wrap">
-            {realtimeStatus && (
-              <span
-                className="inline-flex items-center"
-                title={`${realtimeStatus.label} (Supabase Realtime com fallback polling quando necessário)`}
-                aria-label={realtimeStatus.label}
-              >
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ring-2 ring-white shadow-sm ${realtimeStatus.dotClassName}`}
-                />
-                <span className="sr-only">{realtimeStatus.label}</span>
-              </span>
-            )}
+            {/* Indicador de status em tempo real removido conforme solicitado pelo usuário */}
             {/* Notificações */}
             <div className="relative">
               <button
@@ -168,6 +157,36 @@ export default function Header({
                 <span className="hidden sm:inline">Usuários</span>
               </button>
             )}
+
+            {/* Botão Recarregar dados (client-side) */}
+            <button
+              onClick={async () => {
+                try {
+                  setGlobalLoading?.(true);
+                  const [processos, tags, departamentos, empresas] = await Promise.all([
+                    // refresh principais listas sem forçar redirect
+                    (await import('@/app/utils/api')).api.getProcessos(),
+                    (await import('@/app/utils/api')).api.getTags(),
+                    (await import('@/app/utils/api')).api.getDepartamentos(),
+                    (await import('@/app/utils/api')).api.getEmpresas(),
+                  ]);
+                  setProcessos?.(processos || []);
+                  setTags?.(tags || []);
+                  setDepartamentos?.(departamentos || []);
+                  setEmpresas?.(empresas || []);
+                  adicionarNotificacao?.('Dados recarregados', 'sucesso');
+                } catch (err: any) {
+                  console.error('Erro ao recarregar dados:', err);
+                  adicionarNotificacao?.(err?.message || 'Erro ao recarregar dados', 'erro');
+                } finally {
+                  setGlobalLoading?.(false);
+                }
+              }}
+              className="p-3 rounded-xl bg-gray-100 hover:bg-gray-200 transition-colors"
+              title="Recarregar dados (cliente)"
+            >
+              <RefreshCw size={18} className="text-gray-600" />
+            </button>
 
             {/* Info Usuário */}
             {usuarioLogado && (

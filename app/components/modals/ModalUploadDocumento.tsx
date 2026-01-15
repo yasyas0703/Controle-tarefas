@@ -34,9 +34,20 @@ export default function ModalUploadDocumento({
   }, [processo?.id, processo?.documentos]);
 
   const documentos = documentosLocal;
-  const documentosFiltrados = perguntaId
-    ? documentos.filter((d: any) => Number(d.perguntaId) === Number(perguntaId))
-    : documentos;
+  const documentosFiltrados = React.useMemo(() => {
+    if (perguntaId) {
+      return documentos.filter((d: any) => Number(d.perguntaId) === Number(perguntaId));
+    }
+
+    // Quando aberto para um processo, mostrar apenas os documentos do departamento atual
+    // do processo (comportamento solicitado pelo usuário). Isso evita que documentos
+    // de departamentos anteriores apareçam no modal de upload após avançar o processo.
+    if (processo && typeof processo.departamentoAtual === 'number') {
+      return documentos.filter((d: any) => Number(d.departamentoId) === Number(processo.departamentoAtual));
+    }
+
+    return documentos;
+  }, [documentos, perguntaId, processo?.departamentoAtual]);
 
   const handleArquivosSelecionados = (fileList: FileList | null) => {
     if (!fileList) return;

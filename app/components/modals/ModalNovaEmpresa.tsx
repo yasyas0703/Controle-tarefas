@@ -56,6 +56,18 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
     };
   }, [usuarioLogado]);
 
+  // Se for usuário normal, o responsável padrão deve ser o próprio usuário.
+  useEffect(() => {
+    if (!usuarioLogado) return;
+    if (String(usuarioLogado.role).toLowerCase() === 'usuario') {
+      try {
+        setResponsavelId(Number((usuarioLogado as any).id));
+      } catch {
+        // noop
+      }
+    }
+  }, [usuarioLogado]);
+
   const tiposCampo = [
     { valor: "text", label: "Texto Simples" },
     { valor: "textarea", label: "Texto Longo" },
@@ -194,6 +206,20 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
       return;
     }
 
+    // Validação: cada departamento do fluxo deve ter pelo menos uma pergunta/questionário.
+    const missingDeptIds = fluxoDepartamentos.filter((deptId) => {
+      const qs = questionariosPorDept[deptId] ?? questionariosPorDept[String(deptId)];
+      return !Array.isArray(qs) || qs.length === 0;
+    });
+
+    if (missingDeptIds.length > 0) {
+      const nomes = missingDeptIds
+        .map((id) => departamentos.find((d) => d.id === id)?.nome || `#${id}`)
+        .join(', ');
+      void mostrarAlerta('Questionários faltando', `Os seguintes departamentos não possuem questionários: ${nomes}. Crie pelo menos uma pergunta para cada departamento do fluxo antes de criar a solicitação.`, 'aviso');
+      return;
+    }
+
     // Gerente só pode criar solicitações para o próprio departamento
     // (Usuário normal já retorna acima.)
     if (usuarioLogado?.role === 'gerente') {
@@ -232,8 +258,8 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
         descricao: `Solicitação criada: ${nomeServico}`,
       });
 
-      if (salvarComoTemplateChecked && usuarioLogado?.role === 'admin') {
-        criarTemplate({
+      if (salvarComoTemplateChecked && ['admin', 'gerente'].includes(String(usuarioLogado?.role ?? '').toLowerCase())) {
+        await criarTemplate({
           nome: nomeServico,
           descricao: `Template criado a partir da solicitação: ${nomeServico}`,
           fluxoDepartamentos,
@@ -746,7 +772,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
             )}
 
             {/* Checkbox Salvar como Template */}
-            {usuarioLogado?.role === "admin" && (
+            {['admin', 'gerente'].includes(String(usuarioLogado?.role ?? '').toLowerCase()) && (
               <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input

@@ -116,12 +116,8 @@ export async function PUT(
     if (!user) return error;
 
     const roleUpper = String((user as any).role || '').toUpperCase();
-    if (roleUpper !== 'ADMIN' && roleUpper !== 'GERENTE') {
-      return NextResponse.json({ error: 'Sem permissão para editar processo' }, { status: 403 });
-    }
-    
     const data = await request.json();
-    
+
     // Buscar processo atual para comparar mudanças
     const processoAntigo = await prisma.processo.findUnique({
       where: { id: parseInt(params.id) },
@@ -129,6 +125,33 @@ export async function PUT(
 
     if (!processoAntigo) {
       return NextResponse.json({ error: 'Processo não encontrado' }, { status: 404 });
+    }
+
+    // Usuário normal: permitir apenas alteração de prioridade no próprio departamento
+    if (roleUpper === 'USUARIO') {
+      const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
+      const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw)) ? Number(departamentoUsuarioRaw) : undefined;
+      if (typeof departamentoUsuario !== 'number') {
+        return NextResponse.json({ error: 'Usuário sem departamento definido' }, { status: 403 });
+      }
+      if (processoAntigo.departamentoAtual !== departamentoUsuario) {
+        return NextResponse.json({ error: 'Sem permissão para editar processo de outro departamento' }, { status: 403 });
+      }
+
+      // Permite somente alteração de prioridade por usuário normal
+      const allowedKeys = ['prioridade'];
+      const sentKeys = Object.keys(data ?? {});
+      if (sentKeys.some((k) => !allowedKeys.includes(k))) {
+        return NextResponse.json({ error: 'Alteração não permitida para seu nível de acesso' }, { status: 403 });
+      }
+    }
+
+    // Gerente/admin seguem validações abaixo
+    if (roleUpper === 'GERENTE' || roleUpper === 'ADMIN') {
+      // gerente validations continue below
+    } else if (roleUpper !== 'GERENTE' && roleUpper !== 'ADMIN' && roleUpper !== 'USUARIO') {
+      // any other role not handled above is forbidden
+      return NextResponse.json({ error: 'Sem permissão para editar processo' }, { status: 403 });
     }
 
     if (roleUpper === 'GERENTE') {

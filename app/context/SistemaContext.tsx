@@ -117,6 +117,7 @@ interface SistemaContextType {
   aplicarTagsProcesso: (processoId: number, tags: number[]) => Promise<void>;
   adicionarComentarioProcesso: (processoId: number, texto: string, mencoes?: string[]) => Promise<void>;
   adicionarDocumentoProcesso: (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number) => Promise<any>;
+  inicializandoUsuario: boolean;
 }
 
 const SistemaContext = createContext<SistemaContextType | undefined>(undefined);
@@ -146,6 +147,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
   const [usuarioLogado, setUsuarioLogado] = useState<Usuario | null>(null);
+  const [inicializandoUsuario, setInicializandoUsuario] = useState(true);
   const notificacoesRef = useRef<Notificacao[]>([]);
   const realtimeProcessosTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const processosPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -488,6 +490,33 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     };
   }, [usuarioLogado]);
 
+  // Tenta restaurar sessão do usuário a partir do token (localStorage)
+  useEffect(() => {
+    (async () => {
+      try {
+        if (typeof window === 'undefined') return setInicializandoUsuario(false);
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setInicializandoUsuario(false);
+          return;
+        }
+        try {
+          const me = await api.getMe();
+          if (me && me.id) {
+            // Normaliza role para lowercase para compatibilidade com checagens no front
+            const normalized = { ...(me as any), role: String((me as any).role || '').toLowerCase() } as any;
+            setUsuarioLogado(normalized);
+          }
+        } catch (err) {
+          // Token inválido/expirado
+          try { localStorage.removeItem('token'); } catch {}
+        }
+      } finally {
+        setInicializandoUsuario(false);
+      }
+    })();
+  }, []);
+
   // Realtime: quando outro usuário mexer em um card (Processo), atualiza a lista automaticamente.
   // Implementação intencionalmente simples: ao receber qualquer evento na tabela, faz um refresh via API.
   // (Podemos evoluir para aplicar patch incremental sem refetch depois.)
@@ -617,9 +646,24 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       // Ao mudar qualquer uma delas, fazemos refresh da lista.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'HistoricoFluxo' }, () => scheduleRefresh())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'HistoricoEvento' }, () => scheduleRefresh())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'ProcessoTag' }, () => scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ProcessoTag' }, (payload) => {
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            console.log('[realtime] ProcessoTag change', payload?.eventType, payload);
+          } catch {}
+        }
+        scheduleRefresh();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'Comentario' }, () => scheduleRefresh())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'Documento' }, () => scheduleRefresh())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'Documento' }, (payload) => {
+        if (process.env.NODE_ENV !== 'production') {
+          try {
+            console.log('[realtime] Documento change', payload?.eventType, payload);
+          } catch {}
+        }
+        scheduleRefresh();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'Notificacao' }, () => scheduleRefresh())
       .subscribe((status) => {
         if (process.env.NODE_ENV !== 'production') {
@@ -1036,6 +1080,8 @@ useEffect(() => {
           nomeServico: dados.nomeServico,
           nomeEmpresa: dados.nomeEmpresa || dados.empresa || 'Nova Empresa',
           cliente: dados.cliente,
+          responsavelId: (dados as any).responsavelId,
+          criadoPor: (dados as any).criadoPor ?? usuarioLogado?.nome,
           email: dados.email,
           telefone: dados.telefone,
           empresaId: dados.empresaId,
@@ -1091,6 +1137,75 @@ useEffect(() => {
 
   const avancarParaProximoDepartamento = useCallback(
     async (processoId: number) => {
+      // Validação: antes de avançar, verificar se o questionário do departamento atual
+      // possui perguntas obrigatórias não respondidas. Se sim, bloqueia o avanço.
+      try {
+        // Busca o processo completo no backend para garantir que temos questionários e respostas atualizadas
+        const processoAtualizado = await api.getProcesso(processoId).catch(() => null);
+        const processoDados = processoAtualizado ?? processos.find(p => p.id === processoId);
+        if (processoDados) {
+          const deptId = Number(processoDados.departamentoAtual ?? processoDados.departamento_atual ?? 0);
+          const questionariosPD = (processoDados.questionariosPorDepartamento && (processoDados.questionariosPorDepartamento[String(deptId)] ?? processoDados.questionariosPorDepartamento[deptId]))
+            || (processoDados.questionarioSolicitacao ?? processoDados.questionario ?? processoDados.questionarios) || [];
+
+          const respostasSalvas = ((processoDados.respostasHistorico as any)?.[deptId]?.respostas) || {};
+
+          const avaliarCondicaoLocal = (pergunta: any, respostasAtuais: Record<string, any>) => {
+            if (!pergunta || !pergunta.condicao) return true;
+            const { perguntaId, operador, valor } = pergunta.condicao;
+            const respostaCond = respostasAtuais[String(perguntaId)];
+            if (respostaCond === undefined || respostaCond === null || respostaCond === '') return false;
+            const r = String(respostaCond).trim().toLowerCase();
+            const v = String(valor).trim().toLowerCase();
+            switch (operador) {
+              case 'igual': return r === v;
+              case 'diferente': return r !== v;
+              case 'contem': return r.includes(v);
+              default: return true;
+            }
+          };
+
+          const docs = Array.isArray(processoDados.documentos) ? processoDados.documentos : [];
+
+          const faltando = (Array.isArray(questionariosPD) ? questionariosPD : [])
+            .filter((p: any) => p && p.obrigatorio)
+            .filter((p: any) => {
+              if (!avaliarCondicaoLocal(p, respostasSalvas)) return false;
+              if (p.tipo === 'file') {
+                const anexos = docs.filter((d: any) => {
+                  const dPerg = Number(d?.perguntaId ?? d?.pergunta_id);
+                  if (dPerg !== Number(p.id)) return false;
+                  const dDeptRaw = d?.departamentoId ?? d?.departamento_id;
+                  const dDept = Number(dDeptRaw);
+                  if (!Number.isFinite(dDept)) return true;
+                  return dDept === deptId;
+                });
+                return anexos.length === 0;
+              }
+              const r = respostasSalvas[String(p.id)];
+              if (r === null || r === undefined) return true;
+              if (typeof r === 'string' && !r.trim()) return true;
+              return false;
+            });
+
+          if (faltando.length > 0) {
+            const nomes = faltando.map((p: any) => p.label).join(', ');
+            if (process.env.NODE_ENV !== 'production') {
+              try {
+                console.debug('[validação] faltando perguntas obrigatórias antes de avançar', { processoId, deptId, faltandoCount: faltando.length, faltando: faltando.map((p:any)=>({id:p.id,label:p.label})) });
+              } catch {}
+            }
+            try {
+              await mostrarAlerta?.('Campos obrigatórios', `Preencha os campos obrigatórios antes de avançar: ${nomes}`, 'aviso');
+            } catch {
+              // noop
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Validação de questionário falhou:', err);
+      }
       try {
         setGlobalLoading(true);
         await api.avancarProcesso(processoId);
@@ -1287,6 +1402,7 @@ useEffect(() => {
     aplicarTagsProcesso,
     adicionarComentarioProcesso,
     adicionarDocumentoProcesso,
+    inicializandoUsuario,
   };
 
   return (

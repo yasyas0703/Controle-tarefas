@@ -35,6 +35,7 @@ import ModalPreviewDocumento from '@/app/components/modals/ModalPreviewDocumento
 export default function Home() {
   const {
     usuarioLogado,
+    inicializandoUsuario,
     setUsuarioLogado,
     processos,
     setProcessos,
@@ -223,6 +224,10 @@ export default function Home() {
       return cnpj.length === 0;
     }).length;
   }, [empresas]);
+
+  if (inicializandoUsuario) {
+    return null; // Ainda estamos tentando restaurar sessão; evita mostrar modal de login momentaneamente
+  }
 
   if (!usuarioLogado) {
     return <ModalLogin onLogin={handleLogin} />;

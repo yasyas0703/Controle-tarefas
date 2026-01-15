@@ -8,13 +8,13 @@ import { Processo } from '../types';
 export const getPriorityColor = (prioridade: string): { bg: string; text: string; border: string } => {
   switch (prioridade.toLowerCase()) {
     case 'alta':
-      return { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' };
+      return { bg: 'bg-red-100 dark:bg-red-700', text: 'text-red-800 dark:text-white', border: 'border-red-200 dark:border-red-600' };
     case 'media':
-      return { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' };
+      return { bg: 'bg-yellow-100 dark:bg-yellow-600', text: 'text-yellow-800 dark:text-yellow-300', border: 'border-yellow-200 dark:border-yellow-500' };
     case 'baixa':
-      return { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' };
+      return { bg: 'bg-green-100 dark:bg-green-700', text: 'text-green-800 dark:text-green-300', border: 'border-green-200 dark:border-green-600' };
     default:
-      return { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' };
+      return { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-200', border: 'border-gray-200 dark:border-gray-600' };
   }
 };
 
@@ -68,17 +68,17 @@ export const getStatusLabel = (status: string): string => {
 export const getStatusColor = (status: string): { bg: string; text: string; border: string } => {
   switch (status.toLowerCase()) {
     case 'em_andamento':
-      return { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' };
+      return { bg: 'bg-blue-50 dark:bg-blue-700', text: 'text-blue-700 dark:text-white', border: 'border-blue-200 dark:border-blue-600' };
     case 'finalizado':
-      return { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' };
+      return { bg: 'bg-green-50 dark:bg-green-700', text: 'text-green-700 dark:text-white', border: 'border-green-200 dark:border-green-600' };
     case 'pausado':
-      return { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' };
+      return { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-200', border: 'border-gray-200 dark:border-gray-600' };
     case 'cancelado':
-      return { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' };
+      return { bg: 'bg-red-50 dark:bg-red-700', text: 'text-red-700 dark:text-white', border: 'border-red-200 dark:border-red-600' };
     case 'rascunho':
-      return { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200' };
+      return { bg: 'bg-yellow-50 dark:bg-yellow-600', text: 'text-yellow-700 dark:text-yellow-300', border: 'border-yellow-200 dark:border-yellow-500' };
     default:
-      return { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200' };
+      return { bg: 'bg-gray-50 dark:bg-gray-800', text: 'text-gray-700 dark:text-gray-200', border: 'border-gray-200 dark:border-gray-600' };
   }
 };
 

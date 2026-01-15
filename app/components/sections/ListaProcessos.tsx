@@ -103,13 +103,13 @@ export default function ListaProcessos({
   const getPriorityColor = (prioridade: string) => {
     switch (String(prioridade || '').toLowerCase()) {
       case 'alta':
-        return 'text-red-600 bg-red-50 border-red-200';
+        return 'text-red-800 dark:text-red-200 bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700';
       case 'media':
-        return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+        return 'text-yellow-800 dark:text-yellow-300 bg-yellow-50 dark:bg-yellow-700 border-yellow-200 dark:border-yellow-700';
       case 'baixa':
-        return 'text-green-600 bg-green-50 border-green-200';
+        return 'text-green-900 dark:text-green-300 bg-green-50 dark:bg-green-700 border-green-200 dark:border-green-700 ring-1 ring-green-100';
       default:
-        return 'text-gray-600 bg-gray-50 border-gray-200';
+        return 'text-gray-600 dark:text-gray-200 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600';
     }
   };
 

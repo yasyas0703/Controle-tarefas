@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { api } from '@/app/utils/api';
 import { X, MessageSquare, Edit, User } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import LoadingOverlay from '../LoadingOverlay';
@@ -11,13 +12,18 @@ interface ModalComentariosProps {
   processo?: Processo;
   onClose: () => void;
 }
-
 export default function ModalComentarios({
   processoId,
   processo,
   onClose,
 }: ModalComentariosProps) {
+  // (Removido: já está sendo desestruturado na chamada abaixo)
+
+  // ...existing code...
+    // ...existing code...
+
   const {
+    setProcessos,
     adicionarComentarioProcesso,
     atualizarProcesso,
     departamentos,
@@ -25,23 +31,29 @@ export default function ModalComentarios({
     mostrarConfirmacao,
   } = useSistema();
 
-  // DEBUG: mostrar comentários passados ao modal (apenas em dev)
-  try {
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug('DEBUG ModalComentarios - processoId', processoId);
-      console.debug('DEBUG ModalComentarios - comentarios do processo', processo?.comentarios || []);
-    }
-  } catch {
-    // noop
-  }
+  const [comentarioAtual, setComentarioAtual] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [editando, setEditando] = useState<number | null>(null);
+  const [textoEditado, setTextoEditado] = useState('');
+  const comentariosDoProcesso = (processo?.comentarios as any[]) || [];
 
-  const [comentarioAtual, setComentarioAtual] = React.useState('');
-  const [editando, setEditando] = React.useState<number | null>(null);
-  const [textoEditado, setTextoEditado] = React.useState('');
-  const [enviando, setEnviando] = React.useState(false);
-
-  const comentariosDoProcesso = Array.isArray(processo?.comentarios) ? processo?.comentarios || [] : [];
-
+  // Ao abrir o modal, busca os comentários do backend e atualiza o processo no contexto
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      try {
+        const comentarios = await api.getComentarios(processoId);
+        if (comentarios && Array.isArray(comentarios)) {
+          setProcessos(prev => prev.map(p =>
+            p.id === processoId ? { ...p, comentarios } : p
+          ));
+        }
+      } catch (err) {
+        console.error('Erro ao buscar comentários:', err);
+      }
+    })();
+    return () => { ativo = false; };
+  }, [processoId, setProcessos]);
   const deptAtual = departamentos.find((d) => d.id === processo?.departamentoAtual);
 
   const detectarMencoes = (texto: string) => {
@@ -70,15 +82,21 @@ export default function ModalComentarios({
 
   const handleSalvarEdicao = (comentarioId: number) => {
     if (!processo) return;
-    atualizarProcesso(processoId, {
-      comentarios: (processo.comentarios || []).map((c: any) =>
-        c.id === comentarioId
-          ? { ...c, texto: textoEditado, editado: true, editadoEm: new Date() }
-          : c
-      ),
-    } as any);
-    setEditando(null);
-    setTextoEditado('');
+    (async () => {
+      try {
+        setEnviando(true);
+        await api.atualizarComentario(comentarioId, textoEditado);
+        // Recarrega o processo atualizado do backend e atualiza no contexto global
+        const processoAtualizado = await api.getProcesso(processoId);
+        setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
+      } catch (err) {
+        console.error('Erro ao salvar edição do comentário:', err);
+      } finally {
+        setEnviando(false);
+        setEditando(null);
+        setTextoEditado('');
+      }
+    })();
   };
 
   const handleCancelarEdicao = () => {
@@ -100,9 +118,14 @@ export default function ModalComentarios({
       });
       if (!ok) return;
 
-      atualizarProcesso(processoId, {
-        comentarios: (processo.comentarios || []).filter((c: any) => c.id !== comentarioId),
-      } as any);
+      try {
+        await api.excluirComentario(comentarioId);
+        // Busca o processo atualizado do backend e atualiza no contexto global
+        const processoAtualizado = await api.getProcesso(processoId);
+        setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
+      } catch (err) {
+        console.error('Erro ao excluir comentário:', err);
+      }
     })();
   };
 
