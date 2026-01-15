@@ -4,6 +4,7 @@ import React from 'react';
 import { X, Save, Upload, FileText, Eye, Download, MessageSquare, CheckCircle, Pencil } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
+import LoadingOverlay from '../LoadingOverlay';
 import { Questionario } from '@/app/types';
 import { formatarDataHora, formatarTamanhoParcela } from '@/app/utils/helpers';
 
@@ -48,6 +49,7 @@ export default function ModalQuestionarioProcesso({
   };
 
   const [carregandoProcesso, setCarregandoProcesso] = React.useState(false);
+  const [salvandoRespostas, setSalvandoRespostas] = React.useState(false);
 
   const modalContainerRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -283,22 +285,25 @@ export default function ModalQuestionarioProcesso({
     if (!validarObrigatorios()) return;
 
     try {
+      setSalvandoRespostas(true);
       // Salvar respostas usando a API de questionários
       const { api } = await import('@/app/utils/api');
       await api.salvarRespostasQuestionario(processoId, departamentoId, respostas);
-      
+
       // Recarregar o processo atualizado
       const processoAtualizado = await api.getProcesso(processoId);
       if (processoAtualizado && setProcessos) {
         setProcessos((prev: any) => prev.map((p: any) => p.id === processoId ? processoAtualizado : p));
       }
-      
+
       respostasBackupRef.current = JSON.parse(JSON.stringify(respostas || {}));
       adicionarNotificacao('✅ Respostas salvas com sucesso!', 'sucesso');
       onClose();
     } catch (error: any) {
       console.error('Erro ao salvar respostas:', error);
       adicionarNotificacao(error.message || 'Erro ao salvar respostas', 'erro');
+    } finally {
+      setSalvandoRespostas(false);
     }
   };
 
@@ -670,8 +675,9 @@ export default function ModalQuestionarioProcesso({
 
       <div
         ref={modalContainerRef}
-        className="bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto relative"
       >
+        <LoadingOverlay show={salvandoRespostas} text="Salvando respostas..." />
         <div className={`bg-gradient-to-r ${departamento.cor} p-6 rounded-t-2xl`}>
           <div className="flex justify-between items-center gap-4">
             <div className="flex items-center gap-4 min-w-0">
@@ -1114,10 +1120,11 @@ export default function ModalQuestionarioProcesso({
             {!somenteLeitura && processo?.status !== 'finalizado' && (
               <button
                 type="submit"
-                className="flex-1 min-h-[36px] px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200 font-semibold flex items-center justify-center gap-2 text-base"
+                disabled={salvandoRespostas}
+                className="flex-1 min-h-[36px] px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200 font-semibold flex items-center justify-center gap-2 text-base disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save size={16} />
-                Salvar Questionário
+                {salvandoRespostas ? 'Salvando...' : 'Salvar Questionário'}
               </button>
             )}
 

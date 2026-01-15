@@ -5,6 +5,7 @@ import { Departamento, Processo, Tag, Usuario, Notificacao, Empresa, Template } 
 import type { TipoAlerta } from '@/app/components/modals/ModalAlerta';
 import { api } from '@/app/utils/api';
 import { getSupabaseBrowserClient } from '@/app/utils/supabaseBrowser';
+import LoadingOverlay from '@/app/components/LoadingOverlay';
 
 type RealtimeGroupStatus = 'disabled' | 'connecting' | 'connected' | 'fallback';
 
@@ -111,6 +112,8 @@ interface SistemaContextType {
   excluirProcesso: (processoId: number) => Promise<void>;
   avancarParaProximoDepartamento: (processoId: number) => Promise<void>;
   finalizarProcesso: (processoId: number) => Promise<void>;
+  globalLoading: boolean;
+  setGlobalLoading: (v: boolean) => void;
   aplicarTagsProcesso: (processoId: number, tags: number[]) => Promise<void>;
   adicionarComentarioProcesso: (processoId: number, texto: string, mencoes?: string[]) => Promise<void>;
   adicionarDocumentoProcesso: (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number) => Promise<any>;
@@ -160,6 +163,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     core: 'disabled',
     notificacoes: 'disabled',
   });
+  const [globalLoading, setGlobalLoading] = useState(false);
   const [notificacoesNavegadorAtivas, setNotificacoesNavegadorAtivas] = useState<boolean>(() => {
     try {
       if (typeof window === 'undefined') return false;
@@ -1078,6 +1082,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   const avancarParaProximoDepartamento = useCallback(
     async (processoId: number) => {
       try {
+        setGlobalLoading(true);
         await api.avancarProcesso(processoId);
         // Recarrega o processo completo para manter documentos/anexos e histórico
         const processoAtualizado = await api.getProcesso(processoId);
@@ -1086,6 +1091,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       } catch (error: any) {
         adicionarNotificacao(error.message || 'Erro ao avançar processo', 'erro');
         throw error;
+      } finally {
+        setGlobalLoading(false);
       }
     },
     [adicionarNotificacao]
@@ -1093,6 +1100,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
   const finalizarProcesso = useCallback(async (processoId: number) => {
     try {
+      setGlobalLoading(true);
       await api.atualizarProcesso(processoId, {
         status: 'FINALIZADO' as any,
         dataFinalizacao: new Date(),
@@ -1107,6 +1115,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao finalizar processo', 'erro');
       throw error;
+    } finally {
+      setGlobalLoading(false);
     }
   }, [adicionarNotificacao]);
 
@@ -1262,6 +1272,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     excluirProcesso,
     avancarParaProximoDepartamento,
     finalizarProcesso,
+    globalLoading,
+    setGlobalLoading,
     aplicarTagsProcesso,
     adicionarComentarioProcesso,
     adicionarDocumentoProcesso,
@@ -1269,7 +1281,10 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SistemaContext.Provider value={value}>
-      {children}
+      <div className="relative">
+        <LoadingOverlay show={globalLoading} text="Processando..." />
+        {children}
+      </div>
     </SistemaContext.Provider>
   );
 }

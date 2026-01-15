@@ -3,6 +3,7 @@
 import React from 'react';
 import { X, Plus, Save, Trash2 } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
+import LoadingOverlay from '../LoadingOverlay';
 import type { Questionario } from '@/app/types';
 import { api } from '@/app/utils/api';
 
@@ -44,6 +45,7 @@ export default function ModalEditarQuestionarioSolicitacao({
 
   const [perguntas, setPerguntas] = React.useState<Questionario[]>(perguntasIniciais);
   const [editando, setEditando] = React.useState<Questionario | null>(null);
+  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     setPerguntas(perguntasIniciais);
@@ -98,6 +100,7 @@ export default function ModalEditarQuestionarioSolicitacao({
 
     void (async () => {
       try {
+        setSaving(true);
         await api.salvarQuestionariosProcesso(
           processoId,
           departamentoId,
@@ -110,13 +113,16 @@ export default function ModalEditarQuestionarioSolicitacao({
         onClose();
       } catch (e: any) {
         void mostrarAlerta('Erro', e?.message || 'Erro ao salvar questionário', 'erro');
+      } finally {
+        setSaving(false);
       }
     })();
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-[10025] p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
+        <LoadingOverlay show={saving} text="Salvando questionário..." />
         <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-6 rounded-t-2xl sticky top-0 z-10">
           <div className="flex justify-between items-center">
             <div>

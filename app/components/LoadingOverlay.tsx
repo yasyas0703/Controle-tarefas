@@ -11,7 +11,7 @@ export default function LoadingOverlay({ show, text }: LoadingOverlayProps) {
   if (!show) return null;
 
   return (
-    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[99999] flex items-center justify-center p-4">
       <div className="bg-white dark:bg-[var(--card)] rounded-xl shadow-lg px-6 py-4 flex items-center gap-4">
         <svg className="w-8 h-8 text-cyan-600 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="10" strokeOpacity="0.2"></circle>
