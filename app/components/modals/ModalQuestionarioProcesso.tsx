@@ -345,10 +345,11 @@ export default function ModalQuestionarioProcesso({
           <input
             type="text"
             value={safeValue(valor)}
-            onChange={(e) => handleRespostaChange(pergunta.id, e.target.value)}
+            onChange={(e) => handleRespostaChange(pergunta.id, e.target.value.slice(0, 200))}
+            maxLength={200}
             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500"
             required={pergunta.obrigatorio}
-            placeholder="Digite sua resposta"
+            placeholder="Digite sua resposta (máx. 200 caracteres)"
           />
         );
 
@@ -360,11 +361,12 @@ export default function ModalQuestionarioProcesso({
         ) : (
           <textarea
             value={safeValue(valor)}
-            onChange={(e) => handleRespostaChange(pergunta.id, e.target.value)}
+            onChange={(e) => handleRespostaChange(pergunta.id, e.target.value.slice(0, 500))}
+            maxLength={500}
             rows={4}
             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500 resize-vertical"
             required={pergunta.obrigatorio}
-            placeholder="Digite sua resposta"
+            placeholder="Digite sua resposta (máx. 500 caracteres)"
           />
         );
 

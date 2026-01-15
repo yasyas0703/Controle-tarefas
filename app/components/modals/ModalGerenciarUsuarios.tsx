@@ -136,6 +136,10 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
   };
 
   const handleExcluirUsuario = async (id: number) => {
+    if (usuarioLogado?.id && id === usuarioLogado.id) {
+      await mostrarAlerta('Atenção', 'Você não pode excluir seu próprio usuário.', 'aviso');
+      return;
+    }
     const usuario = usuarios.find(u => u.id === id);
     const ok = await mostrarConfirmacao({
       titulo: 'Excluir Usuário',
@@ -149,7 +153,6 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       try {
         setLoading(true);
         await api.excluirUsuario(id);
-        
         // Recarregar usuários
         const usuariosData = await api.getUsuarios();
         const usuariosConvertidos = (usuariosData || []).map((u: any) => ({
@@ -157,7 +160,6 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
           role: typeof u.role === 'string' ? u.role.toLowerCase() : u.role
         }));
         setUsuarios(usuariosConvertidos || []);
-        
         adicionarNotificacao('Usuário excluído com sucesso', 'sucesso');
       } catch (error: any) {
         adicionarNotificacao(error.message || 'Erro ao excluir usuário', 'erro');
@@ -238,9 +240,10 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                       placeholder="Nome do usuário"
                       value={editandoUsuario ? editandoUsuario.nome : novoUsuario.nome}
                       onChange={(e) => editandoUsuario 
-                        ? setEditandoUsuario({ ...editandoUsuario, nome: e.target.value })
-                        : setNovoUsuario({ ...novoUsuario, nome: e.target.value })
+                        ? setEditandoUsuario({ ...editandoUsuario, nome: e.target.value.slice(0, 60) })
+                        : setNovoUsuario({ ...novoUsuario, nome: e.target.value.slice(0, 60) })
                       }
+                      maxLength={60}
                       className="w-full px-4 py-2 border border-gray-300 dark:border-[var(--border)] rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
                     />
                   </div>
@@ -256,9 +259,10 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                       placeholder={editandoUsuario ? "Nova senha (opcional)" : "Senha"}
                       value={editandoUsuario ? (editandoUsuario.senha || '') : novoUsuario.senha}
                       onChange={(e) => editandoUsuario
-                        ? setEditandoUsuario({ ...editandoUsuario, senha: e.target.value })
-                        : setNovoUsuario({ ...novoUsuario, senha: e.target.value })
+                        ? setEditandoUsuario({ ...editandoUsuario, senha: e.target.value.slice(0, 32) })
+                        : setNovoUsuario({ ...novoUsuario, senha: e.target.value.slice(0, 32) })
                       }
+                      maxLength={32}
                       className="w-full px-4 py-2 border border-gray-300 dark:border-[var(--border)] rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
                     />
                   </div>
@@ -275,9 +279,10 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                     placeholder="email@empresa.com"
                     value={editandoUsuario ? editandoUsuario.email : novoUsuario.email}
                     onChange={(e) => editandoUsuario
-                      ? setEditandoUsuario({ ...editandoUsuario, email: e.target.value })
-                      : setNovoUsuario({ ...novoUsuario, email: e.target.value })
+                      ? setEditandoUsuario({ ...editandoUsuario, email: e.target.value.slice(0, 80) })
+                      : setNovoUsuario({ ...novoUsuario, email: e.target.value.slice(0, 80) })
                     }
+                    maxLength={80}
                     className="w-full px-4 py-2 border border-gray-300 dark:border-[var(--border)] rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
                   />
                 </div>
@@ -398,7 +403,9 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
                           {user.nome.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <div className="font-medium dark:text-[var(--fg)]">{user.nome}</div>
+                          <div className="font-medium dark:text-[var(--fg)]" title={user.nome}>
+                            {user.nome.length > 40 ? user.nome.slice(0, 40) + '...' : user.nome}
+                          </div>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{user.email}</div>
                           <div className="text-sm text-gray-600 dark:text-gray-300">
                             {user.role === 'admin' && 'Administrador'}

@@ -115,7 +115,8 @@ export default function ModalCriarDepartamento({
             <input
               type="text"
               value={formData.nome}
-              onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, nome: e.target.value.slice(0, 40) })}
+              maxLength={40}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500"
               placeholder="Ex: Cadastro, RH, Fiscal..."
               required
@@ -130,7 +131,8 @@ export default function ModalCriarDepartamento({
             <input
               type="text"
               value={formData.responsavel}
-              onChange={(e) => setFormData({ ...formData, responsavel: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, responsavel: e.target.value.slice(0, 40) })}
+              maxLength={40}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500"
               placeholder="Nome do responsável"
               required
@@ -144,10 +146,11 @@ export default function ModalCriarDepartamento({
             </label>
             <textarea
               value={formData.descricao}
-              onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, descricao: e.target.value.slice(0, 200) })}
+              maxLength={200}
               rows={3}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500 resize-none"
-              placeholder="Breve descrição do departamento..."
+              placeholder="Breve descrição do departamento... (máx. 200 caracteres)"
             />
           </div>
 

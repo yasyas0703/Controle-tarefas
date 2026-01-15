@@ -80,10 +80,11 @@ export default function ModalQuestionario({
               </label>
               <textarea
                 value={novapergunta.texto}
-                onChange={(e) => setNovapergunta({ ...novapergunta, texto: e.target.value })}
+                onChange={(e) => setNovapergunta({ ...novapergunta, texto: e.target.value.slice(0, 200) })}
+                maxLength={200}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent resize-none"
                 rows={2}
-                placeholder="Digite a pergunta..."
+                placeholder="Digite a pergunta... (máx. 200 caracteres)"
               />
             </div>
 
@@ -126,9 +127,10 @@ export default function ModalQuestionario({
                 <input
                   type="text"
                   value={novapergunta.opcoes}
-                  onChange={(e) => setNovapergunta({ ...novapergunta, opcoes: e.target.value })}
+                  onChange={(e) => setNovapergunta({ ...novapergunta, opcoes: e.target.value.slice(0, 200) })}
+                  maxLength={200}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                  placeholder="Opção 1, Opção 2, Opção 3"
+                  placeholder="Opção 1, Opção 2, Opção 3 (máx. 200 caracteres)"
                 />
               </div>
             )}

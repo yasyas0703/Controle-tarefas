@@ -351,7 +351,11 @@ export default function ListaProcessos({
 
                         <div className="flex-1">
                           <p className="text-xs text-blue-600 font-semibold uppercase mb-1">Departamento Atual</p>
-                          <h4 className="text-lg font-bold text-gray-900">{departamentoAtual.nome || 'Sem departamento'}</h4>
+                          <h4 className="text-lg font-bold text-gray-900" title={departamentoAtual.nome}>
+                            {departamentoAtual.nome && departamentoAtual.nome.length > 40
+                              ? departamentoAtual.nome.slice(0, 40) + '...'
+                              : departamentoAtual.nome || 'Sem departamento'}
+                          </h4>
                           <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
                             <User size={14} />
                             <span>{departamentoAtual.responsavel || 'Sem responsável'}</span>
