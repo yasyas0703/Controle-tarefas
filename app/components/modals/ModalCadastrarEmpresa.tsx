@@ -203,7 +203,7 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
   };
 
   return (
-    <ModalBase isOpen onClose={onClose} labelledBy="empresa-title" dialogClassName="w-full max-w-4xl bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none max-h-[90vh] overflow-y-auto" zIndex={1070}>
+    <ModalBase isOpen onClose={onClose} labelledBy="empresa-title" dialogClassName="w-full max-w-4xl bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none max-h-[90vh] overflow-y-auto" zIndex={1300}>
       <div className="rounded-2xl">
         {/* Header */}
         <div className="bg-gradient-to-r from-green-500 to-green-600 p-6 rounded-t-2xl sticky top-0 z-10">

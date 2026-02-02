@@ -12,7 +12,7 @@ interface VisualizacaoCompletaProps {
 }
 
 export default function VisualizacaoCompleta({ processo, onClose }: VisualizacaoCompletaProps) {
-  const { departamentos, setShowUploadDocumento, setShowPreviewDocumento, voltarParaDepartamentoAnterior, usuarioLogado, setShowQuestionario } = useSistema();
+  const { departamentos, setShowPreviewDocumento, voltarParaDepartamentoAnterior, usuarioLogado, setShowQuestionario } = useSistema();
 
   const getIconeDepartamento = (icone: any) => {
     if (typeof icone === 'function') return icone;
@@ -88,7 +88,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {(Number(processo?.departamentoAtualIndex ?? 0) > 0) && (
+              {processo?.status !== 'finalizado' && (Number(processo?.departamentoAtualIndex ?? 0) > 0) && (
                 <button
                   onClick={async () => {
                     await voltarParaDepartamentoAnterior(processo.id);
@@ -299,19 +299,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
           </div>
 
           <div className="bg-white dark:bg-[var(--card)] rounded-xl p-6 border border-gray-200 dark:border-[var(--border)] shadow-sm">
-            <h4 className="font-bold text-gray-800 dark:text-[var(--fg)] mb-4 flex items-center justify-between">
-              <span>Documentos do Processo</span>
-              <button
-                onClick={() => {
-                  onClose();
-                  setShowUploadDocumento(processo);
-                }}
-                className="bg-cyan-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-cyan-700 flex items-center gap-2"
-              >
-                <Download size={16} className="opacity-0" />
-                Adicionar Documento
-              </button>
-            </h4>
+            <h4 className="font-bold text-gray-800 dark:text-[var(--fg)] mb-4">Documentos do Processo</h4>
 
             {documentos.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

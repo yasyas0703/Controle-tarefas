@@ -235,7 +235,7 @@ export default function ListaProcessos({
               key={processo.id}
               className="p-4 sm:p-6 hover:bg-gray-50 transition-all duration-200"
             >
-              <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start mb-6 gap-4">
+              <div className="flex flex-col 2xl:flex-row 2xl:justify-between 2xl:items-start mb-6 gap-4">
                 {/* Coluna Esquerda - Informações */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start gap-3 mb-3">
@@ -381,7 +381,7 @@ export default function ListaProcessos({
                 </div>
 
                 {/* Coluna Direita - Ações */}
-                <div className="flex w-full lg:w-auto flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center justify-start lg:justify-end">
+                <div className="flex w-full 2xl:w-auto flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center justify-start 2xl:justify-end">
                   <div className="flex flex-wrap gap-2">
                     {isFinalizado && (
                       <div className="flex flex-wrap gap-2">
@@ -447,16 +447,6 @@ export default function ListaProcessos({
                           </button>
                         )}
 
-                        {!isPrimeiroDepartamento && onVoltar && podeVoltar && (
-                          <button
-                            onClick={() => onVoltar(processo)}
-                            className="bg-gradient-to-r from-slate-500 to-gray-600 hover:from-slate-600 hover:to-gray-700 text-white px-4 py-2 sm:px-6 sm:py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl whitespace-nowrap"
-                            title="Voltar para o departamento anterior"
-                          >
-                            <ArrowLeft size={16} />
-                            Voltar
-                          </button>
-                        )}
 
                         {!isUltimoDepartamento && onAvancar && podeAvancar && (
                           <button

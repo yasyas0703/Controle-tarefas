@@ -79,7 +79,7 @@ export default function ModalConfirmacao({
   const config = getConfigTipo();
 
   return (
-    <ModalBase isOpen onClose={onCancel} labelledBy="confirm-title" dialogClassName="w-full max-w-md bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none" zIndex={1110}>
+    <ModalBase isOpen onClose={onCancel} labelledBy="confirm-title" dialogClassName="w-full max-w-md bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none" zIndex={1500}>
       <div className="rounded-2xl">
         <div className={`bg-gradient-to-r ${config.cor} p-6 rounded-t-2xl`}>
           <div className="flex items-center gap-3">

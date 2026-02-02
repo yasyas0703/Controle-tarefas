@@ -61,7 +61,7 @@ export default function ModalAlerta({
   const config = getConfig();
 
   return (
-    <ModalBase isOpen onClose={onClose} labelledBy="alert-title" dialogClassName="w-full max-w-md bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none" zIndex={1120}>
+    <ModalBase isOpen onClose={onClose} labelledBy="alert-title" dialogClassName="w-full max-w-md bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none" zIndex={1500}>
       <div className="rounded-2xl relative">
         <div className={`bg-gradient-to-r ${config.cor} p-6 rounded-t-2xl`}>
           <div className="flex items-center gap-3">

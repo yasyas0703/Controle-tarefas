@@ -117,7 +117,7 @@ export default function ModalPreviewDocumento({ documento, onClose }: ModalPrevi
   };
 
   return (
-    <ModalBase isOpen onClose={onClose} labelledBy="preview-title" dialogClassName="w-full max-w-5xl bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none max-h-[90vh] overflow-hidden" zIndex={1090}>
+    <ModalBase isOpen onClose={onClose} labelledBy="preview-title" dialogClassName="w-full max-w-5xl bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none max-h-[90vh] overflow-hidden" zIndex={10050}>
       <div className="rounded-2xl">
         <div className="bg-gradient-to-r from-cyan-600 to-blue-600 p-6 rounded-t-2xl flex items-center justify-between">
           <div>
