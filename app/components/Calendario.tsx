@@ -27,6 +27,13 @@ import { api } from '@/app/utils/api';
 import { useSistema } from '@/app/context/SistemaContext';
 import { EventoCalendario, TipoEventoCalendario, OBRIGACOES_FISCAIS, Departamento, Empresa } from '@/app/types';
 
+// Função para extrair data local corretamente (evita problema de timezone)
+function getLocalDate(dateValue: string | Date): Date {
+  const d = new Date(dateValue);
+  // Usar UTC para evitar que o timezone mude o dia
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0);
+}
+
 // Cores por tipo de evento
 const CORES_TIPO: Record<string, { bg: string; text: string; border: string }> = {
   processo_prazo: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-300', border: 'border-blue-300 dark:border-blue-700' },
@@ -171,7 +178,7 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
       // Filtrar por tipo
       if (!filtros.tipos.includes(evento.tipo)) return;
       
-      const dataEvento = new Date(evento.dataInicio);
+      const dataEvento = getLocalDate(evento.dataInicio);
       const chave = `${dataEvento.getFullYear()}-${dataEvento.getMonth()}-${dataEvento.getDate()}`;
       
       if (!mapa.has(chave)) {
@@ -920,7 +927,7 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
       {/* Modal de Eventos do Dia */}
       {diaSelecionado && (() => {
         const eventosDoDia = eventos.filter((e: any) => {
-          const dataEvento = new Date(e.dataInicio);
+          const dataEvento = getLocalDate(e.dataInicio);
           return dataEvento.getFullYear() === diaSelecionado.getFullYear() &&
             dataEvento.getMonth() === diaSelecionado.getMonth() &&
             dataEvento.getDate() === diaSelecionado.getDate();
