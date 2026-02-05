@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Plus, Building2, AlertCircle } from 'lucide-react';
+import { Plus, Building2, AlertCircle, LayoutDashboard, Calendar } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { api } from '@/app/utils/api';
 import { Processo, Departamento } from '@/app/types';
@@ -12,6 +12,7 @@ import Filtros from '@/app/components/sections/Filtros';
 import ListaProcessos from '@/app/components/sections/ListaProcessos';
 import SecaoAlertas from '@/app/components/sections/SecaoAlertas';
 import ProcessoDetalhado from '@/app/components/ProcessoDetalhado';
+import Calendario from '@/app/components/Calendario';
 import ModalLogin from '@/app/components/modals/ModalLogin';
 import ModalCriarDepartamento from '@/app/components/modals/ModalCriarDepartamento';
 import ModalNovaEmpresa from '@/app/components/modals/ModalNovaEmpresa';
@@ -31,6 +32,9 @@ import ModalConfirmacao from '@/app/components/modals/ModalConfirmacao';
 import ModalAlerta from '@/app/components/modals/ModalAlerta';
 import ModalEditarQuestionarioSolicitacao from '@/app/components/modals/ModalEditarQuestionarioSolicitacao';
 import ModalPreviewDocumento from '@/app/components/modals/ModalPreviewDocumento';
+
+// Tipos de aba
+type AbaAtiva = 'dashboard' | 'calendario';
 
 export default function Home() {
   const {
@@ -92,6 +96,9 @@ export default function Home() {
   const [showVisualizacao, setShowVisualizacao] = useState<Processo | null>(null);
   const [showProcessoDetalhado, setShowProcessoDetalhado] = useState<Processo | null>(null);
   const [departamentoEmEdicao, setDepartamentoEmEdicao] = useState<Departamento | null>(null);
+  
+  // Estado da aba ativa
+  const [abaAtiva, setAbaAtiva] = useState<AbaAtiva>('dashboard');
 
   // Mantém o modal de visualização completo em sincronia com o estado global.
   // Ex.: se apagar documento na galeria/upload, o modal deve refletir imediatamente.
@@ -272,12 +279,47 @@ export default function Home() {
         onLogout={() => setUsuarioLogado(null)}
       />
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
-        {/* Alertas */}
-        <SecaoAlertas />
+      {/* Navegação por Abas */}
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30 shadow-sm">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6">
+          <nav className="flex gap-1" aria-label="Tabs">
+            <button
+              onClick={() => setAbaAtiva('dashboard')}
+              className={`
+                flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                ${abaAtiva === 'dashboard'
+                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+              `}
+            >
+              <LayoutDashboard size={18} />
+              <span className="hidden sm:inline">Dashboard</span>
+              <span className="sm:hidden">Início</span>
+            </button>
+            <button
+              onClick={() => setAbaAtiva('calendario')}
+              className={`
+                flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                ${abaAtiva === 'calendario'
+                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+              `}
+            >
+              <Calendar size={18} />
+              <span>Calendário</span>
+            </button>
+          </nav>
+        </div>
+      </div>
 
-        {/* Dashboard Stats */}
-        <DashboardStats />
+      {/* Conteúdo da Aba */}
+      {abaAtiva === 'dashboard' ? (
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
+          {/* Alertas */}
+          <SecaoAlertas />
+
+          {/* Dashboard Stats */}
+          <DashboardStats />
 
         {/* Departamentos */}
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-4 sm:p-8">
@@ -416,7 +458,15 @@ export default function Home() {
             })();
           }}
         />
-      </div>
+        </div>
+      ) : (
+        /* Aba Calendário */
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-8">
+          <div className="h-[calc(100vh-180px)]">
+            <Calendario />
+          </div>
+        </div>
+      )}
 
       {/* MODALS */}
       {showCriarDepartamento && (

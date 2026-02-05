@@ -25,6 +25,7 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
   
   const [empresaSelecionada, setEmpresaSelecionada] = useState<any>(null);
   const [responsavelId, setResponsavelId] = useState<number | null>(null);
+  const [prazoEntrega, setPrazoEntrega] = useState<string>(""); // Prazo de entrega
   const [usuariosResponsaveis, setUsuariosResponsaveis] = useState<Array<{ id: number; nome: string; email: string; role: string; ativo?: boolean }>>([]);
   const [erroUsuariosResponsaveis, setErroUsuariosResponsaveis] = useState<string | null>(null);
   const [templateSelecionado, setTemplateSelecionado] = useState<number | null>(null);
@@ -168,6 +169,7 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
         templateId: template.id,
         criadoPor: usuarioLogado?.nome,
         descricao: `Solicitação criada via template: ${template.nome}`,
+        dataEntrega: prazoEntrega ? new Date(prazoEntrega) : undefined, // Prazo de entrega
       });
       onClose();
     } catch (error: any) {
@@ -342,6 +344,25 @@ export default function ModalSelecionarTemplate({ onClose }: ModalSelecionarTemp
                 </div>
               </div>
             )}
+
+            {/* Campo de Prazo de Entrega */}
+            <div className="mt-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                📅 Prazo de Entrega <span className="text-gray-400 text-xs font-normal">(opcional - aparece no calendário)</span>
+              </label>
+              <input
+                type="date"
+                value={prazoEntrega}
+                onChange={(e) => setPrazoEntrega(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full px-4 py-3 border border-purple-300 dark:border-purple-700 rounded-xl focus:ring-2 focus:ring-purple-500 bg-purple-50 dark:bg-purple-900/20 text-gray-900 dark:text-[var(--fg)]"
+              />
+              {prazoEntrega && (
+                <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                  ✓ Esta solicitação aparecerá no calendário em {new Date(prazoEntrega + 'T12:00:00').toLocaleDateString('pt-BR')}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-200">

@@ -1115,6 +1115,7 @@ useEffect(() => {
           fluxoDepartamentos: fluxo,
           descricao: dados.descricao,
           notasCriador: dados.notasCriador,
+          dataEntrega: (dados as any).dataEntrega, // Prazo de entrega
         });
 
         // UI otimista: insere imediatamente (não bloqueia a experiência)

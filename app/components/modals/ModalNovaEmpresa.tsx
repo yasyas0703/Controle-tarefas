@@ -20,6 +20,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
   const [usuariosResponsaveis, setUsuariosResponsaveis] = useState<Array<{ id: number; nome: string; email: string; role: string; ativo?: boolean }>>([]);
   const [erroUsuariosResponsaveis, setErroUsuariosResponsaveis] = useState<string | null>(null);
   const [nomeServico, setNomeServico] = useState("");
+  const [prazoEntrega, setPrazoEntrega] = useState<string>(""); // Nova: prazo de entrega
   const [empresaSelecionada, setEmpresaSelecionada] = useState<Empresa | null>(null);
   
   const [questionariosPorDept, setQuestionariosPorDept] = useState<any>({});
@@ -273,6 +274,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
         personalizado: true,
         criadoPor: usuarioLogado?.nome,
         descricao: `Solicitação criada: ${nomeServico}`,
+        dataEntrega: prazoEntrega ? new Date(prazoEntrega) : undefined, // Prazo de entrega
       });
 
       if (salvarComoTemplateChecked && ['admin', 'gerente'].includes(String(usuarioLogado?.role ?? '').toLowerCase())) {
@@ -405,6 +407,25 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
                 placeholder="Ex: Abertura de Empresa, Alteração Contratual..."
                 required
               />
+            </div>
+
+            {/* Campo de Prazo de Entrega */}
+            <div className="mt-4">
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                📅 Prazo de Entrega <span className="text-gray-400 text-xs font-normal">(opcional - aparece no calendário)</span>
+              </label>
+              <input
+                type="date"
+                value={prazoEntrega}
+                onChange={(e) => setPrazoEntrega(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full px-4 py-3 border border-cyan-300 dark:border-cyan-700 rounded-xl focus:ring-2 focus:ring-cyan-500 bg-cyan-50 dark:bg-cyan-900/20 text-gray-900 dark:text-[var(--fg)]"
+              />
+              {prazoEntrega && (
+                <p className="text-xs text-cyan-600 dark:text-cyan-400 mt-1">
+                  ✓ Esta solicitação aparecerá no calendário em {new Date(prazoEntrega + 'T12:00:00').toLocaleDateString('pt-BR')}
+                </p>
+              )}
             </div>
           </div>
 

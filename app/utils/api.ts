@@ -969,6 +969,57 @@ export const api = {
     }
   },
 
+  // ========== DOCUMENTOS DA EMPRESA ==========
+  getEmpresaDocumentos: async (empresaId: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/empresas/${empresaId}/documentos`);
+      if (!response.ok) throw new Error(await parseError(response));
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao carregar documentos da empresa:', error);
+      throw error;
+    }
+  },
+
+  uploadEmpresaDocumento: async (
+    empresaId: number,
+    arquivo: File,
+    tipo: string,
+    meta?: { descricao?: string; validadeAte?: string; alertarDiasAntes?: number }
+  ) => {
+    try {
+      const formData = new FormData();
+      formData.append('arquivo', arquivo);
+      formData.append('tipo', tipo);
+      if (meta?.descricao) formData.append('descricao', meta.descricao);
+      if (meta?.validadeAte) formData.append('validadeAte', meta.validadeAte);
+      if (meta?.alertarDiasAntes !== undefined) formData.append('alertarDiasAntes', String(meta.alertarDiasAntes));
+
+      const response = await fetchAutenticado(`${API_URL}/empresas/${empresaId}/documentos`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) throw new Error(await parseError(response));
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao fazer upload do documento da empresa:', error);
+      throw error;
+    }
+  },
+
+  excluirEmpresaDocumento: async (empresaId: number, documentoId: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/empresas/${empresaId}/documentos/${documentoId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(await parseError(response));
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao excluir documento da empresa:', error);
+      throw error;
+    }
+  },
+
   // ========== TEMPLATES ==========
   getTemplates: async () => {
     try {
@@ -1174,5 +1225,127 @@ export const api = {
       console.error('Erro ao carregar analytics:', error);
       throw error;
     }
+  },
+
+  // ========== CALENDÁRIO ==========
+  getEventosCalendario: async (params?: {
+    inicio?: string;
+    fim?: string;
+    tipo?: string;
+    departamentoId?: number;
+    empresaId?: number;
+    status?: string;
+    incluirProcessos?: boolean;
+    incluirDocumentos?: boolean;
+  }) => {
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.inicio) searchParams.set('inicio', params.inicio);
+      if (params?.fim) searchParams.set('fim', params.fim);
+      if (params?.tipo) searchParams.set('tipo', params.tipo);
+      if (params?.departamentoId) searchParams.set('departamentoId', String(params.departamentoId));
+      if (params?.empresaId) searchParams.set('empresaId', String(params.empresaId));
+      if (params?.status) searchParams.set('status', params.status);
+      if (params?.incluirProcessos) searchParams.set('incluirProcessos', 'true');
+      if (params?.incluirDocumentos) searchParams.set('incluirDocumentos', 'true');
+      
+      const url = `${API_URL}/calendario?${searchParams.toString()}`;
+      const response = await fetchAutenticado(url);
+      if (!response.ok) {
+        throw new Error('Erro ao carregar eventos do calendário');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao carregar eventos:', error);
+      throw error;
+    }
+  },
+
+  criarEventoCalendario: async (evento: {
+    titulo: string;
+    descricao?: string;
+    tipo?: string;
+    dataInicio: string;
+    dataFim?: string;
+    diaInteiro?: boolean;
+    cor?: string;
+    processoId?: number;
+    empresaId?: number;
+    departamentoId?: number;
+    criadoPorId?: number;
+    recorrencia?: string;
+    recorrenciaFim?: string;
+    alertaMinutosAntes?: number;
+    privado?: boolean;
+  }) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/calendario`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(evento),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any)?.error || 'Erro ao criar evento');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao criar evento:', error);
+      throw error;
+    }
+  },
+
+  atualizarEventoCalendario: async (id: number, evento: Partial<{
+    titulo: string;
+    descricao: string;
+    tipo: string;
+    status: string;
+    dataInicio: string;
+    dataFim: string;
+    diaInteiro: boolean;
+    cor: string;
+    processoId: number;
+    empresaId: number;
+    departamentoId: number;
+    recorrencia: string;
+    recorrenciaFim: string;
+    alertaMinutosAntes: number;
+  }>) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/calendario/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(evento),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any)?.error || 'Erro ao atualizar evento');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao atualizar evento:', error);
+      throw error;
+    }
+  },
+
+  excluirEventoCalendario: async (id: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/calendario/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error((error as any)?.error || 'Erro ao excluir evento');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao excluir evento:', error);
+      throw error;
+    }
+  },
+
+  // Marcar evento como concluído
+  concluirEventoCalendario: async (id: number) => {
+    return api.atualizarEventoCalendario(id, { status: 'concluido' });
   },
 };

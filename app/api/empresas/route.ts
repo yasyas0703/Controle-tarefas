@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
     const busca = searchParams.get('busca');
     
     const where: any = {};
-    
-    // Filtrar por cadastrada apenas se o parâmetro foi informado
+
+    // Filtrar por cadastrada apenas se o parâmetro for informado;
     if (cadastrada !== null && cadastrada !== undefined && cadastrada !== '') {
       where.cadastrada = cadastrada === 'true';
     }
@@ -64,8 +64,8 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json();
     
-    // Determinar se é empresa cadastrada: precisa ter CNPJ válido (14 dígitos) ou CPF válido (11 dígitos)
-    // Mas no contexto do sistema, empresas cadastradas devem ter CNPJ (14 dígitos)
+    // Detrminar se a empresa cadastrada: precisa ter CNPJ válido (14 dígitos) ou CPF válido (11 dígitos)
+    // Mas no contexto do sistema empresas cadastradas devem ter CNPJ (14 dígitos)
     const cnpjLimpo = data.cnpj ? String(data.cnpj).replace(/\D/g, '') : '';
     const temCnpjValido = cnpjLimpo.length === 14; // CNPJ tem 14 dígitos
     

@@ -94,10 +94,31 @@ model Empresa {
   atualizado_em         DateTime  @updatedAt
   
   processos             Processo[]
+  documentos            EmpresaDocumento[]
   
   @@index([cnpj])
   @@index([codigo])
   @@index([cadastrada])
+}
+
+// Documentos da Empresa (com validade opcional)
+model EmpresaDocumento {
+  id               Int       @id @default(autoincrement())
+  empresaId        Int
+  empresa          Empresa   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  nome             String
+  tipo             String
+  descricao        String?
+  tamanho          BigInt
+  url              String
+  path             String?
+  dataUpload       DateTime  @default(now())
+  uploadPorId      Int?
+  validadeAte      DateTime?
+  alertarDiasAntes Int       @default(30)
+
+  @@index([empresaId])
+  @@index([validadeAte])
 }
 
 // Processos/Solicitações
@@ -430,3 +451,68 @@ enum TipoNotificacao {
   AVISO
 }
 
+// Eventos do Calendário
+model EventoCalendario {
+  id                Int       @id @default(autoincrement())
+  titulo            String
+  descricao         String?   @db.Text
+  tipo              TipoEventoCalendario @default(LEMBRETE)
+  status            StatusEventoCalendario @default(PENDENTE)
+  
+  dataInicio        DateTime
+  dataFim           DateTime?
+  diaInteiro        Boolean   @default(false)
+  cor               String?   // Cor customizada
+  
+  // Relacionamentos opcionais
+  processoId        Int?
+  empresaId         Int?
+  departamentoId    Int?
+  criadoPorId       Int?
+  
+  // Privacidade - se true, só o criador vê
+  privado           Boolean   @default(true)
+  
+  // Recorrência
+  recorrencia       RecorrenciaEventoCalendario @default(UNICO)
+  recorrenciaFim    DateTime?
+  
+  // Alertas
+  alertaMinutosAntes Int?     @default(60)
+  
+  criadoEm          DateTime  @default(now())
+  atualizadoEm      DateTime  @updatedAt
+  
+  @@index([dataInicio])
+  @@index([tipo])
+  @@index([status])
+  @@index([processoId])
+  @@index([empresaId])
+  @@index([departamentoId])
+  @@index([criadoPorId])
+}
+
+enum TipoEventoCalendario {
+  PROCESSO_PRAZO
+  SOLICITACAO
+  OBRIGACAO_FISCAL
+  DOCUMENTO_VENCIMENTO
+  REUNIAO
+  LEMBRETE
+  FERIADO
+}
+
+enum StatusEventoCalendario {
+  PENDENTE
+  CONCLUIDO
+  ATRASADO
+  CANCELADO
+}
+
+enum RecorrenciaEventoCalendario {
+  UNICO
+  DIARIO
+  SEMANAL
+  MENSAL
+  ANUAL
+}

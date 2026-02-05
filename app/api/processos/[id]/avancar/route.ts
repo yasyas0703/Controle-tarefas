@@ -90,7 +90,6 @@ export async function POST(
     // ============================================
     
     try {
-      // Buscar questionários do departamento atual
       const questionarios = await prisma.questionarioDepartamento.findMany({
         where: {
           processoId: processoId,
@@ -108,11 +107,26 @@ export async function POST(
             departamentoId: departamentoAtual.id,
           },
         },
+        include: {
+          questionario: true,
+        },
       });
       
       for (const respQuest of respostasQuestionario) {
-        // `RespostaQuestionario` armazena a resposta como string (JSON quando necessário)
-        respostasMap[respQuest.questionarioId] = respQuest.resposta;
+        if (respQuest.resposta) {
+          try {
+            const parsed = typeof respQuest.resposta === 'string' ? JSON.parse(respQuest.resposta) : respQuest.resposta;
+            if (typeof parsed === 'object' && parsed !== null) {
+              Object.assign(respostasMap, parsed);
+            } else {
+              // Se não for objeto, usar o questionarioId como chave
+              respostasMap[respQuest.questionarioId] = parsed;
+            }
+          } catch {
+            // Se não for JSON, usar o valor direto
+            respostasMap[respQuest.questionarioId] = respQuest.resposta;
+          }
+        }
       }
 
       // Validar se todos os requisitos estão completos (somente se houver questionários ou documentos obrigatórios)

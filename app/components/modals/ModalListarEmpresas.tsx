@@ -1,11 +1,281 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, Search, Building, RefreshCw, Edit, Trash2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, Search, Building, RefreshCw, Edit, Trash2, AlertCircle, FileText, Upload, Calendar, Clock, CheckCircle, AlertTriangle, XCircle, ExternalLink, Loader2 } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
-import { Empresa } from '@/app/types';
+import { Empresa, EmpresaDocumento } from '@/app/types';
 import ModalCadastrarEmpresa from './ModalCadastrarEmpresa';
 import ModalBase from './ModalBase';
+import { api } from '@/app/utils/api';
+
+// Componente de Documentos da Empresa
+function DocumentosEmpresa({ empresaId }: { empresaId: number }) {
+  const [documentos, setDocumentos] = useState<EmpresaDocumento[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [showUploadForm, setShowUploadForm] = useState(false);
+  const [uploadData, setUploadData] = useState({
+    tipo: '',
+    descricao: '',
+    validadeAte: '',
+    alertarDiasAntes: 30,
+  });
+
+  const carregarDocumentos = useCallback(async () => {
+    try {
+      setLoading(true);
+      const docs = await api.getEmpresaDocumentos(empresaId);
+      setDocumentos(docs);
+    } catch (e) {
+      console.error('Erro ao carregar documentos:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [empresaId]);
+
+  useEffect(() => {
+    carregarDocumentos();
+  }, [carregarDocumentos]);
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const fileInput = document.getElementById(`file-upload-${empresaId}`) as HTMLInputElement;
+    const file = fileInput?.files?.[0];
+    if (!file || !uploadData.tipo) return;
+
+    try {
+      setUploading(true);
+      await api.uploadEmpresaDocumento(empresaId, file, uploadData.tipo, {
+        descricao: uploadData.descricao || undefined,
+        validadeAte: uploadData.validadeAte || undefined,
+        alertarDiasAntes: uploadData.alertarDiasAntes,
+      });
+      await carregarDocumentos();
+      setShowUploadForm(false);
+      setUploadData({ tipo: '', descricao: '', validadeAte: '', alertarDiasAntes: 30 });
+      if (fileInput) fileInput.value = '';
+    } catch (e) {
+      console.error('Erro ao fazer upload:', e);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleExcluir = async (docId: number) => {
+    if (!confirm('Excluir este documento?')) return;
+    try {
+      await api.excluirEmpresaDocumento(empresaId, docId);
+      await carregarDocumentos();
+    } catch (e) {
+      console.error('Erro ao excluir:', e);
+    }
+  };
+
+  const getBadgeValidade = (doc: EmpresaDocumento) => {
+    if (!doc.validadeAte) return null;
+    
+    const status = doc.validadeStatus || 'sem_validade';
+    const dias = doc.validadeDias;
+
+    if (status === 'vencido') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+          <XCircle size={12} />
+          Vencido
+        </span>
+      );
+    }
+    if (status === 'vence_em_breve') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+          <AlertTriangle size={12} />
+          Vence em {dias} dias
+        </span>
+      );
+    }
+    if (status === 'ok') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+          <CheckCircle size={12} />
+          Válido
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const formatarData = (data?: string | Date | null) => {
+    if (!data) return '—';
+    return new Date(data).toLocaleDateString('pt-BR');
+  };
+
+  const formatarTamanho = (bytes: number | string) => {
+    const b = Number(bytes);
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+    return `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  return (
+    <div className="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-4 border border-orange-200 dark:border-orange-800">
+      <div className="flex justify-between items-center mb-4">
+        <h4 className="font-semibold text-orange-800 dark:text-orange-200 flex items-center gap-2">
+          <FileText size={18} />
+          Documentos da Empresa
+        </h4>
+        <button
+          onClick={() => setShowUploadForm(!showUploadForm)}
+          className="text-xs bg-orange-600 text-white px-3 py-1.5 rounded-lg hover:bg-orange-700 flex items-center gap-1"
+        >
+          <Upload size={14} />
+          Adicionar
+        </button>
+      </div>
+
+      {/* Form de Upload */}
+      {showUploadForm && (
+        <form onSubmit={handleUpload} className="mb-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-orange-200 dark:border-orange-700 space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Arquivo *</label>
+            <input
+              id={`file-upload-${empresaId}`}
+              type="file"
+              required
+              className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-orange-100 file:text-orange-700 hover:file:bg-orange-200"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo *</label>
+              <select
+                value={uploadData.tipo}
+                onChange={(e) => setUploadData({ ...uploadData, tipo: e.target.value })}
+                required
+                className="w-full px-3 py-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600"
+              >
+                <option value="">Selecione...</option>
+                <option value="Contrato Social">Contrato Social</option>
+                <option value="Cartão CNPJ">Cartão CNPJ</option>
+                <option value="Alvará">Alvará de Funcionamento</option>
+                <option value="Certificado Digital">Certificado Digital</option>
+                <option value="Procuração">Procuração</option>
+                <option value="Licença Ambiental">Licença Ambiental</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Validade (opcional)</label>
+              <input
+                type="date"
+                value={uploadData.validadeAte}
+                onChange={(e) => setUploadData({ ...uploadData, validadeAte: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descrição (opcional)</label>
+            <input
+              type="text"
+              value={uploadData.descricao}
+              onChange={(e) => setUploadData({ ...uploadData, descricao: e.target.value })}
+              placeholder="Ex: Alvará 2026"
+              className="w-full px-3 py-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600"
+            />
+          </div>
+          {uploadData.validadeAte && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alertar quantos dias antes?</label>
+              <input
+                type="number"
+                min={1}
+                value={uploadData.alertarDiasAntes}
+                onChange={(e) => setUploadData({ ...uploadData, alertarDiasAntes: Number(e.target.value) })}
+                className="w-24 px-3 py-2 border rounded-lg text-sm dark:bg-gray-700 dark:border-gray-600"
+              />
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={uploading}
+              className="flex-1 bg-orange-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              {uploading ? 'Enviando...' : 'Enviar'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowUploadForm(false)}
+              className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* Lista de Documentos */}
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 size={24} className="animate-spin text-orange-500" />
+        </div>
+      ) : documentos.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+          Nenhum documento cadastrado
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {documentos.map((doc) => (
+            <div
+              key={doc.id}
+              className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+            >
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <FileText size={20} className="text-orange-500 flex-shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate">
+                      {doc.tipo}
+                    </span>
+                    {getBadgeValidade(doc)}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {doc.nome} • {formatarTamanho(doc.tamanho)}
+                  </p>
+                  {doc.validadeAte && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-0.5">
+                      <Calendar size={10} />
+                      Validade: {formatarData(doc.validadeAte)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <a
+                  href={doc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg"
+                  title="Abrir documento"
+                >
+                  <ExternalLink size={16} />
+                </a>
+                <button
+                  onClick={() => handleExcluir(doc.id)}
+                  className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
+                  title="Excluir"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface DetalhesDiretoModalProps {
   empresa: Empresa;
@@ -108,26 +378,29 @@ function DetalhesDiretoModal({
               </div>
             </div>
 
-            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-              <h4 className="font-semibold text-purple-800 mb-4">Endereço</h4>
+            <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4 border border-purple-200 dark:border-purple-800">
+              <h4 className="font-semibold text-purple-800 dark:text-purple-200 mb-4">Endereço</h4>
               <div className="space-y-2">
                 {empresa.logradouro && (
-                  <p className="text-gray-900">
+                  <p className="text-gray-900 dark:text-gray-100">
                     {empresa.logradouro}
                     {empresa.numero && `, ${empresa.numero}`}
                   </p>
                 )}
                 {empresa.bairro && (
-                  <p className="text-gray-900">
+                  <p className="text-gray-900 dark:text-gray-100">
                     {empresa.bairro}
                     {empresa.cidade && empresa.estado && (
                       <> - {empresa.cidade}/{empresa.estado}</>
                     )}
                   </p>
                 )}
-                {empresa.cep && <p className="text-gray-900">CEP: {empresa.cep}</p>}
+                {empresa.cep && <p className="text-gray-900 dark:text-gray-100">CEP: {empresa.cep}</p>}
               </div>
             </div>
+
+            {/* Documentos da Empresa */}
+            <DocumentosEmpresa empresaId={empresa.id} />
 
             <div className="flex gap-3">
               <button
@@ -562,17 +835,17 @@ export default function ModalListarEmpresas({
               </div>
 
               {/* Endereço */}
-              <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
-                <h4 className="font-semibold text-purple-800 mb-4">Endereço</h4>
+              <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4 border border-purple-200 dark:border-purple-800">
+                <h4 className="font-semibold text-purple-800 dark:text-purple-200 mb-4">Endereço</h4>
                 <div className="space-y-2">
                   {empresaSelecionada.logradouro && (
-                    <p className="text-gray-900">
+                    <p className="text-gray-900 dark:text-gray-100">
                       {empresaSelecionada.logradouro}
                       {empresaSelecionada.numero && `, ${empresaSelecionada.numero}`}
                     </p>
                   )}
                   {empresaSelecionada.bairro && (
-                    <p className="text-gray-900">
+                    <p className="text-gray-900 dark:text-gray-100">
                       {empresaSelecionada.bairro}
                       {empresaSelecionada.cidade && empresaSelecionada.estado && (
                         <> - {empresaSelecionada.cidade}/{empresaSelecionada.estado}</>
@@ -580,10 +853,13 @@ export default function ModalListarEmpresas({
                     </p>
                   )}
                   {empresaSelecionada.cep && (
-                    <p className="text-gray-900">CEP: {empresaSelecionada.cep}</p>
+                    <p className="text-gray-900 dark:text-gray-100">CEP: {empresaSelecionada.cep}</p>
                   )}
                 </div>
               </div>
+
+              {/* Documentos da Empresa */}
+              <DocumentosEmpresa empresaId={empresaSelecionada.id} />
 
               {/* Botões de Ação (Admin) */}
               <div className="flex gap-3">
