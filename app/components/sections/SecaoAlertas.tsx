@@ -4,19 +4,24 @@ import React from 'react';
 import { AlertTriangle, TrendingUp, Clock } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 
+// Função para extrair data local corretamente (evita problema de timezone)
+function getLocalDate(dateValue: string | Date): Date {
+  const d = new Date(dateValue);
+  // Usar UTC para evitar que o timezone mude o dia
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12, 0, 0);
+}
+
 export default function SecaoAlertas() {
   const { processos } = useSistema();
 
   const calcularPrazo = (p: any): Date | undefined => {
     if (p?.dataEntrega) {
-      const d = new Date(p.dataEntrega);
-      return Number.isNaN(d.getTime()) ? undefined : d;
+      return getLocalDate(p.dataEntrega);
     }
 
     const inicio = p?.dataInicio || p?.criadoEm || p?.dataCriacao;
     if (!inicio) return undefined;
-    const d = new Date(inicio);
-    if (Number.isNaN(d.getTime())) return undefined;
+    const d = getLocalDate(inicio);
     d.setDate(d.getDate() + 15);
     return d;
   };
