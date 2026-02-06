@@ -99,6 +99,23 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // Limita envio: checa último código criado e impede novo envio se foi nos últimos 7 dias
+    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+    const last = await prisma.emailVerificationCode.findFirst({
+      where: { usuarioId: usuario.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (last) {
+      const lastCreated = new Date(last.createdAt).getTime();
+      if (Date.now() - lastCreated < oneWeekMs) {
+        return NextResponse.json(
+          { error: 'Um código já foi enviado recentemente. Aguarde uma semana para solicitar outro.' },
+          { status: 429 }
+        );
+      }
+    }
+
     // Em vez de emitir token imediatamente, geramos um código de verificação e enviamos por email.
     // Código numérico de 6 dígitos
     const code = String(Math.floor(100000 + Math.random() * 900000));

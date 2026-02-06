@@ -39,10 +39,36 @@ export async function DELETE(
       }
     }
 
+    // Salvar na lixeira antes de excluir
+    const dataExpiracao = new Date();
+    dataExpiracao.setDate(dataExpiracao.getDate() + 15);
+
+    try {
+      const dadosOriginais = JSON.parse(JSON.stringify(documento));
+      await prisma.itemLixeira.create({
+        data: {
+          tipoItem: 'EMPRESA_DOCUMENTO',
+          itemIdOriginal: documento.id,
+          dadosOriginais,
+          empresaId: empresaId,
+          departamentoId: null,
+          visibility: 'PUBLIC',
+          allowedRoles: [],
+          allowedUserIds: [],
+          deletadoPorId: user.id as number,
+          expiraEm: dataExpiracao,
+          nomeItem: documento.nome,
+          descricaoItem: documento.tipo || null,
+        }
+      });
+    } catch (e) {
+      console.error('Erro ao criar ItemLixeira for empresaDocumento:', e);
+    }
+
     // Excluir do banco
     await prisma.empresaDocumento.delete({ where: { id: docId } });
 
-    return NextResponse.json({ message: 'Documento excluído com sucesso' });
+    return NextResponse.json({ message: 'Documento movido para lixeira' });
   } catch (e) {
     console.error('Erro ao excluir documento da empresa:', e);
     return NextResponse.json({ error: 'Erro ao excluir documento' }, { status: 500 });

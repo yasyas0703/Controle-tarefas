@@ -91,11 +91,37 @@ export async function DELETE(
       );
     }
     
-    await prisma.comentario.delete({
-      where: { id: parseInt(params.id) },
-    });
-    
-    return NextResponse.json({ message: 'Comentário excluído com sucesso' });
+    // Salvar na lixeira antes de excluir
+    const dadosComentario = comentario;
+    const dataExpiracao = new Date();
+    dataExpiracao.setDate(dataExpiracao.getDate() + 15);
+
+    try {
+      const dadosOriginais = JSON.parse(JSON.stringify(dadosComentario));
+      await prisma.itemLixeira.create({
+        data: {
+          tipoItem: 'COMENTARIO',
+          itemIdOriginal: comentario.id,
+          dadosOriginais,
+          processoId: comentario.processoId,
+          departamentoId: comentario.departamentoId,
+          visibility: 'PUBLIC',
+          allowedRoles: [],
+          allowedUserIds: [],
+          deletadoPorId: user.id as number,
+          expiraEm: dataExpiracao,
+          nomeItem: `Comentário #${comentario.id}`,
+          descricaoItem: (comentario.texto || '').substring(0, 200),
+        }
+      });
+    } catch (e) {
+      console.error('Erro ao criar ItemLixeira for comentario:', e);
+    }
+
+    // Agora remove o comentário permanentemente
+    await prisma.comentario.delete({ where: { id: parseInt(params.id) } });
+
+    return NextResponse.json({ message: 'Comentário movido para lixeira' });
   } catch (error) {
     console.error('Erro ao excluir comentário:', error);
     return NextResponse.json(

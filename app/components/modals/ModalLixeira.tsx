@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Trash2, RotateCcw, Clock, FileText, FolderKanban, AlertTriangle, Search, Filter, Loader2, CheckSquare, Square, Eye, ChevronUp } from 'lucide-react';
+import { X, Trash2, RotateCcw, Clock, FileText, FolderKanban, AlertTriangle, Search, Filter, Loader2, CheckSquare, Square, Eye, ChevronUp, User, MessageSquare, Tag as TagIcon, Home } from 'lucide-react';
 import ModalBase from './ModalBase';
 import { ItemLixeira } from '@/app/types';
 import { api } from '@/app/utils/api';
@@ -13,7 +13,18 @@ interface ModalLixeiraProps {
   onExcluirPermanente?: (item: ItemLixeira) => void;
 }
 
-type FiltroTipo = 'todos' | 'PROCESSO' | 'DOCUMENTO';
+type FiltroTipo =
+  | 'todos'
+  | 'PROCESSO'
+  | 'DOCUMENTO'
+  | 'DEPARTAMENTO'
+  | 'COMENTARIO'
+  | 'USUARIO'
+  | 'TEMPLATE'
+  | 'TAG'
+  | 'EMPRESA'
+  | 'EMPRESA_DOCUMENTO'
+  | 'NOTIFICACAO';
 
 export default function ModalLixeira({ isOpen, onClose, onRestaurar, onExcluirPermanente }: ModalLixeiraProps) {
   const [itens, setItens] = useState<ItemLixeira[]>([]);
@@ -78,10 +89,12 @@ export default function ModalLixeira({ isOpen, onClose, onRestaurar, onExcluirPe
 
   // Estatísticas
   const stats = useMemo(() => {
-    const documentos = itens.filter(i => i.tipoItem === 'DOCUMENTO').length;
-    const processos = itens.filter(i => i.tipoItem === 'PROCESSO').length;
+    const byType = itens.reduce((acc: any, i) => {
+      acc[i.tipoItem] = (acc[i.tipoItem] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
     const expirando = itens.filter(i => (i.diasRestantes || 0) <= 3).length;
-    return { documentos, processos, expirando, total: itens.length };
+    return { byType, expirando, total: itens.length };
   }, [itens]);
 
   // Toggle seleção
@@ -254,10 +267,25 @@ export default function ModalLixeira({ isOpen, onClose, onRestaurar, onExcluirPe
 
   // Ícone do tipo
   const IconeTipo = ({ tipo }: { tipo: string }) => {
-    if (tipo === 'DOCUMENTO') {
-      return <FileText className="w-5 h-5 text-blue-500" />;
+    switch (tipo) {
+      case 'DOCUMENTO':
+      case 'EMPRESA_DOCUMENTO':
+        return <FileText className="w-5 h-5 text-blue-500" />;
+      case 'PROCESSO':
+        return <FolderKanban className="w-5 h-5 text-purple-500" />;
+      case 'DEPARTAMENTO':
+        return <FolderKanban className="w-5 h-5 text-amber-500" />;
+      case 'COMENTARIO':
+        return <MessageSquare className="w-5 h-5 text-green-500" />;
+      case 'USUARIO':
+        return <User className="w-5 h-5 text-indigo-500" />;
+      case 'TAG':
+        return <TagIcon className="w-5 h-5 text-pink-500" />;
+      case 'EMPRESA':
+        return <Home className="w-5 h-5 text-yellow-500" />;
+      default:
+        return <FolderKanban className="w-5 h-5 text-gray-500" />;
     }
-    return <FolderKanban className="w-5 h-5 text-purple-500" />;
   };
 
   // Renderizar preview dos dados
@@ -306,6 +334,41 @@ export default function ModalLixeira({ isOpen, onClose, onRestaurar, onExcluirPe
       );
     }
 
+    if (item.tipoItem === 'DEPARTAMENTO') {
+      return (
+        <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 text-sm">
+          <div className="grid grid-cols-1 gap-2">
+            {dados.nome && <div><span className="text-gray-500">Nome:</span> <span className="font-medium">{dados.nome}</span></div>}
+            {dados.responsavel && <div><span className="text-gray-500">Responsável:</span> <span className="font-medium">{dados.responsavel}</span></div>}
+            {dados.descricao && <div><span className="text-gray-500">Descrição:</span> <span className="font-medium">{dados.descricao}</span></div>}
+          </div>
+        </div>
+      );
+    }
+
+    if (item.tipoItem === 'COMENTARIO') {
+      return (
+        <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 text-sm">
+          <div>
+            {dados.texto && <div><span className="text-gray-500">Texto:</span> <p className="mt-1 text-gray-700 dark:text-gray-300">{String(dados.texto).substring(0,300)}</p></div>}
+            {dados.autorId && <div className="mt-2"><span className="text-gray-500">Autor ID:</span> <span className="font-medium">#{dados.autorId}</span></div>}
+          </div>
+        </div>
+      );
+    }
+
+    if (item.tipoItem === 'USUARIO') {
+      return (
+        <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 text-sm">
+          <div className="grid grid-cols-1 gap-2">
+            {dados.nome && <div><span className="text-gray-500">Nome:</span> <span className="font-medium">{dados.nome}</span></div>}
+            {dados.email && <div><span className="text-gray-500">Email:</span> <span className="font-medium">{dados.email}</span></div>}
+            {typeof dados.ativo !== 'undefined' && <div><span className="text-gray-500">Ativo:</span> <span className="font-medium">{String(dados.ativo)}</span></div>}
+          </div>
+        </div>
+      );
+    }
+
     return null;
   };
 
@@ -338,14 +401,17 @@ export default function ModalLixeira({ isOpen, onClose, onRestaurar, onExcluirPe
         {/* Estatísticas rápidas */}
         {!loading && itens.length > 0 && (
           <div className="px-4 py-3 bg-gray-50 dark:bg-gray-700/30 border-b border-gray-200 dark:border-gray-700 flex flex-wrap gap-4">
-            <div className="flex items-center gap-2 text-sm">
-              <FileText className="w-4 h-4 text-blue-500" />
-              <span className="text-gray-600 dark:text-gray-400">{stats.documentos} documentos</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <FolderKanban className="w-4 h-4 text-purple-500" />
-              <span className="text-gray-600 dark:text-gray-400">{stats.processos} processos</span>
-            </div>
+            {/* Mostrar contadores por tipo dinamicamente */}
+            {Object.entries(stats.byType as Record<string, number>).map(([tipo, count]) => {
+              const tipoStr = String(tipo);
+              const cnt = Number(count) || 0;
+              return (
+                <div key={tipoStr} className="flex items-center gap-2 text-sm">
+                  <IconeTipo tipo={tipoStr} />
+                  <span className="text-gray-600 dark:text-gray-400">{cnt} {tipoStr.toLowerCase().replace(/_/g, ' ')}</span>
+                </div>
+              );
+            })}
             {stats.expirando > 0 && (
               <div className="flex items-center gap-2 text-sm">
                 <AlertTriangle className="w-4 h-4 text-red-500" />
@@ -380,6 +446,14 @@ export default function ModalLixeira({ isOpen, onClose, onRestaurar, onExcluirPe
               <option value="todos">Todos os tipos</option>
               <option value="DOCUMENTO">Documentos</option>
               <option value="PROCESSO">Processos</option>
+              <option value="DEPARTAMENTO">Departamentos</option>
+              <option value="COMENTARIO">Comentários</option>
+              <option value="USUARIO">Usuários</option>
+              <option value="TEMPLATE">Templates</option>
+              <option value="TAG">Tags</option>
+              <option value="EMPRESA_DOCUMENTO">Documentos da Empresa</option>
+              <option value="EMPRESA">Empresas</option>
+              <option value="NOTIFICACAO">Notificações</option>
             </select>
           </div>
 
@@ -506,7 +580,7 @@ export default function ModalLixeira({ isOpen, onClose, onRestaurar, onExcluirPe
                         <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            Excluído em {formatarData(item.deletadoEm)}
+                            Excluído em {formatarData(item.deletadoEm)}{item.deletadoPor?.nome ? ` • por ${item.deletadoPor.nome}` : ''}
                           </span>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${corDiasRestantes(item.diasRestantes || 0)}`}>
                             {item.diasRestantes} {item.diasRestantes === 1 ? 'dia restante' : 'dias restantes'}

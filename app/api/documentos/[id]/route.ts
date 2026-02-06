@@ -70,38 +70,44 @@ export async function DELETE(
     dataExpiracao.setDate(dataExpiracao.getDate() + DIAS_EXPIRACAO_LIXEIRA);
 
     // Mover para lixeira ao invés de excluir
-    await prisma.itemLixeira.create({
-      data: {
-        tipoItem: 'DOCUMENTO',
-        itemIdOriginal: documento.id,
-        dadosOriginais: {
-          id: documento.id,
-          processoId: documento.processoId,
-          nome: documento.nome,
-          tipo: documento.tipo,
-          tipoCategoria: (documento as any).tipoCategoria,
-          tamanho: documento.tamanho.toString(),
-          url: documento.url,
-          path: documento.path,
-          departamentoId: documento.departamentoId,
-          perguntaId: documento.perguntaId,
-          dataUpload: documento.dataUpload,
-          uploadPorId: documento.uploadPorId,
-          visibility: (documento as any).visibility,
-          allowedRoles: (documento as any).allowedRoles,
-          allowedUserIds: (documento as any).allowedUserIds,
-        },
+    try {
+      const dadosOriginais = JSON.parse(JSON.stringify({
+        id: documento.id,
         processoId: documento.processoId,
+        nome: documento.nome,
+        tipo: documento.tipo,
+        tipoCategoria: (documento as any).tipoCategoria,
+        tamanho: documento.tamanho.toString(),
+        url: documento.url,
+        path: documento.path,
         departamentoId: documento.departamentoId,
-        visibility: vis,
-        allowedRoles: allowedRoles.map(r => r.toLowerCase()),
-        allowedUserIds: allowedUserIds,
-        deletadoPorId: userId,
-        expiraEm: dataExpiracao,
-        nomeItem: documento.nome,
-        descricaoItem: `Documento ${documento.tipo} do processo #${documento.processoId}`,
-      },
-    });
+        perguntaId: documento.perguntaId,
+        dataUpload: documento.dataUpload,
+        uploadPorId: documento.uploadPorId,
+        visibility: (documento as any).visibility,
+        allowedRoles: (documento as any).allowedRoles,
+        allowedUserIds: (documento as any).allowedUserIds,
+      }));
+
+      await prisma.itemLixeira.create({
+        data: {
+          tipoItem: 'DOCUMENTO',
+          itemIdOriginal: documento.id,
+          dadosOriginais,
+          processoId: documento.processoId,
+          departamentoId: documento.departamentoId,
+          visibility: vis,
+          allowedRoles: allowedRoles.map(r => r.toLowerCase()),
+          allowedUserIds: allowedUserIds,
+          deletadoPorId: userId,
+          expiraEm: dataExpiracao,
+          nomeItem: documento.nome,
+          descricaoItem: `Documento ${documento.tipo} do processo #${documento.processoId}`,
+        },
+      });
+    } catch (e) {
+      console.error('Erro ao criar ItemLixeira for documento:', e);
+    }
     
     // Agora sim, excluir do banco (mas NÃO do storage - para permitir restauração)
     await prisma.documento.delete({

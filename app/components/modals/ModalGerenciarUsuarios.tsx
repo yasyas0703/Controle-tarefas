@@ -149,10 +149,11 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       textoCancelar: 'Cancelar',
     });
 
-    if (ok) {
+        if (ok) {
       try {
         setLoading(true);
-        await api.excluirUsuario(id);
+        // Excluir permanentemente do banco
+        await api.excluirUsuario(id, { permanente: true });
         // Recarregar usuários
         const usuariosData = await api.getUsuarios();
         const usuariosConvertidos = (usuariosData || []).map((u: any) => ({

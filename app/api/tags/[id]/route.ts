@@ -59,11 +59,34 @@ export async function DELETE(
       return NextResponse.json({ error: 'Sem permissão para excluir tags' }, { status: 403 });
     }
 
-    await prisma.tag.delete({
-      where: { id: parseInt(params.id) },
-    });
-    
-    return NextResponse.json({ message: 'Tag excluída com sucesso' });
+    const tag = await prisma.tag.findUnique({ where: { id: parseInt(params.id) } });
+    if (!tag) return NextResponse.json({ error: 'Tag não encontrada' }, { status: 404 });
+
+    const dataExpiracao = new Date();
+    dataExpiracao.setDate(dataExpiracao.getDate() + 15);
+
+    try {
+      const dadosOriginais = JSON.parse(JSON.stringify(tag));
+      await prisma.itemLixeira.create({
+        data: {
+          tipoItem: 'TAG',
+          itemIdOriginal: tag.id,
+          dadosOriginais,
+          visibility: 'PUBLIC',
+          allowedRoles: [],
+          allowedUserIds: [],
+          deletadoPorId: user.id as number,
+          expiraEm: dataExpiracao,
+          nomeItem: tag.nome,
+          descricaoItem: null,
+        }
+      });
+    } catch (e) {
+      console.error('Erro ao criar ItemLixeira for tag:', e);
+    }
+
+    await prisma.tag.delete({ where: { id: tag.id } });
+    return NextResponse.json({ message: 'Tag movida para lixeira' });
   } catch (error) {
     console.error('Erro ao excluir tag:', error);
     return NextResponse.json(

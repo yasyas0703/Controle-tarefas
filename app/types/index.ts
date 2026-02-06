@@ -317,7 +317,17 @@ export const FERIADOS_NACIONAIS = [
 
 // ==================== LIXEIRA ====================
 
-export type TipoItemLixeira = 'PROCESSO' | 'DOCUMENTO';
+export type TipoItemLixeira =
+  | 'PROCESSO'
+  | 'DOCUMENTO'
+  | 'DEPARTAMENTO'
+  | 'COMENTARIO'
+  | 'USUARIO'
+  | 'EMPRESA'
+  | 'EMPRESA_DOCUMENTO'
+  | 'TEMPLATE'
+  | 'TAG'
+  | 'NOTIFICACAO';
 
 export interface ItemLixeira {
   id: number;

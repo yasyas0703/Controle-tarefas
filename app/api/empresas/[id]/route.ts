@@ -121,12 +121,39 @@ export async function DELETE(
     if (!requireRole(user, ['ADMIN'])) {
       return NextResponse.json({ error: 'Sem permissão para excluir empresa' }, { status: 403 });
     }
+      // Buscar empresa para backup na lixeira
+      const empresaId = parseInt(params.id);
+      const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+      if (!empresa) return NextResponse.json({ error: 'Empresa não encontrada' }, { status: 404 });
 
-    await prisma.empresa.delete({
-      where: { id: parseInt(params.id) },
-    });
-    
-    return NextResponse.json({ message: 'Empresa excluída com sucesso' });
+      const dataExpiracao = new Date();
+      dataExpiracao.setDate(dataExpiracao.getDate() + 15);
+
+      try {
+        const dadosOriginais = JSON.parse(JSON.stringify(empresa));
+        const created = await prisma.itemLixeira.create({
+          data: {
+            tipoItem: 'EMPRESA',
+            itemIdOriginal: empresa.id,
+            dadosOriginais,
+            empresaId: empresa.id,
+            visibility: 'PUBLIC',
+            allowedRoles: [],
+            allowedUserIds: [],
+            deletadoPorId: user.id as number,
+            expiraEm: dataExpiracao,
+            nomeItem: empresa.apelido || empresa.razao_social,
+            descricaoItem: empresa.email || null,
+          }
+        });
+        console.log('ItemLixeira criado para empresa:', { itemLixeiraId: created.id, empresaId: empresa.id });
+      } catch (e: any) {
+        console.error('Erro ao criar ItemLixeira for empresa:', e);
+      }
+
+      await prisma.empresa.delete({ where: { id: empresaId } });
+
+      return NextResponse.json({ message: 'Empresa excluída com sucesso' });
   } catch (error) {
     console.error('Erro ao excluir empresa:', error);
     return NextResponse.json(

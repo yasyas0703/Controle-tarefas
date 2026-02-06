@@ -29,6 +29,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
+    // Deleta notificação diretamente (não armazenamos notificações na lixeira)
     await prisma.notificacao.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (error) {

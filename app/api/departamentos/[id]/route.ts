@@ -96,16 +96,59 @@ export async function DELETE(
       return NextResponse.json({ error: 'Sem permissão para excluir departamento' }, { status: 403 });
     }
 
-    await prisma.departamento.update({
-      where: { id: parseInt(params.id) },
-      data: { ativo: false },
-    });
-    
-    return NextResponse.json({ message: 'Departamento desativado com sucesso' });
-  } catch (error) {
-    console.error('Erro ao excluir departamento:', error);
+    // Buscar departamento atual e salvar na lixeira
+    const deptId = parseInt(params.id);
+    const departamento = await prisma.departamento.findUnique({ where: { id: deptId } });
+    if (!departamento) {
+      return NextResponse.json({ error: 'Departamento não encontrado' }, { status: 404 });
+    }
+
+    const dataExpiracao = new Date();
+    dataExpiracao.setDate(dataExpiracao.getDate() + 15);
+
+    let backupWarning: string | null = null;
+    try {
+      // Serialize departamento to plain JSON (removes Date objects) before saving
+      const dadosOriginais = JSON.parse(JSON.stringify(departamento));
+
+      const created = await prisma.itemLixeira.create({
+        data: {
+          tipoItem: 'DEPARTAMENTO',
+          itemIdOriginal: departamento.id,
+          dadosOriginais,
+          departamentoId: departamento.id,
+          visibility: 'PUBLIC',
+          allowedRoles: [],
+          allowedUserIds: [],
+          deletadoPorId: user.id as number,
+          expiraEm: dataExpiracao,
+          nomeItem: departamento.nome,
+          descricaoItem: departamento.descricao || null,
+        }
+      });
+      console.log('ItemLixeira criado para departamento:', { itemLixeiraId: created.id, departamentoId: departamento.id, criadoPor: user.id });
+    } catch (e: any) {
+      // Log full error details for debugging but do not block deletion
+      console.error('Erro ao criar ItemLixeira for departamento:', { error: e, params, deptId, departamento });
+      try {
+        // attach some useful info for the client
+        backupWarning = String(e.message || e);
+      } catch {
+        backupWarning = 'Erro ao salvar backup na lixeira';
+      }
+    }
+
+    // Desativar departamento (soft-delete)
+    await prisma.departamento.update({ where: { id: deptId }, data: { ativo: false } });
+
+    const respBody: any = { message: 'Departamento movido para lixeira e desativado' };
+    if (backupWarning) respBody.warning = backupWarning;
+    return NextResponse.json(respBody);
+  } catch (error: any) {
+    console.error('Erro ao excluir departamento:', error?.stack || error, { params });
+    // Em ambiente de desenvolvimento retornamos a mensagem para ajudar debug.
     return NextResponse.json(
-      { error: 'Erro ao excluir departamento' },
+      { error: 'Erro ao excluir departamento', message: error?.message || String(error) },
       { status: 500 }
     );
   }

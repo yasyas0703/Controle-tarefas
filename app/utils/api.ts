@@ -1169,13 +1169,14 @@ export const api = {
     }
   },
 
-  excluirUsuario: async (id: number) => {
+  excluirUsuario: async (id: number, opts?: { permanente?: boolean }) => {
     try {
-      const response = await fetchAutenticado(`${API_URL}/usuarios/${id}`, {
+      const url = `${API_URL}/usuarios/${id}${opts?.permanente ? '?permanente=1' : ''}`;
+      const response = await fetchAutenticado(url, {
         method: 'DELETE',
       });
       if (!response.ok) {
-        const error = await response.json();
+        const error = await response.json().catch(() => ({} as any));
         throw new Error(error.error || 'Erro ao excluir usuário');
       }
       return await response.json();
@@ -1383,7 +1384,7 @@ export const api = {
   },
 
   // ========== LIXEIRA ==========
-  getLixeira: async (tipoItem?: 'PROCESSO' | 'DOCUMENTO') => {
+  getLixeira: async (tipoItem?: string) => {
     try {
       const params = tipoItem ? `?tipoItem=${tipoItem}` : '';
       const response = await fetchAutenticado(`${API_URL}/lixeira${params}`);

@@ -35,6 +35,7 @@ model Usuario {
   notificacoes          Notificacao[]
   favoritos             ProcessoFavorito[]
   emailVerificationCodes EmailVerificationCode[]
+  itensLixeira          ItemLixeira[]
 
   @@index([email])
   @@index([role])
@@ -549,6 +550,7 @@ model ItemLixeira {
 
   // Quem deletou
   deletadoPorId Int
+  deletadoPor   Usuario  @relation(fields: [deletadoPorId], references: [id])
 
   // Datas
   deletadoEm DateTime @default(now())
@@ -568,6 +570,14 @@ model ItemLixeira {
 enum TipoItemLixeira {
   PROCESSO
   DOCUMENTO
+  DEPARTAMENTO
+  COMENTARIO
+  USUARIO
+  EMPRESA
+  EMPRESA_DOCUMENTO
+  TEMPLATE
+  TAG
+  NOTIFICACAO
 }
 
 // ============================================

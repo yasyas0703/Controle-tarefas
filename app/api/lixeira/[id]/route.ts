@@ -394,6 +394,102 @@ export async function POST(
       });
     }
 
+    // Restaurar departamento (soft-deleted)
+    else if (item.tipoItem === 'DEPARTAMENTO') {
+      // Tenta reativar departamento existente
+      const deptId = item.itemIdOriginal;
+      let departamentoRestaurado: any = null;
+      const existing = await prisma.departamento.findUnique({ where: { id: deptId } });
+      if (existing) {
+        departamentoRestaurado = await prisma.departamento.update({
+          where: { id: deptId },
+          data: {
+            ativo: true,
+            nome: dadosOriginais.nome,
+            descricao: dadosOriginais.descricao || null,
+            responsavel: dadosOriginais.responsavel || null,
+            cor: dadosOriginais.cor || undefined,
+            icone: dadosOriginais.icone || null,
+            ordem: typeof dadosOriginais.ordem === 'number' ? dadosOriginais.ordem : existing.ordem,
+          },
+        });
+      } else {
+        // Cria novo departamento com os dados
+        departamentoRestaurado = await prisma.departamento.create({
+          data: {
+            nome: dadosOriginais.nome,
+            descricao: dadosOriginais.descricao || null,
+            responsavel: dadosOriginais.responsavel || null,
+            cor: dadosOriginais.cor || undefined,
+            icone: dadosOriginais.icone || null,
+            ativo: true,
+            ordem: typeof dadosOriginais.ordem === 'number' ? dadosOriginais.ordem : 0,
+          },
+        });
+      }
+
+      await prisma.itemLixeira.delete({ where: { id: itemId } });
+      return jsonBigInt({ message: 'Departamento restaurado com sucesso', tipo: 'DEPARTAMENTO', itemRestaurado: departamentoRestaurado });
+    }
+
+    // Restaurar comentário
+    else if (item.tipoItem === 'COMENTARIO') {
+      const comentarioCriado = await prisma.comentario.create({
+        data: {
+          processoId: dadosOriginais.processoId,
+          texto: dadosOriginais.texto || dadosOriginais.conteudo || '',
+          autorId: dadosOriginais.autorId,
+          departamentoId: dadosOriginais.departamentoId || null,
+          parentId: dadosOriginais.parentId || null,
+          criadoEm: dadosOriginais.criadoEm ? new Date(dadosOriginais.criadoEm) : new Date(),
+          mencoes: Array.isArray(dadosOriginais.mencoes) ? dadosOriginais.mencoes : [],
+        }
+      }).catch((err: any) => {
+        console.error('Erro ao recriar comentario ao restaurar lixeira:', err);
+        throw err;
+      });
+
+      await prisma.itemLixeira.delete({ where: { id: itemId } });
+      return jsonBigInt({ message: 'Comentário restaurado com sucesso', tipo: 'COMENTARIO', itemRestaurado: comentarioCriado });
+    }
+
+    // Restaurar usuário (reativar ou recriar)
+    else if (item.tipoItem === 'USUARIO') {
+      const userIdOrig = item.itemIdOriginal;
+      let usuarioRestaurado: any = null;
+      const existente = await prisma.usuario.findUnique({ where: { id: userIdOrig } });
+      if (existente) {
+        usuarioRestaurado = await prisma.usuario.update({
+          where: { id: userIdOrig },
+          data: {
+            ativo: true,
+            nome: dadosOriginais.nome || existente.nome,
+            email: dadosOriginais.email || existente.email,
+            role: (dadosOriginais.role as any) || existente.role,
+            departamentoId: dadosOriginais.departamentoId || existente.departamentoId || null,
+            permissoes: Array.isArray(dadosOriginais.permissoes) ? dadosOriginais.permissoes : existente.permissoes,
+          },
+        });
+      } else {
+        usuarioRestaurado = await prisma.usuario.create({
+          data: {
+            nome: dadosOriginais.nome,
+            email: dadosOriginais.email,
+            senha: dadosOriginais.senha || 'restored',
+            role: (dadosOriginais.role as any) || 'USUARIO',
+            departamentoId: dadosOriginais.departamentoId || null,
+            ativo: true,
+            permissoes: Array.isArray(dadosOriginais.permissoes) ? dadosOriginais.permissoes : [],
+          },
+        });
+      }
+
+      await prisma.itemLixeira.delete({ where: { id: itemId } });
+      return jsonBigInt({ message: 'Usuário restaurado com sucesso', tipo: 'USUARIO', itemRestaurado: usuarioRestaurado });
+    }
+
+    // Outros tipos podem ser implementados conforme necessário
+
     return jsonBigInt({ error: 'Tipo de item não suportado' }, { status: 400 });
 
   } catch (error) {

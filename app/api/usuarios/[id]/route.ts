@@ -199,11 +199,71 @@ export async function DELETE(
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
 
-    await prisma.usuario.delete({
+    // Salvar dados do usuário na lixeira (sem senha)
+    const targetData = await prisma.usuario.findUnique({
       where: { id: parseInt(params.id) },
+      select: { id: true, nome: true, email: true, role: true, departamentoId: true, criadoEm: true, ativo: true }
     });
+
+    if (!targetData) {
+      console.timeEnd('DELETE /api/usuarios/:id');
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
+
+    const dataExpiracao = new Date();
+    dataExpiracao.setDate(dataExpiracao.getDate() + 15);
+
+    try {
+      const dadosOriginais = JSON.parse(JSON.stringify(targetData));
+      await prisma.itemLixeira.create({
+        data: {
+          tipoItem: 'USUARIO',
+          itemIdOriginal: targetData.id,
+          dadosOriginais,
+          departamentoId: targetData.departamentoId || null,
+          visibility: 'PUBLIC',
+          allowedRoles: [],
+          allowedUserIds: [],
+          deletadoPorId: user.id as number,
+          expiraEm: dataExpiracao,
+          nomeItem: targetData.nome,
+          descricaoItem: `Usuário ${targetData.email} (${targetData.role})`,
+        }
+      });
+    } catch (e) {
+      console.error('Erro ao criar ItemLixeira for usuario:', e);
+    }
+
+    // Suporta exclusão permanente via query param ?permanente=1 (apenas ADMIN)
+    const url = new URL(request.url);
+    const permanente = url.searchParams.get('permanente') === '1' || url.searchParams.get('permanente') === 'true';
+
+    if (permanente) {
+      // Não permitir remoção do último admin
+      if (String(target.role).toUpperCase() === 'ADMIN') {
+        const outrosAdminsAtivos = await prisma.usuario.count({ where: { role: 'ADMIN', ativo: true, id: { not: target.id } } });
+        if (outrosAdminsAtivos === 0) {
+          console.timeEnd('DELETE /api/usuarios/:id');
+          return NextResponse.json({ error: 'Não é possível excluir permanentemente o último administrador ativo.' }, { status: 400 });
+        }
+      }
+
+      // Tenta excluir permanentemente
+      try {
+        await prisma.usuario.delete({ where: { id: target.id } });
+        console.timeEnd('DELETE /api/usuarios/:id');
+        return NextResponse.json({ message: 'Usuário excluído permanentemente' });
+      } catch (err: any) {
+        console.error('Erro ao excluir usuário permanentemente:', err);
+        return NextResponse.json({ error: 'Erro ao excluir permanentemente (ver logs)' }, { status: 500 });
+      }
+    }
+
+    // Caso padrão: desativar usuário (soft-delete)
+    await prisma.usuario.update({ where: { id: targetData.id }, data: { ativo: false } });
+
     console.timeEnd('DELETE /api/usuarios/:id');
-    return NextResponse.json({ message: 'Usuário excluído com sucesso' });
+    return NextResponse.json({ message: 'Usuário movido para lixeira e desativado' });
   } catch (error) {
     console.error('Erro ao excluir usuário:', error);
     return NextResponse.json(

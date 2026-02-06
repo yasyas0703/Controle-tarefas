@@ -408,108 +408,109 @@ export async function DELETE(
     const dataExpiracao = new Date();
     dataExpiracao.setDate(dataExpiracao.getDate() + DIAS_EXPIRACAO_LIXEIRA);
 
-    // Mover para lixeira
-    await prisma.itemLixeira.create({
-      data: {
-        tipoItem: 'PROCESSO',
-        itemIdOriginal: processo.id,
-        dadosOriginais: {
-          id: processo.id,
-          nome: processo.nome,
-          nomeServico: processo.nomeServico,
-          nomeEmpresa: processo.nomeEmpresa,
-          cliente: processo.cliente,
-          email: processo.email,
-          telefone: processo.telefone,
-          empresaId: processo.empresaId,
-          status: processo.status,
-          prioridade: processo.prioridade,
-          departamentoAtual: processo.departamentoAtual,
-          departamentoAtualIndex: processo.departamentoAtualIndex,
-          fluxoDepartamentos: processo.fluxoDepartamentos,
-          descricao: processo.descricao,
-          notasCriador: processo.notasCriador,
-          criadoPorId: processo.criadoPorId,
-          responsavelId: processo.responsavelId,
-          criadoEm: processo.criadoEm,
-          dataCriacao: processo.dataCriacao,
-          dataInicio: processo.dataInicio,
-          dataEntrega: processo.dataEntrega,
-          progresso: processo.progresso,
-          tags: processo.tags?.map(t => ({ tagId: t.tagId, tagNome: t.tag?.nome })),
-          // Salvar questionários vinculados ao processo
-          questionarios: (processo as any).questionarios?.map((q: any) => ({
-            id: q.id, // Guardar ID original para mapear respostas
-            departamentoId: q.departamentoId,
-            label: q.label,
-            tipo: q.tipo,
-            obrigatorio: q.obrigatorio,
-            ordem: q.ordem,
-            opcoes: q.opcoes,
-            placeholder: q.placeholder,
-            descricao: q.descricao,
-            condicaoPerguntaId: q.condicaoPerguntaId,
-            condicaoOperador: q.condicaoOperador,
-            condicaoValor: q.condicaoValor,
-          })),
-          // Salvar respostas do questionário
-          respostasQuestionario: processo.respostasQuestionario?.map(r => ({
-            questionarioId: r.questionarioId,
-            resposta: r.resposta,
-            respondidoPorId: r.respondidoPorId,
-            respondidoEm: r.respondidoEm,
-          })),
-          // Salvar comentários
-          comentarios: processo.comentarios?.map(c => ({
-            texto: c.texto || '',
-            autorId: c.autorId,
-            departamentoId: c.departamentoId,
-            criadoEm: c.criadoEm,
-            mencoes: c.mencoes,
-          })),
-          // Salvar histórico de eventos
-          historicoEventos: processo.historicoEventos?.map(h => ({
-            tipo: h.tipo,
-            acao: h.acao,
-            responsavelId: h.responsavelId,
-            departamento: h.departamento,
-            data: h.data,
-            dataTimestamp: h.dataTimestamp?.toString(),
-          })),
-          // Salvar histórico de fluxo
-          historicoFluxos: processo.historicoFluxos?.map(f => ({
-            departamentoOrigemId: (f as any).departamentoOrigemId,
-            departamentoDestinoId: (f as any).departamentoDestinoId,
-            movidoPorId: (f as any).movidoPorId,
-            movidoEm: (f as any).movidoEm,
-            observacao: (f as any).observacao,
-          })),
-          // Salvar referência aos documentos (URLs para restaurar)
-          documentos: processo.documentos?.map(d => ({
-            nome: d.nome,
-            tipo: d.tipo,
-            tipoCategoria: d.tipoCategoria,
-            tamanho: d.tamanho?.toString(),
-            url: d.url,
-            path: d.path,
-            departamentoId: d.departamentoId,
-            perguntaId: d.perguntaId,
-            dataUpload: d.dataUpload,
-            uploadPorId: d.uploadPorId,
-            visibility: d.visibility,
-            allowedRoles: d.allowedRoles,
-            allowedUserIds: d.allowedUserIds,
-          })),
-        },
+    // Mover para lixeira (serializa dados e não bloqueia em caso de falha)
+    try {
+      const dadosOriginais = JSON.parse(JSON.stringify({
+        id: processo.id,
+        nome: processo.nome,
+        nomeServico: processo.nomeServico,
+        nomeEmpresa: processo.nomeEmpresa,
+        cliente: processo.cliente,
+        email: processo.email,
+        telefone: processo.telefone,
         empresaId: processo.empresaId,
-        departamentoId: processo.departamentoAtual,
-        visibility: 'PUBLIC', // Processos são públicos por padrão
-        deletadoPorId: userId,
-        expiraEm: dataExpiracao,
-        nomeItem: processo.nomeEmpresa || processo.nome || `Processo #${processo.id}`,
-        descricaoItem: processo.nomeServico || processo.descricao || null,
-      },
-    });
+        status: processo.status,
+        prioridade: processo.prioridade,
+        departamentoAtual: processo.departamentoAtual,
+        departamentoAtualIndex: processo.departamentoAtualIndex,
+        fluxoDepartamentos: processo.fluxoDepartamentos,
+        descricao: processo.descricao,
+        notasCriador: processo.notasCriador,
+        criadoPorId: processo.criadoPorId,
+        responsavelId: processo.responsavelId,
+        criadoEm: processo.criadoEm,
+        dataCriacao: processo.dataCriacao,
+        dataInicio: processo.dataInicio,
+        dataEntrega: processo.dataEntrega,
+        progresso: processo.progresso,
+        tags: processo.tags?.map(t => ({ tagId: t.tagId, tagNome: t.tag?.nome })),
+        questionarios: (processo as any).questionarios?.map((q: any) => ({
+          id: q.id,
+          departamentoId: q.departamentoId,
+          label: q.label,
+          tipo: q.tipo,
+          obrigatorio: q.obrigatorio,
+          ordem: q.ordem,
+          opcoes: q.opcoes,
+          placeholder: q.placeholder,
+          descricao: q.descricao,
+          condicaoPerguntaId: q.condicaoPerguntaId,
+          condicaoOperador: q.condicaoOperador,
+          condicaoValor: q.condicaoValor,
+        })),
+        respostasQuestionario: processo.respostasQuestionario?.map(r => ({
+          questionarioId: r.questionarioId,
+          resposta: r.resposta,
+          respondidoPorId: r.respondidoPorId,
+          respondidoEm: r.respondidoEm,
+        })),
+        comentarios: processo.comentarios?.map(c => ({
+          texto: c.texto || '',
+          autorId: c.autorId,
+          departamentoId: c.departamentoId,
+          criadoEm: c.criadoEm,
+          mencoes: c.mencoes,
+        })),
+        historicoEventos: processo.historicoEventos?.map(h => ({
+          tipo: h.tipo,
+          acao: h.acao,
+          responsavelId: h.responsavelId,
+          departamento: h.departamento,
+          data: h.data,
+          dataTimestamp: h.dataTimestamp?.toString(),
+        })),
+        historicoFluxos: processo.historicoFluxos?.map(f => ({
+          departamentoOrigemId: (f as any).departamentoOrigemId,
+          departamentoDestinoId: (f as any).departamentoDestinoId,
+          movidoPorId: (f as any).movidoPorId,
+          movidoEm: (f as any).movidoEm,
+          observacao: (f as any).observacao,
+        })),
+        documentos: processo.documentos?.map(d => ({
+          nome: d.nome,
+          tipo: d.tipo,
+          tipoCategoria: d.tipoCategoria,
+          tamanho: d.tamanho?.toString(),
+          url: d.url,
+          path: d.path,
+          departamentoId: d.departamentoId,
+          perguntaId: d.perguntaId,
+          dataUpload: d.dataUpload,
+          uploadPorId: d.uploadPorId,
+          visibility: d.visibility,
+          allowedRoles: d.allowedRoles,
+          allowedUserIds: d.allowedUserIds,
+        })),
+      }));
+
+      await prisma.itemLixeira.create({
+        data: {
+          tipoItem: 'PROCESSO',
+          itemIdOriginal: processo.id,
+          dadosOriginais,
+          empresaId: processo.empresaId,
+          departamentoId: processo.departamentoAtual,
+          visibility: 'PUBLIC',
+          deletadoPorId: userId,
+          expiraEm: dataExpiracao,
+          nomeItem: processo.nomeEmpresa || processo.nome || `Processo #${processo.id}`,
+          descricaoItem: processo.nomeServico || processo.descricao || null,
+        },
+      });
+    } catch (e) {
+      console.error('Erro ao criar ItemLixeira for processo:', e);
+      // não bloquear exclusão do processo
+    }
 
     // Agora excluir do banco (cascade vai excluir comentários, documentos relacionados, etc.)
     await prisma.processo.delete({ where: { id: processoId } });

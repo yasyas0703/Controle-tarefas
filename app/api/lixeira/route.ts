@@ -77,14 +77,24 @@ export async function GET(request: NextRequest) {
     // Filtrar por permissões
     const itensFiltrados = itens.filter(item => usuarioPodeVerItem(item, userId, userRole));
 
-    // Adicionar dias restantes
+    // Adicionar dias restantes e informações de quem deletou
     const agora = new Date();
     const itensComDias = itensFiltrados.map(item => ({
       ...item,
       diasRestantes: Math.max(0, Math.ceil((new Date(item.expiraEm).getTime() - agora.getTime()) / (1000 * 60 * 60 * 24))),
     }));
 
-    return jsonBigInt(itensComDias);
+    // Buscar usuários que deletaram (para exibir nome/email)
+    const deletorIds = Array.from(new Set(itensComDias.map(i => i.deletadoPorId)));
+    const usuarios = await prisma.usuario.findMany({ where: { id: { in: deletorIds } }, select: { id: true, nome: true, email: true } });
+    const usuariosById = usuarios.reduce((acc: any, u: any) => { acc[u.id] = u; return acc; }, {});
+
+    const itensComUsuario = itensComDias.map((it: any) => ({
+      ...it,
+      deletadoPor: usuariosById[it.deletadoPorId] || null,
+    }));
+
+    return jsonBigInt(itensComUsuario);
   } catch (error) {
     console.error('Erro ao buscar lixeira:', error);
     return jsonBigInt({ error: 'Erro ao buscar lixeira' }, { status: 500 });
