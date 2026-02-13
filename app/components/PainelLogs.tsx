@@ -134,14 +134,14 @@ export default function PainelLogs() {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-4 sm:p-6">
+    <div className="bg-white dark:bg-[var(--card)] rounded-2xl shadow-xl border border-gray-100 dark:border-[var(--border)] p-4 sm:p-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-[var(--fg)] flex items-center gap-2">
             <ScrollText size={24} /> Histórico de Logs
           </h2>
-          <p className="text-gray-600 text-sm mt-1">
+          <p className="text-gray-600 dark:text-gray-400 text-sm mt-1">
             Registro detalhado de todas as ações do sistema ({logsFiltrados.length} registros)
           </p>
         </div>
@@ -230,94 +230,116 @@ export default function PainelLogs() {
             return (
               <div
                 key={log.id}
-                className={`border rounded-xl transition-all ${isExpanded ? 'border-indigo-300 bg-indigo-50/30' : 'border-gray-200 hover:border-gray-300'}`}
+                className={`border rounded-xl transition-all ${isExpanded ? 'border-indigo-300 dark:border-indigo-600 bg-indigo-50/30 dark:bg-indigo-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500'}`}
               >
                 <button
                   onClick={() => setExpandido(isExpanded ? null : log.id)}
                   className="w-full flex items-center gap-3 p-3 text-left"
                 >
-                  <div className={`p-2 rounded-lg ${config.cor}`}>
+                  <div className={`p-2 rounded-lg shrink-0 ${config.cor}`}>
                     <Icone size={16} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-sm text-gray-900">
+                      <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
                         {log.usuario?.nome || 'Sistema'}
                       </span>
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.cor}`}>
                         {config.label}
                       </span>
-                      <span className="text-sm text-gray-600">
-                        {log.entidade?.toLowerCase()} {log.entidadeNome && `"${log.entidadeNome}"`}
+                      <span className="text-sm text-gray-600 dark:text-gray-300">
+                        {log.entidade?.toLowerCase()} {log.entidadeNome && <span className="font-medium">&ldquo;{log.entidadeNome}&rdquo;</span>}
                       </span>
                       {log.campo && (
-                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                          campo: {log.campo}
+                        <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
+                          {log.campo}
                         </span>
                       )}
                     </div>
-                    {log.detalhes && (
-                      <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[600px]">
+                    {/* Mostrar resumo da alteração inline (antes → depois) */}
+                    {(log.valorAnterior || log.valorNovo) && (
+                      <div className="flex items-center gap-1.5 mt-1 text-xs flex-wrap">
+                        {log.valorAnterior && (
+                          <span className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded line-through max-w-[200px] truncate" title={log.valorAnterior}>
+                            {log.valorAnterior}
+                          </span>
+                        )}
+                        {log.valorAnterior && log.valorNovo && (
+                          <ArrowRight size={10} className="text-gray-400 shrink-0" />
+                        )}
+                        {log.valorNovo && (
+                          <span className="text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded font-medium max-w-[200px] truncate" title={log.valorNovo}>
+                            {log.valorNovo}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {!log.valorAnterior && !log.valorNovo && log.detalhes && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[600px]">
                         {log.detalhes}
                       </p>
                     )}
                   </div>
-                  <div className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1">
+                  <div className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1 shrink-0">
                     <Clock size={12} />
                     {formatarData(log.criadoEm)}
                   </div>
-                  {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                  {isExpanded ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
                 </button>
 
                 {isExpanded && (
-                  <div className="px-4 pb-4 border-t border-gray-100 mt-1 pt-3 space-y-2">
+                  <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 mt-1 pt-3 space-y-3">
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div>
-                        <span className="text-gray-500">Usuário:</span>{' '}
-                        <span className="font-medium">{log.usuario?.nome} ({log.usuario?.email})</span>
+                        <span className="text-gray-500 dark:text-gray-400">Usuário:</span>{' '}
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{log.usuario?.nome} ({log.usuario?.email})</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Data/Hora:</span>{' '}
-                        <span className="font-medium">{formatarData(log.criadoEm)}</span>
+                        <span className="text-gray-500 dark:text-gray-400">Data/Hora:</span>{' '}
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{formatarData(log.criadoEm)}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500">Entidade:</span>{' '}
-                        <span className="font-medium">{log.entidade} #{log.entidadeId}</span>
+                        <span className="text-gray-500 dark:text-gray-400">Entidade:</span>{' '}
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{log.entidade} #{log.entidadeId}</span>
                       </div>
                       {log.processoId && (
                         <div>
-                          <span className="text-gray-500">Processo ID:</span>{' '}
-                          <span className="font-medium">#{log.processoId}</span>
+                          <span className="text-gray-500 dark:text-gray-400">Processo ID:</span>{' '}
+                          <span className="font-medium text-gray-900 dark:text-gray-100">#{log.processoId}</span>
                         </div>
                       )}
                       {log.empresaId && (
                         <div>
-                          <span className="text-gray-500">Empresa ID:</span>{' '}
-                          <span className="font-medium">#{log.empresaId}</span>
+                          <span className="text-gray-500 dark:text-gray-400">Empresa ID:</span>{' '}
+                          <span className="font-medium text-gray-900 dark:text-gray-100">#{log.empresaId}</span>
                         </div>
                       )}
                     </div>
                     {(log.valorAnterior || log.valorNovo) && (
-                      <div className="bg-white rounded-lg p-3 border border-gray-200">
-                        <div className="text-xs font-semibold text-gray-600 mb-1">Alteração no campo: {log.campo}</div>
-                        {log.valorAnterior && (
-                          <div className="flex items-start gap-2 text-sm">
-                            <span className="text-red-500 font-medium">Antes:</span>
-                            <span className="text-gray-700 bg-red-50 px-2 py-0.5 rounded">{log.valorAnterior}</span>
-                          </div>
-                        )}
-                        {log.valorNovo && (
-                          <div className="flex items-start gap-2 text-sm mt-1">
-                            <span className="text-green-500 font-medium">Depois:</span>
-                            <span className="text-gray-700 bg-green-50 px-2 py-0.5 rounded">{log.valorNovo}</span>
-                          </div>
-                        )}
+                      <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                        <div className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2 flex items-center gap-1">
+                          <Edit size={12} /> Alteração{log.campo ? ` no campo: ${log.campo}` : ''}
+                        </div>
+                        <div className="space-y-1.5">
+                          {log.valorAnterior && (
+                            <div className="flex items-start gap-2 text-sm">
+                              <span className="text-red-500 font-semibold shrink-0 w-14">Antes:</span>
+                              <span className="text-gray-700 dark:text-gray-200 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded border border-red-200 dark:border-red-800 break-all">{log.valorAnterior}</span>
+                            </div>
+                          )}
+                          {log.valorNovo && (
+                            <div className="flex items-start gap-2 text-sm">
+                              <span className="text-green-500 font-semibold shrink-0 w-14">Depois:</span>
+                              <span className="text-gray-700 dark:text-gray-200 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded border border-green-200 dark:border-green-800 break-all">{log.valorNovo}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                     {log.detalhes && (
-                      <div className="bg-white rounded-lg p-3 border border-gray-200">
-                        <div className="text-xs font-semibold text-gray-600 mb-1">Detalhes</div>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{log.detalhes}</p>
+                      <div className="bg-white dark:bg-gray-800 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                        <div className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">Detalhes completos</div>
+                        <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">{log.detalhes}</p>
                       </div>
                     )}
                   </div>

@@ -1020,22 +1020,57 @@ useEffect(() => {
 
   const atualizarEmpresa = useCallback(async (empresaId: number, dados: Partial<Empresa>) => {
     try {
+      const empresaAnterior = empresas.find(e => e.id === empresaId);
       const atualizada = await api.atualizarEmpresa(empresaId, dados);
       setEmpresas(prev => prev.map(e => e.id === empresaId ? atualizada : e));
       adicionarNotificacao('Empresa atualizada com sucesso', 'sucesso');
-      api.registrarLog?.({ acao: 'EDITAR', entidade: 'EMPRESA', entidadeId: empresaId });
+
+      // Log detalhado campo a campo
+      const LABELS_EMPRESA: Record<string, string> = {
+        razao_social: 'Razão Social', apelido: 'Nome Fantasia', cnpj: 'CNPJ', codigo: 'Código',
+        inscricao_estadual: 'Inscrição Estadual', inscricao_municipal: 'Inscrição Municipal',
+        regime_federal: 'Regime Federal', regime_estadual: 'Regime Estadual', regime_municipal: 'Regime Municipal',
+        estado: 'Estado', cidade: 'Cidade', bairro: 'Bairro', logradouro: 'Logradouro',
+        numero: 'Número', cep: 'CEP', email: 'Email', telefone: 'Telefone', data_abertura: 'Data Abertura',
+      };
+      const camposAlterados: string[] = [];
+      for (const [campo, valorNovo] of Object.entries(dados)) {
+        const valorAnterior = empresaAnterior ? String((empresaAnterior as any)[campo] ?? '') : '';
+        const valorNovoStr = String(valorNovo ?? '');
+        if (valorAnterior !== valorNovoStr) {
+          camposAlterados.push(`${LABELS_EMPRESA[campo] || campo}: "${valorAnterior || '(vazio)'}" → "${valorNovoStr || '(vazio)'}"`);
+          api.registrarLog?.({
+            acao: 'EDITAR', entidade: 'EMPRESA', entidadeId: empresaId,
+            entidadeNome: empresaAnterior?.razao_social || atualizada?.razao_social,
+            campo: LABELS_EMPRESA[campo] || campo,
+            valorAnterior: valorAnterior || '(vazio)',
+            valorNovo: valorNovoStr || '(vazio)',
+            empresaId: empresaId,
+            detalhes: `Campo "${LABELS_EMPRESA[campo] || campo}" alterado de "${valorAnterior || '(vazio)'}" para "${valorNovoStr || '(vazio)'}"`,
+          });
+        }
+      }
+      if (camposAlterados.length === 0) {
+        api.registrarLog?.({ acao: 'EDITAR', entidade: 'EMPRESA', entidadeId: empresaId, entidadeNome: empresaAnterior?.razao_social, detalhes: 'Nenhum campo alterado' });
+      }
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao atualizar empresa', 'erro');
       throw error;
     }
-  }, [adicionarNotificacao]);
+  }, [adicionarNotificacao, empresas]);
 
   const excluirEmpresa = useCallback(async (empresaId: number) => {
     try {
       await api.excluirEmpresa(empresaId);
       setEmpresas(prev => prev.filter(e => e.id !== empresaId));
       adicionarNotificacao('Empresa excluída com sucesso', 'sucesso');
-      api.registrarLog?.({ acao: 'EXCLUIR', entidade: 'EMPRESA', entidadeId: empresaId });
+      const empresaExcluida = empresas.find(e => e.id === empresaId);
+      api.registrarLog?.({
+        acao: 'EXCLUIR', entidade: 'EMPRESA', entidadeId: empresaId,
+        entidadeNome: empresaExcluida?.razao_social,
+        empresaId: empresaId,
+        detalhes: `Empresa excluída: "${empresaExcluida?.razao_social || '#' + empresaId}"${empresaExcluida?.cnpj ? ' | CNPJ: ' + empresaExcluida.cnpj : ''}`,
+      });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao excluir empresa', 'erro');
       throw error;
@@ -1082,7 +1117,12 @@ useEffect(() => {
       await api.excluirTemplate(templateId);
       setTemplates(prev => prev.filter(t => t.id !== templateId));
       adicionarNotificacao('Template excluído com sucesso', 'sucesso');
-      api.registrarLog?.({ acao: 'EXCLUIR', entidade: 'TEMPLATE', entidadeId: templateId });
+      const templateExcluido = templates.find(t => t.id === templateId);
+      api.registrarLog?.({
+        acao: 'EXCLUIR', entidade: 'TEMPLATE', entidadeId: templateId,
+        entidadeNome: templateExcluido?.nome,
+        detalhes: `Template excluído: "${templateExcluido?.nome || '#' + templateId}"`,
+      });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao excluir template', 'erro');
       throw error;
@@ -1091,15 +1131,66 @@ useEffect(() => {
 
   const atualizarProcesso = useCallback(async (processoId: number, dados: Partial<Processo>) => {
     try {
+      const processoAnterior = processos.find(p => p.id === processoId);
       const atualizado = await api.atualizarProcesso(processoId, dados);
       setProcessos(prev => prev.map(p => p.id === processoId ? atualizado : p));
       adicionarNotificacao('Processo atualizado com sucesso', 'sucesso');
-      api.registrarLog?.({ acao: 'EDITAR', entidade: 'PROCESSO', entidadeId: processoId });
+
+      // Log detalhado campo a campo
+      const LABELS_PROCESSO: Record<string, string> = {
+        nomeEmpresa: 'Nome Empresa', nomeServico: 'Nome Serviço', nome: 'Nome',
+        cliente: 'Cliente', email: 'Email', telefone: 'Telefone',
+        status: 'Status', prioridade: 'Prioridade', descricao: 'Descrição',
+        notasCriador: 'Notas do Criador', responsavelId: 'Responsável',
+        departamentoAtual: 'Departamento Atual', dataEntrega: 'Data de Entrega',
+        progresso: 'Progresso', empresaId: 'Empresa',
+        interligadoComId: 'Interligado com', interligadoNome: 'Nome Interligação',
+        deptIndependente: 'Departamentos Independentes',
+      };
+      const camposIgnorar = ['questionariosPorDepartamento', 'fluxoDepartamentos', 'dataAtualizacao', 'dataFinalizacao'];
+      const camposAlterados: string[] = [];
+      for (const [campo, valorNovo] of Object.entries(dados)) {
+        if (camposIgnorar.includes(campo)) continue;
+        const valorAnterior = processoAnterior ? String((processoAnterior as any)[campo] ?? '') : '';
+        const valorNovoStr = String(valorNovo ?? '');
+        if (valorAnterior !== valorNovoStr) {
+          const label = LABELS_PROCESSO[campo] || campo;
+          let displayAnterior = valorAnterior || '(vazio)';
+          let displayNovo = valorNovoStr || '(vazio)';
+          // Traduzir responsavelId para nome
+          if (campo === 'responsavelId') {
+            const respAnterior = usuarios.find(u => u.id === Number(valorAnterior));
+            const respNovo = usuarios.find(u => u.id === Number(valorNovo));
+            if (respAnterior) displayAnterior = respAnterior.nome;
+            if (respNovo) displayNovo = respNovo.nome;
+          }
+          // Traduzir departamentoAtual para nome
+          if (campo === 'departamentoAtual') {
+            const deptAnt = departamentos.find(d => d.id === Number(valorAnterior));
+            const deptNovo = departamentos.find(d => d.id === Number(valorNovo));
+            if (deptAnt) displayAnterior = deptAnt.nome;
+            if (deptNovo) displayNovo = deptNovo.nome;
+          }
+          camposAlterados.push(`${label}: "${displayAnterior}" → "${displayNovo}"`);
+          api.registrarLog?.({
+            acao: 'EDITAR', entidade: 'PROCESSO', entidadeId: processoId,
+            entidadeNome: processoAnterior?.nomeEmpresa || processoAnterior?.nome || atualizado?.nomeEmpresa,
+            campo: label,
+            valorAnterior: displayAnterior,
+            valorNovo: displayNovo,
+            processoId: processoId,
+            detalhes: `Campo "${label}" alterado de "${displayAnterior}" para "${displayNovo}"`,
+          });
+        }
+      }
+      if (camposAlterados.length === 0) {
+        api.registrarLog?.({ acao: 'EDITAR', entidade: 'PROCESSO', entidadeId: processoId, entidadeNome: processoAnterior?.nomeEmpresa || processoAnterior?.nome, detalhes: 'Nenhum campo alterado' });
+      }
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao atualizar processo', 'erro');
       throw error;
     }
-  }, [adicionarNotificacao]);
+  }, [adicionarNotificacao, processos, usuarios, departamentos]);
 
   const criarProcesso = useCallback(
     async (dados: Partial<Processo>) => {
@@ -1158,7 +1249,12 @@ useEffect(() => {
         })();
         
         adicionarNotificacao('Processo criado com sucesso', 'sucesso');
-        api.registrarLog?.({ acao: 'CRIAR', entidade: 'PROCESSO', entidadeId: novo.id, entidadeNome: novo.nomeEmpresa || novo.nome });
+        api.registrarLog?.({
+          acao: 'CRIAR', entidade: 'PROCESSO', entidadeId: novo.id,
+          entidadeNome: novo.nomeEmpresa || novo.nome,
+          processoId: novo.id,
+          detalhes: `Processo criado: "${novo.nomeEmpresa || novo.nome || '#' + novo.id}" | Status: ${novo.status || 'em_andamento'} | Prioridade: ${novo.prioridade || 'media'}${novo.cliente ? ' | Cliente: ' + novo.cliente : ''}${novo.email ? ' | Email: ' + novo.email : ''}`,
+        });
         return novo;
       } catch (error: any) {
         adicionarNotificacao(error.message || 'Erro ao criar processo', 'erro');
@@ -1269,12 +1365,23 @@ useEffect(() => {
       }
       try {
         setGlobalLoading(true);
+        const processoAntes = processos.find(p => p.id === processoId);
         await api.avancarProcesso(processoId);
         // Recarrega o processo completo para manter documentos/anexos e histórico
         const processoAtualizado = await api.getProcesso(processoId);
         setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
         adicionarNotificacao('Processo avançado para próximo departamento', 'sucesso');
-        api.registrarLog?.({ acao: 'AVANCAR', entidade: 'PROCESSO', entidadeId: processoId });
+        const deptOrigem = departamentos.find(d => d.id === processoAntes?.departamentoAtual);
+        const deptDestino = departamentos.find(d => d.id === processoAtualizado?.departamentoAtual);
+        api.registrarLog?.({
+          acao: 'AVANCAR', entidade: 'PROCESSO', entidadeId: processoId,
+          entidadeNome: processoAntes?.nomeEmpresa || processoAntes?.nome,
+          processoId: processoId,
+          campo: 'Departamento',
+          valorAnterior: deptOrigem?.nome || String(processoAntes?.departamentoAtual ?? ''),
+          valorNovo: deptDestino?.nome || String(processoAtualizado?.departamentoAtual ?? ''),
+          detalhes: `Processo avançado de "${deptOrigem?.nome || '?'}" para "${deptDestino?.nome || '?'}"`,
+        });
       } catch (error: any) {
         const msg = error.message || 'Erro ao avançar processo';
         // Se a mensagem contém detalhes de validação, mostrar alerta mais detalhado
@@ -1430,7 +1537,15 @@ useEffect(() => {
       setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
       
       adicionarNotificacao('Processo finalizado com sucesso', 'sucesso');
-      api.registrarLog?.({ acao: 'FINALIZAR', entidade: 'PROCESSO', entidadeId: processoId });
+      api.registrarLog?.({
+        acao: 'FINALIZAR', entidade: 'PROCESSO', entidadeId: processoId,
+        entidadeNome: processoCompleto.nomeEmpresa || processoCompleto.nome,
+        processoId: processoId,
+        campo: 'Status',
+        valorAnterior: processoCompleto.status || 'em_andamento',
+        valorNovo: 'finalizado',
+        detalhes: `Processo "${processoCompleto.nomeEmpresa || processoCompleto.nome || '#' + processoId}" finalizado com sucesso. Progresso: 100%`,
+      });
 
       // Retornar info sobre interligação para o caller decidir mostrar modal
       return {
@@ -1469,11 +1584,25 @@ useEffect(() => {
       setProcessos(prev => prev.map(p => p.id === processoId ? processo : p));
       
       adicionarNotificacao('Tags aplicadas com sucesso', 'sucesso');
+
+      // Log detalhado de tags
+      const processoAnterior = processos.find(p => p.id === processoId);
+      const tagsAnteriores = (processoAnterior?.tagsMetadata || []).map(t => t.nome).join(', ') || '(nenhuma)';
+      const tagsNovas = (processo?.tagsMetadata || []).map((t: any) => t.nome).join(', ') || tags.filter(t => novasTags.includes(t.id)).map(t => t.nome).join(', ') || novasTags.join(', ');
+      api.registrarLog?.({
+        acao: 'TAG', entidade: 'PROCESSO', entidadeId: processoId,
+        entidadeNome: processoAnterior?.nomeEmpresa || processoAnterior?.nome,
+        processoId: processoId,
+        campo: 'Tags',
+        valorAnterior: tagsAnteriores,
+        valorNovo: tagsNovas || '(nenhuma)',
+        detalhes: `Tags alteradas de [${tagsAnteriores}] para [${tagsNovas || '(nenhuma)'}]`,
+      });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao aplicar tags', 'erro');
       throw error;
     }
-  }, [adicionarNotificacao]);
+  }, [adicionarNotificacao, processos, tags]);
 
   const adicionarComentarioProcesso = useCallback(
     async (processoId: number, texto: string, mencoes?: string[]) => {
@@ -1493,12 +1622,24 @@ useEffect(() => {
         setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
         
         adicionarNotificacao('Comentário adicionado com sucesso', 'sucesso');
+
+        // Log detalhado de comentário
+        const preview = texto.length > 100 ? texto.substring(0, 100) + '...' : texto;
+        const deptComentario = departamentos.find(d => d.id === processo?.departamentoAtual);
+        api.registrarLog?.({
+          acao: 'COMENTAR', entidade: 'PROCESSO', entidadeId: processoId,
+          entidadeNome: processo?.nomeEmpresa || processo?.nome,
+          processoId: processoId,
+          campo: 'Comentário',
+          valorNovo: preview,
+          detalhes: `Comentário adicionado no departamento "${deptComentario?.nome || '?'}": "${preview}"${mencoes && mencoes.length > 0 ? ` | Menções: ${mencoes.join(', ')}` : ''}`,
+        });
       } catch (error: any) {
         adicionarNotificacao(error.message || 'Erro ao adicionar comentário', 'erro');
         throw error;
       }
     },
-    [processos, adicionarNotificacao]
+    [processos, adicionarNotificacao, departamentos]
   );
 
   const voltarParaDepartamentoAnterior = useCallback(async (processoId: number) => {
@@ -1517,7 +1658,17 @@ useEffect(() => {
       const processoAtualizado = await api.getProcesso(processoId);
       setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
       adicionarNotificacao('Processo retornado ao departamento anterior', 'sucesso');
-      api.registrarLog?.({ acao: 'VOLTAR', entidade: 'PROCESSO', entidadeId: processoId });
+      const deptAnterior = departamentos.find(d => d.id === processo?.departamentoAtual);
+      const deptRetorno = departamentos.find(d => d.id === processoAtualizado?.departamentoAtual);
+      api.registrarLog?.({
+        acao: 'VOLTAR', entidade: 'PROCESSO', entidadeId: processoId,
+        entidadeNome: processo?.nomeEmpresa || processo?.nome,
+        processoId: processoId,
+        campo: 'Departamento',
+        valorAnterior: deptAnterior?.nome || String(processo?.departamentoAtual ?? ''),
+        valorNovo: deptRetorno?.nome || String(processoAtualizado?.departamentoAtual ?? ''),
+        detalhes: `Processo retornado de "${deptAnterior?.nome || '?'}" para "${deptRetorno?.nome || '?'}"`,
+      });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao retornar processo', 'erro');
       throw error;
@@ -1578,12 +1729,25 @@ useEffect(() => {
       })();
 
       adicionarNotificacao('Documento adicionado com sucesso', 'sucesso');
+
+      // Log detalhado de documento
+      const deptDoc = departamentos.find(d => d.id === (departamentoId || processo?.departamentoAtual));
+      const tamanhoFormatado = arquivo.size > 1024 * 1024 ? `${(arquivo.size / (1024 * 1024)).toFixed(1)} MB` : `${(arquivo.size / 1024).toFixed(0)} KB`;
+      api.registrarLog?.({
+        acao: 'ANEXAR', entidade: 'PROCESSO', entidadeId: processoId,
+        entidadeNome: processo?.nomeEmpresa || processo?.nome,
+        processoId: processoId,
+        campo: 'Documento',
+        valorNovo: arquivo.name,
+        detalhes: `Documento "${arquivo.name}" (${tamanhoFormatado}, tipo: ${tipo}) anexado no departamento "${deptDoc?.nome || '?'}"`,
+      });
+
       return novoDocumento;
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao adicionar documento', 'erro');
       throw error;
     }
-  }, [processos, adicionarNotificacao]);
+  }, [processos, adicionarNotificacao, departamentos]);
 
   const value: SistemaContextType = {
     processos,
