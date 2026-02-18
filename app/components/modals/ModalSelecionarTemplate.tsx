@@ -36,6 +36,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
   const [showMenuTemplate, setShowMenuTemplate] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [interligarCom, setInterligarCom] = useState<number | null>(null);
+  const [interligarParalelo, setInterligarParalelo] = useState(false);
   const [deptIndependente, setDeptIndependente] = useState(false);
 
   const templatesDisponiveis: Template[] = templates || [];
@@ -177,6 +178,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
         ...(interligarCom ? {
           interligadoComId: interligarCom,
           interligadoNome: templatesDisponiveis.find(t => t.id === interligarCom)?.nome || `Template #${interligarCom}`,
+          interligadoParalelo: interligarParalelo,
         } : {}),
         ...(deptIndependente ? { deptIndependente: true } : {}),
       });
@@ -395,9 +397,22 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
                     ))}
                 </select>
                 {interligarCom && (
-                  <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                    🔗 Ao finalizar esta solicitação, a atividade selecionada será criada automaticamente como continuação.
-                  </p>
+                  <>
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                      🔗 Ao finalizar esta solicitação, a atividade selecionada será criada automaticamente como continuação.
+                    </p>
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={interligarParalelo}
+                        onChange={(e) => setInterligarParalelo(e.target.checked)}
+                        className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                      />
+                      <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
+                        ⚡ Solicitação interligada com departamentos em paralelo
+                      </span>
+                    </label>
+                  </>
                 )}
               </div>
             )}

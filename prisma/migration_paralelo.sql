@@ -40,6 +40,17 @@ BEGIN
     RAISE NOTICE 'Coluna interligadoNome já existe.';
   END IF;
 
+  -- Coluna interligadoParalelo
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'Processo' AND column_name = 'interligadoParalelo'
+  ) THEN
+    ALTER TABLE "Processo" ADD COLUMN "interligadoParalelo" BOOLEAN NOT NULL DEFAULT false;
+    RAISE NOTICE 'Coluna interligadoParalelo adicionada com sucesso!';
+  ELSE
+    RAISE NOTICE 'Coluna interligadoParalelo já existe.';
+  END IF;
+
   -- Coluna responsavelId (se não existir)
   IF NOT EXISTS (
     SELECT 1 FROM information_schema.columns

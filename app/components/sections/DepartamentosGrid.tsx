@@ -272,7 +272,12 @@ export default function DepartamentosGrid({
       const todosConcluiram = fluxo.every((id: number) => concluidosAtualizado.has(id));
       if (todosConcluiram) {
         adicionarNotificacao('Todos os departamentos concluíram! Processo finalizado.', 'sucesso');
-        await finalizarProcesso(processoId);
+        // Usar onFinalizarProcesso (que trata interligação) se disponível
+        if (onFinalizarProcesso) {
+          await onFinalizarProcesso(processoId);
+        } else {
+          await finalizarProcesso(processoId);
+        }
       }
     } catch (err: any) {
       void mostrarAlerta?.('Erro', err.message || 'Erro ao avançar', 'erro');

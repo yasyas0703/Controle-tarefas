@@ -331,6 +331,7 @@ export async function POST(request: NextRequest) {
           // Interligação e independência de departamentos
           ...(data.interligadoComId ? { interligadoComId: Number(data.interligadoComId) } : {}),
           ...(data.interligadoNome ? { interligadoNome: String(data.interligadoNome) } : {}),
+          ...(data.interligadoParalelo != null ? { interligadoParalelo: Boolean(data.interligadoParalelo) } : {}),
           ...(data.deptIndependente != null ? { deptIndependente: Boolean(data.deptIndependente) } : {}),
         },
         select: {
@@ -356,6 +357,7 @@ export async function POST(request: NextRequest) {
           dataEntrega: true,
           interligadoComId: true,
           interligadoNome: true,
+          interligadoParalelo: true,
           deptIndependente: true,
         },
       });

@@ -89,6 +89,11 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       setUsuarios(usuariosConvertidos || []);
       
       adicionarNotificacao(usuario?.reativado ? 'Usuário reativado com sucesso' : 'Usuário criado com sucesso', 'sucesso');
+      api.registrarLog?.({
+        acao: 'CRIAR', entidade: 'USUARIO', entidadeId: usuario?.id,
+        entidadeNome: novoUsuario.nome,
+        detalhes: `Usuário ${usuario?.reativado ? 'reativado' : 'criado'}: "${novoUsuario.nome}" (${novoUsuario.email}) - Role: ${novoUsuario.role.toUpperCase()}`,
+      });
       setNovoUsuario({ nome: '', email: '', senha: '', role: 'usuario', departamentoId: undefined, permissoes: [] });
     } catch (error: any) {
       const errorMessage = error.message || 'Erro ao criar usuário';
@@ -126,6 +131,11 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       setUsuarios(usuariosConvertidos || []);
       
       adicionarNotificacao('Usuário atualizado com sucesso', 'sucesso');
+      api.registrarLog?.({
+        acao: 'EDITAR', entidade: 'USUARIO', entidadeId: editandoUsuario.id,
+        entidadeNome: editandoUsuario.nome,
+        detalhes: `Usuário editado: "${editandoUsuario.nome}" (${editandoUsuario.email})`,
+      });
       setEditandoUsuario(null);
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao editar usuário', 'erro');
@@ -162,6 +172,11 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
         }));
         setUsuarios(usuariosConvertidos || []);
         adicionarNotificacao('Usuário excluído com sucesso', 'sucesso');
+        api.registrarLog?.({
+          acao: 'EXCLUIR', entidade: 'USUARIO', entidadeId: id,
+          entidadeNome: usuario?.nome,
+          detalhes: `Usuário excluído: "${usuario?.nome || ''}" (${usuario?.email || ''})`,
+        });
       } catch (error: any) {
         adicionarNotificacao(error.message || 'Erro ao excluir usuário', 'erro');
         await mostrarAlerta('Erro', error.message || 'Erro ao excluir usuário', 'erro');
@@ -192,6 +207,14 @@ export default function ModalGerenciarUsuarios({ onClose }: ModalGerenciarUsuari
       setUsuarios(usuariosConvertidos || []);
       
       adicionarNotificacao(`Usuário ${!usuario.ativo ? 'ativado' : 'desativado'} com sucesso`, 'sucesso');
+      api.registrarLog?.({
+        acao: 'EDITAR', entidade: 'USUARIO', entidadeId: usuario.id,
+        entidadeNome: usuario.nome,
+        campo: 'ativo',
+        valorAnterior: String(usuario.ativo),
+        valorNovo: String(!usuario.ativo),
+        detalhes: `Usuário ${!usuario.ativo ? 'ativado' : 'desativado'}: "${usuario.nome}"`,
+      });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao alterar status', 'erro');
     } finally {

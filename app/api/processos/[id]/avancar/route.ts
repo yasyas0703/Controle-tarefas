@@ -237,9 +237,10 @@ export async function POST(
       },
     });
 
-    // Auto-atribuir responsável ao gerente do departamento destino
+    // Auto-atribuir responsável ao responsável do departamento destino
     try {
-      const gerenteDestino = await prisma.usuario.findFirst({
+      // 1. Buscar gerente do departamento destino
+      let novoResponsavel = await prisma.usuario.findFirst({
         where: {
           ativo: true,
           role: 'GERENTE',
@@ -247,10 +248,34 @@ export async function POST(
         },
         select: { id: true, nome: true },
       });
-      if (gerenteDestino) {
+
+      // 2. Se não há gerente, buscar pelo nome do responsável cadastrado no departamento
+      if (!novoResponsavel && proximoDepartamento.responsavel) {
+        novoResponsavel = await prisma.usuario.findFirst({
+          where: {
+            ativo: true,
+            nome: { equals: proximoDepartamento.responsavel, mode: 'insensitive' },
+          },
+          select: { id: true, nome: true },
+        });
+      }
+
+      // 3. Fallback: qualquer usuário ativo vinculado ao departamento
+      if (!novoResponsavel) {
+        novoResponsavel = await prisma.usuario.findFirst({
+          where: {
+            ativo: true,
+            departamentoId: proximoDepartamentoId,
+          },
+          orderBy: { role: 'asc' }, // prioriza ADMIN > GERENTE > USUARIO
+          select: { id: true, nome: true },
+        });
+      }
+
+      if (novoResponsavel) {
         await prisma.processo.update({
           where: { id: processoId },
-          data: { responsavelId: gerenteDestino.id },
+          data: { responsavelId: novoResponsavel.id },
         });
       }
     } catch {

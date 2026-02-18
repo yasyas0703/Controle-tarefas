@@ -3,9 +3,13 @@ import { prisma } from '@/app/utils/prisma';
 
 // Função para converter data corretamente (evita problema de timezone)
 function parseDate(value: string): Date {
-  // Se for apenas data (YYYY-MM-DD), adiciona horário meio-dia para evitar mudança de dia por timezone
+  // Se for apenas data (YYYY-MM-DD), adiciona horário meio-dia UTC para evitar mudança de dia por timezone
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(value + 'T12:00:00');
+    return new Date(value + 'T12:00:00Z');
+  }
+  // Se tem hora mas sem indicador de timezone, tratar como UTC explicitamente
+  if (/^\d{4}-\d{2}-\d{2}T/.test(value) && !value.endsWith('Z') && !/[+-]\d{2}(:\d{2})?$/.test(value)) {
+    return new Date(value + 'Z');
   }
   return new Date(value);
 }

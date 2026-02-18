@@ -45,6 +45,11 @@ export default function ModalGerenciarTags({ onClose }: ModalGerenciarTagsProps)
       });
       setTags((prev) => [...(prev || []), nova]);
       adicionarNotificacao('Tag criada com sucesso', 'sucesso');
+      api.registrarLog?.({
+        acao: 'CRIAR', entidade: 'TAG', entidadeId: nova?.id,
+        entidadeNome: tag.nome,
+        detalhes: `Tag criada: "${tag.nome}"`,
+      });
       setNovaTag({ nome: '', cor: 'bg-red-500', texto: 'text-white' });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao criar tag', 'erro');
@@ -60,6 +65,11 @@ export default function ModalGerenciarTags({ onClose }: ModalGerenciarTagsProps)
       const atualizada = await api.atualizarTag(tagId, dados);
       setTags((prev) => (prev || []).map((t) => (t.id === tagId ? atualizada : t)));
       adicionarNotificacao('Tag atualizada com sucesso', 'sucesso');
+      api.registrarLog?.({
+        acao: 'EDITAR', entidade: 'TAG', entidadeId: tagId,
+        entidadeNome: dados.nome,
+        detalhes: `Tag editada: "${dados.nome}"`,
+      });
       setEditando(null);
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao atualizar tag', 'erro');
@@ -85,6 +95,11 @@ export default function ModalGerenciarTags({ onClose }: ModalGerenciarTagsProps)
       await api.excluirTag(tagId);
       setTags((prev) => (prev || []).filter((t) => t.id !== tagId));
       adicionarNotificacao('Tag excluída com sucesso', 'sucesso');
+      api.registrarLog?.({
+        acao: 'EXCLUIR', entidade: 'TAG', entidadeId: tagId,
+        entidadeNome: tag?.nome,
+        detalhes: `Tag excluída: "${tag?.nome || ''}"`,
+      });
       if (editando?.id === tagId) setEditando(null);
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao excluir tag', 'erro');

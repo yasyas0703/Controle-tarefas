@@ -172,7 +172,8 @@ export default function Home() {
                   descricao: `Solicitação interligada (continuação de #${processoId})`,
                   interligadoComId: processoId,
                   interligadoNome: result.processoNome,
-                });
+                  ...(result.interligadoParalelo ? { deptIndependente: true } : {}),
+                } as any);
                 void mostrarAlerta?.('Interligação automática', `A solicitação "${templateOrigem.nome}" foi criada automaticamente como continuação.`, 'sucesso');
               } catch (err: any) {
                 console.error('Erro ao criar solicitação interligada:', err);
@@ -341,10 +342,22 @@ export default function Home() {
           next[idx] = { ...next[idx], ...(atualizado || {}), ...payload };
           return next;
         });
+        api.registrarLog?.({
+          acao: 'EDITAR', entidade: 'DEPARTAMENTO', entidadeId: data.id,
+          entidadeNome: payload.nome,
+          departamentoId: data.id,
+          detalhes: `Departamento editado: "${payload.nome}"`,
+        });
       } else {
         // Criar
         const criado = await api.salvarDepartamento(payload);
         setDepartamentos((prev) => [...prev, criado || payload]);
+        api.registrarLog?.({
+          acao: 'CRIAR', entidade: 'DEPARTAMENTO', entidadeId: criado?.id,
+          entidadeNome: payload.nome,
+          departamentoId: criado?.id,
+          detalhes: `Departamento criado: "${payload.nome}"`,
+        });
       }
 
       setDepartamentoEmEdicao(null);
@@ -374,6 +387,12 @@ export default function Home() {
         // Recarregar departamentos
         const departamentosData = await api.getDepartamentos();
         setDepartamentos(departamentosData || []);
+        api.registrarLog?.({
+          acao: 'EXCLUIR', entidade: 'DEPARTAMENTO', entidadeId: dept.id,
+          entidadeNome: dept.nome,
+          departamentoId: dept.id,
+          detalhes: `Departamento excluído: "${dept.nome}"`,
+        });
       } catch (error: any) {
         await mostrarAlerta('Erro', error.message || 'Erro ao excluir departamento', 'erro');
       }
@@ -823,7 +842,7 @@ export default function Home() {
           templates={(templates || []).map(t => ({ id: t.id, nome: t.nome, descricao: t.descricao }))}
           onClose={() => setInterligarInfo(null)}
           onPular={() => setInterligarInfo(null)}
-          onConfirmar={async (templateId) => {
+          onConfirmar={async (templateId, deptIndependente) => {
             const template = (templates || []).find(t => t.id === templateId);
             if (!template) return;
             const processoOrigem = processos.find(p => p.id === interligarInfo.processoId);
@@ -854,7 +873,8 @@ export default function Home() {
                 descricao: `Solicitação interligada (continuação de #${interligarInfo.processoId})`,
                 interligadoComId: interligarInfo.processoId,
                 interligadoNome: interligarInfo.processoNome,
-              });
+                ...(deptIndependente ? { deptIndependente: true } : {}),
+              } as any);
               void mostrarAlerta?.('Interligação realizada', `A solicitação "${template.nome}" foi criada como continuação de #${interligarInfo.processoId}.`, 'sucesso');
             } catch (err: any) {
               void mostrarAlerta?.('Erro', err.message || 'Erro ao criar solicitação interligada', 'erro');

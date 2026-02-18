@@ -167,6 +167,7 @@ model Processo {
   // Interligação (processo vinculado que segue após finalização)
   interligadoComId Int? // ID do template/processo que será criado ao finalizar
   interligadoNome  String? // Nome da solicitação interligada
+  interligadoParalelo Boolean @default(false) // Se true, a solicitação interligada será criada com departamentos paralelos
 
   // Controle de departamentos independentes
   deptIndependente Boolean @default(false) // Se true, departamentos podem trabalhar em paralelo

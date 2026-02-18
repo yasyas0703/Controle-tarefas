@@ -102,6 +102,51 @@ export async function POST(
       },
     });
 
+    // Auto-atribuir responsável ao responsável do departamento destino
+    try {
+      // 1. Buscar gerente do departamento destino
+      let novoResponsavel = await prisma.usuario.findFirst({
+        where: {
+          ativo: true,
+          role: 'GERENTE',
+          departamentoId: destinoId,
+        },
+        select: { id: true, nome: true },
+      });
+
+      // 2. Se não há gerente, buscar pelo nome do responsável cadastrado no departamento
+      if (!novoResponsavel && destinoDepartamento?.responsavel) {
+        novoResponsavel = await prisma.usuario.findFirst({
+          where: {
+            ativo: true,
+            nome: { equals: destinoDepartamento.responsavel, mode: 'insensitive' },
+          },
+          select: { id: true, nome: true },
+        });
+      }
+
+      // 3. Fallback: qualquer usuário ativo vinculado ao departamento
+      if (!novoResponsavel) {
+        novoResponsavel = await prisma.usuario.findFirst({
+          where: {
+            ativo: true,
+            departamentoId: destinoId,
+          },
+          orderBy: { role: 'asc' },
+          select: { id: true, nome: true },
+        });
+      }
+
+      if (novoResponsavel) {
+        await prisma.processo.update({
+          where: { id: processoId },
+          data: { responsavelId: novoResponsavel.id },
+        });
+      }
+    } catch {
+      // Não bloquear retorno se falhar
+    }
+
     return NextResponse.json(processoAtualizado);
   } catch (error) {
     console.error('Erro ao voltar processo:', error);

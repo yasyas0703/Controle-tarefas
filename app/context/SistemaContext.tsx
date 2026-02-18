@@ -114,7 +114,7 @@ interface SistemaContextType {
   atualizarProcesso: (processoId: number, dados: Partial<Processo>) => Promise<void>;
   excluirProcesso: (processoId: number, motivoExclusao?: string, motivoExclusaoCustom?: string) => Promise<void>;
   avancarParaProximoDepartamento: (processoId: number) => Promise<void>;
-  finalizarProcesso: (processoId: number) => Promise<{ finalizado: boolean; processoId: number; interligadoComId: number | null; processoNome: string } | void>;
+  finalizarProcesso: (processoId: number) => Promise<{ finalizado: boolean; processoId: number; interligadoComId: number | null; interligadoParalelo: boolean; processoNome: string } | void>;
   globalLoading: boolean;
   setGlobalLoading: (v: boolean) => void;
   aplicarTagsProcesso: (processoId: number, tags: number[]) => Promise<void>;
@@ -1552,6 +1552,7 @@ useEffect(() => {
         finalizado: true,
         processoId,
         interligadoComId: processoCompleto.interligadoComId ?? null,
+        interligadoParalelo: !!(processoCompleto as any).interligadoParalelo,
         processoNome: processoCompleto.nomeEmpresa || processoCompleto.nome || `#${processoId}`,
       };
     } catch (error: any) {

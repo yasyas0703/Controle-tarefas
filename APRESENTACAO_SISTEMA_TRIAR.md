@@ -386,3 +386,10 @@ Rastreabilidade completa de todas as ações.
 
 
 
+
+limpar banco- comando
+$env:TS_NODE_COMPILER_OPTIONS = '{"module":"CommonJS"}' ; npx ts-node scripts/limpar-banco.ts
+
+
+criar ususarios do zero
+$env:TS_NODE_COMPILER_OPTIONS = '{"module":"CommonJS"}' ; npx ts-node prisma/seed.ts

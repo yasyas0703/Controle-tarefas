@@ -8,7 +8,7 @@ interface ModalInterligarProps {
   processoNome: string;
   processoId: number;
   templates: Array<{ id: number; nome: string; descricao?: string }>;
-  onConfirmar: (templateId: number) => void;
+  onConfirmar: (templateId: number, deptIndependente: boolean) => void;
   onPular: () => void;
   onClose: () => void;
 }
@@ -22,13 +22,14 @@ export default function ModalInterligar({
   onClose,
 }: ModalInterligarProps) {
   const [templateSelecionado, setTemplateSelecionado] = useState<number | null>(null);
+  const [paralelo, setParalelo] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleConfirmar = async () => {
     if (!templateSelecionado) return;
     setLoading(true);
     try {
-      await onConfirmar(templateSelecionado);
+      await onConfirmar(templateSelecionado, paralelo);
     } finally {
       setLoading(false);
     }
@@ -112,6 +113,28 @@ export default function ModalInterligar({
           <p className="text-sm text-gray-500 text-center py-4">
             Nenhuma atividade/template disponível para interligar.
           </p>
+        )}
+
+        {/* Departamentos paralelos */}
+        {templateSelecionado && (
+          <div className="bg-indigo-50 dark:bg-indigo-900/20 rounded-lg p-3 border border-indigo-200 dark:border-indigo-700">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={paralelo}
+                onChange={(e) => setParalelo(e.target.checked)}
+                className="mt-0.5 w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500"
+              />
+              <div>
+                <span className="text-sm font-medium text-indigo-800 dark:text-indigo-300">
+                  ⚡ Departamentos trabalham em paralelo
+                </span>
+                <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">
+                  Ative se a solicitação interligada deve ter departamentos independentes.
+                </p>
+              </div>
+            </label>
+          </div>
         )}
 
         {/* Botões */}

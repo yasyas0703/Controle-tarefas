@@ -390,11 +390,11 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
 
   // Formatação
   const formatarData = (data: Date | string) => {
-    return new Date(data).toLocaleDateString('pt-BR');
+    return new Date(data).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
   };
 
   const formatarHora = (data: Date | string) => {
-    return new Date(data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return new Date(data).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
   };
 
   // Renderizar evento no dia
