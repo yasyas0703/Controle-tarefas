@@ -320,13 +320,7 @@ export default function ModalImportarPlanilha({ onClose, onSuccess }: ModalImpor
               />
             </div>
 
-            <button
-              onClick={baixarModeloCSV}
-              className="flex items-center gap-2 text-sm text-cyan-600 dark:text-cyan-400 hover:underline mx-auto"
-            >
-              <Download className="w-4 h-4" />
-              Baixar modelo de planilha
-            </button>
+          
           </div>
         )}
 

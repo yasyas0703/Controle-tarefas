@@ -1228,6 +1228,7 @@ useEffect(() => {
           dataEntrega: (dados as any).dataEntrega, // Prazo de entrega
           interligadoComId: (dados as any).interligadoComId,
           interligadoNome: (dados as any).interligadoNome,
+          interligadoParalelo: (dados as any).interligadoParalelo,
           deptIndependente: (dados as any).deptIndependente,
         });
 

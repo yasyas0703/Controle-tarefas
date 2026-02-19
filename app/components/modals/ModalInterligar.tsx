@@ -8,7 +8,7 @@ interface ModalInterligarProps {
   processoNome: string;
   processoId: number;
   templates: Array<{ id: number; nome: string; descricao?: string }>;
-  onConfirmar: (templateId: number, deptIndependente: boolean) => void;
+  onConfirmar: (templateId: number, deptIndependente: boolean, interligarComId?: number | null, interligarParalelo?: boolean) => void;
   onPular: () => void;
   onClose: () => void;
 }
@@ -23,13 +23,15 @@ export default function ModalInterligar({
 }: ModalInterligarProps) {
   const [templateSelecionado, setTemplateSelecionado] = useState<number | null>(null);
   const [paralelo, setParalelo] = useState(false);
+  const [interligarCom, setInterligarCom] = useState<number | null>(null);
+  const [interligarParalelo, setInterligarParalelo] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleConfirmar = async () => {
     if (!templateSelecionado) return;
     setLoading(true);
     try {
-      await onConfirmar(templateSelecionado, paralelo);
+      await onConfirmar(templateSelecionado, paralelo, interligarCom, interligarParalelo);
     } finally {
       setLoading(false);
     }
@@ -134,6 +136,51 @@ export default function ModalInterligar({
                 </p>
               </div>
             </label>
+          </div>
+        )}
+
+        {/* Interligar continuação com outra atividade */}
+        {templateSelecionado && templates.filter(t => t.id !== templateSelecionado).length > 0 && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Link2 className="inline w-4 h-4 mr-1" />
+              Interligar continuação com outra atividade <span className="text-gray-400 text-xs font-normal">(opcional)</span>
+            </label>
+            <select
+              value={interligarCom || ''}
+              onChange={(e) => {
+                setInterligarCom(e.target.value ? Number(e.target.value) : null);
+                if (!e.target.value) setInterligarParalelo(false);
+              }}
+              className="w-full px-3 py-2 border border-purple-300 dark:border-purple-700 rounded-lg focus:ring-2 focus:ring-purple-500 bg-purple-50 dark:bg-purple-900/20 text-gray-900 dark:text-[var(--fg)] text-sm"
+            >
+              <option value="">Nenhuma (solicitação independente)</option>
+              {templates
+                .filter(t => t.id !== templateSelecionado)
+                .map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome}{t.descricao ? ` — ${t.descricao}` : ''}
+                  </option>
+                ))}
+            </select>
+            {interligarCom && (
+              <>
+                <p className="text-xs text-purple-600 dark:text-purple-400">
+                  🔗 Ao finalizar esta continuação, a atividade selecionada será criada automaticamente.
+                </p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={interligarParalelo}
+                    onChange={(e) => setInterligarParalelo(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                  />
+                  <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
+                    ⚡ Solicitação interligada com departamentos em paralelo
+                  </span>
+                </label>
+              </>
+            )}
           </div>
         )}
 

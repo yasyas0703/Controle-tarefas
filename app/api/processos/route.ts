@@ -309,21 +309,21 @@ export async function POST(request: NextRequest) {
     const processo = await prisma.$transaction(async (tx) => {
       const proc = await tx.processo.create({
         data: {
-          nome: data.nome,
-          nomeServico: data.nomeServico,
+          nome: data.nome || null,
+          nomeServico: data.nomeServico || null,
           nomeEmpresa: data.nomeEmpresa,
-          cliente: String(data.cliente || '').trim() || responsavelNome,
-          email: data.email,
-          telefone: data.telefone,
-          ...(typeof responsavelId === 'number' ? ({ responsavelId } as any) : {}),
-          empresaId: data.empresaId,
+          cliente: String(data.cliente || '').trim() || responsavelNome || null,
+          email: data.email || null,
+          telefone: data.telefone || null,
+          ...(typeof responsavelId === 'number' ? { responsavelId } : {}),
+          ...(data.empresaId != null ? { empresaId: data.empresaId } : {}),
           status: data.status || 'EM_ANDAMENTO',
           prioridade: data.prioridade || 'MEDIA',
           departamentoAtual: departamentoInicial,
           departamentoAtualIndex: Number.isFinite(Number(data?.departamentoAtualIndex)) ? Number(data.departamentoAtualIndex) : idxInicial,
           fluxoDepartamentos: fluxoFinal,
-          descricao: data.descricao,
-          notasCriador: data.notasCriador,
+          descricao: data.descricao || null,
+          notasCriador: data.notasCriador || null,
           criadoPorId: user.id,
           progresso: data.progresso || 0,
           dataInicio,
@@ -588,8 +588,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(processo, { status: 201 });
   } catch (error) {
     console.error('Erro ao criar processo:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Erro ao criar processo' },
+      { error: `Erro ao criar processo: ${errorMsg}` },
       { status: 500 }
     );
   }

@@ -176,19 +176,7 @@ export default function ModalCriarDepartamento({
           </div>
 
           {/* Descrição */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Descrição (opcional)
-            </label>
-            <textarea
-              value={formData.descricao}
-              onChange={(e) => setFormData({ ...formData, descricao: e.target.value.slice(0, 200) })}
-              maxLength={200}
-              rows={3}
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500 resize-none"
-              placeholder="Breve descrição do departamento... (máx. 200 caracteres)"
-            />
-          </div>
+        
 
           {/* Cor do Departamento */}
           <div>

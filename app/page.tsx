@@ -842,7 +842,7 @@ export default function Home() {
           templates={(templates || []).map(t => ({ id: t.id, nome: t.nome, descricao: t.descricao }))}
           onClose={() => setInterligarInfo(null)}
           onPular={() => setInterligarInfo(null)}
-          onConfirmar={async (templateId, deptIndependente) => {
+          onConfirmar={async (templateId, deptIndependente, interligarComId, interligarParalelo) => {
             const template = (templates || []).find(t => t.id === templateId);
             if (!template) return;
             const processoOrigem = processos.find(p => p.id === interligarInfo.processoId);
@@ -857,6 +857,9 @@ export default function Home() {
                 if (v && typeof v === 'object' && !Array.isArray(v)) return v;
                 try { const p = JSON.parse(v as any); return p && typeof p === 'object' ? p : {}; } catch { return {}; }
               })();
+              // Se o usuário escolheu interligar a continuação com outra atividade, usar template ID
+              // Caso contrário, apenas referenciar o processo original
+              const templateInterligar = interligarComId ? (templates || []).find(t => t.id === interligarComId) : null;
               await criarProcesso({
                 nome: template.nome,
                 nomeServico: template.nome,
@@ -871,8 +874,11 @@ export default function Home() {
                 templateId: template.id,
                 criadoPor: usuarioLogado?.nome,
                 descricao: `Solicitação interligada (continuação de #${interligarInfo.processoId})`,
-                interligadoComId: interligarInfo.processoId,
-                interligadoNome: interligarInfo.processoNome,
+                ...(interligarComId && templateInterligar ? {
+                  interligadoComId: interligarComId,
+                  interligadoNome: templateInterligar.nome,
+                  interligadoParalelo: !!interligarParalelo,
+                } : {}),
                 ...(deptIndependente ? { deptIndependente: true } : {}),
               } as any);
               void mostrarAlerta?.('Interligação realizada', `A solicitação "${template.nome}" foi criada como continuação de #${interligarInfo.processoId}.`, 'sucesso');
