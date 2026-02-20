@@ -508,16 +508,11 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     };
   }, [usuarioLogado]);
 
-  // Tenta restaurar sessão do usuário a partir do token (localStorage)
+  // Tenta restaurar sessão do usuário a partir do cookie httpOnly
   useEffect(() => {
     (async () => {
       try {
         if (typeof window === 'undefined') return setInicializandoUsuario(false);
-        const token = localStorage.getItem('token');
-        if (!token) {
-          setInicializandoUsuario(false);
-          return;
-        }
         try {
           const me = await api.getMe();
           if (me && me.id) {
@@ -526,8 +521,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
             setUsuarioLogado(normalized);
           }
         } catch (err) {
-          // Token inválido/expirado
-          try { localStorage.removeItem('token'); } catch {}
+          // Cookie inválido/expirado — sessão não existe
         }
       } finally {
         setInicializandoUsuario(false);

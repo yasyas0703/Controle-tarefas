@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -29,7 +30,16 @@ export async function PUT(
         ...(data.texto !== undefined && { texto: data.texto }),
       },
     });
-    
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'EDITAR',
+      entidade: 'TAG',
+      entidadeId: tag.id,
+      entidadeNome: tag.nome,
+      ip: getIp(request),
+    });
+
     return NextResponse.json(tag);
   } catch (error: any) {
     console.error('Erro ao atualizar tag:', error);
@@ -86,6 +96,16 @@ export async function DELETE(
     }
 
     await prisma.tag.delete({ where: { id: tag.id } });
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'EXCLUIR',
+      entidade: 'TAG',
+      entidadeId: tag.id,
+      entidadeNome: tag.nome,
+      ip: getIp(request),
+    });
+
     return NextResponse.json({ message: 'Tag movida para lixeira' });
   } catch (error) {
     console.error('Erro ao excluir tag:', error);
@@ -113,7 +133,17 @@ export async function POST(
         tagId: parseInt(params.id),
       },
     });
-    
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'TAG',
+      entidade: 'TAG',
+      entidadeId: parseInt(params.id),
+      entidadeNome: 'N/A',
+      processoId: parseInt(processoId),
+      ip: getIp(request),
+    });
+
     return NextResponse.json({ message: 'Tag adicionada ao processo' });
   } catch (error: any) {
     if (error.code === 'P2002') {

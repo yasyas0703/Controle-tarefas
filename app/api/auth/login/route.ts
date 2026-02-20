@@ -3,6 +3,7 @@ import { prisma } from '@/app/utils/prisma';
 import { verifyPassword, generateToken } from '@/app/utils/auth';
 import bcrypt from 'bcryptjs';
 import { sendEmail, buildVerificationEmail } from '@/app/utils/email';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -84,6 +85,18 @@ export async function POST(request: NextRequest) {
     }
     
     if (!usuario || !usuario.ativo) {
+      // Audit log: tentativa de login falhou (usuário inativo)
+      if (usuario) {
+        await registrarLog({
+          usuarioId: usuario.id,
+          acao: 'LOGIN_FALHA',
+          entidade: 'USUARIO',
+          entidadeId: usuario.id,
+          entidadeNome: usuario.nome,
+          detalhes: 'Tentativa de login com conta inativa',
+          ip: getIp(request),
+        });
+      }
       return NextResponse.json(
         { error: 'Credenciais inválidas' },
         { status: 401 }
@@ -93,6 +106,16 @@ export async function POST(request: NextRequest) {
     const senhaValida = await verifyPassword(senha, usuario.senha);
     
     if (!senhaValida) {
+      // Audit log: tentativa de login falhou (senha incorreta)
+      await registrarLog({
+        usuarioId: usuario.id,
+        acao: 'LOGIN_FALHA',
+        entidade: 'USUARIO',
+        entidadeId: usuario.id,
+        entidadeNome: usuario.nome,
+        detalhes: 'Tentativa de login com senha incorreta',
+        ip: getIp(request),
+      });
       return NextResponse.json(
         { error: 'Credenciais inválidas' },
         { status: 401 }
@@ -134,6 +157,17 @@ export async function POST(request: NextRequest) {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         maxAge: 60 * 60 * 24 * 7,
+      });
+
+      // Audit log: login realizado com sucesso (2FA dispensado)
+      await registrarLog({
+        usuarioId: usuario.id,
+        acao: 'LOGIN',
+        entidade: 'USUARIO',
+        entidadeId: usuario.id,
+        entidadeNome: usuario.nome,
+        detalhes: 'Login realizado com sucesso',
+        ip: getIp(request),
       });
 
       return response;

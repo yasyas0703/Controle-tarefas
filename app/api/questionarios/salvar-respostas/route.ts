@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,10 +25,10 @@ export async function POST(request: NextRequest) {
     // Salvar/atualizar respostas
     const resultados = await Promise.all(
       Object.entries(respostas).map(async ([questionarioId, resposta]) => {
-        const respostaString = typeof resposta === 'string' 
-          ? resposta 
+        const respostaString = typeof resposta === 'string'
+          ? resposta
           : JSON.stringify(resposta);
-        
+
         return prisma.respostaQuestionario.upsert({
           where: {
             processoId_questionarioId: {
@@ -48,7 +49,18 @@ export async function POST(request: NextRequest) {
         });
       })
     );
-    
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'PREENCHER',
+      entidade: 'QUESTIONARIO',
+      entidadeId: parseInt(processoId),
+      entidadeNome: `Respostas do processo #${processoId}`,
+      processoId: parseInt(processoId),
+      departamentoId: parseInt(departamentoId),
+      ip: getIp(request),
+    });
+
     return NextResponse.json({ 
       message: 'Respostas salvas com sucesso',
       respostas: resultados,

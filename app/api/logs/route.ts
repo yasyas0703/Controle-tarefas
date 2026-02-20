@@ -93,3 +93,52 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Erro ao registrar log' }, { status: 500 });
   }
 }
+
+/**
+ * DELETE /api/logs - Excluir logs de auditoria (admin only)
+ * Body: { ids: number[] } para exclusão seletiva
+ *    ou { todos: true } para limpar todos os logs
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    const roleUpper = String((user as any).role || '').toUpperCase();
+    if (roleUpper !== 'ADMIN') {
+      return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
+    }
+
+    const body = await request.json();
+
+    try {
+      let deletados = 0;
+
+      if (body.todos === true) {
+        const result = await (prisma as any).logAuditoria.deleteMany({});
+        deletados = result.count;
+      } else if (Array.isArray(body.ids) && body.ids.length > 0) {
+        const idsNumericos = body.ids.map(Number).filter((n: number) => !isNaN(n));
+        if (idsNumericos.length === 0) {
+          return NextResponse.json({ error: 'Nenhum ID válido fornecido' }, { status: 400 });
+        }
+        const result = await (prisma as any).logAuditoria.deleteMany({
+          where: { id: { in: idsNumericos } },
+        });
+        deletados = result.count;
+      } else {
+        return NextResponse.json({ error: 'Forneça { ids: [...] } ou { todos: true }' }, { status: 400 });
+      }
+
+      return NextResponse.json({ success: true, deletados });
+    } catch (e: any) {
+      if (e?.code === 'P2021' || e?.message?.includes('does not exist')) {
+        return NextResponse.json({ success: true, deletados: 0 });
+      }
+      throw e;
+    }
+  } catch (error) {
+    console.error('Erro ao excluir logs:', error);
+    return NextResponse.json({ error: 'Erro ao excluir logs' }, { status: 500 });
+  }
+}

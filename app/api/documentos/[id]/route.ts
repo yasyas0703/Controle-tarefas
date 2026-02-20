@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
-import { deleteFile, supabase } from '@/app/utils/supabase';
+import { deleteFile, generateSignedUrl } from '@/app/utils/supabase';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -41,24 +42,21 @@ export async function DELETE(
       );
     }
     
-    // Verificar permissão para excluir:
-    // Autor do upload sempre pode excluir. Para outros, somente se tiverem permissão de visualização
-    // (não permitimos que ADMIN bypass automaticamente para documentos confidenciais).
+    // Verificar permissão para excluir usando utilitário centralizado
     const userId = Number(user.id);
     const userRole = String((user as any).role || '').toUpperCase();
-    const allowedRoles: string[] = Array.isArray((documento as any).allowedRoles) ? (documento as any).allowedRoles.map((r: any) => String(r).toUpperCase()) : [];
-    const allowedUserIds: number[] = Array.isArray((documento as any).allowedUserIds) ? (documento as any).allowedUserIds.map((n: any) => Number(n)) : [];
-    const vis = String((documento as any).visibility || 'PUBLIC').toUpperCase();
 
-    const podeVer = vis === 'PUBLIC'
-      ? true
-      : vis === 'ROLES'
-        ? allowedRoles.length > 0 && allowedRoles.includes(userRole)
-        : vis === 'USERS'
-          ? allowedUserIds.length > 0 && allowedUserIds.includes(userId)
-          : allowedUserIds.length > 0 && allowedUserIds.includes(userId);
+    const podeVer = verificarPermissaoDocumento(
+      {
+        visibility: (documento as any).visibility,
+        allowedRoles: (documento as any).allowedRoles,
+        allowedUserIds: (documento as any).allowedUserIds,
+        uploadPorId: documento.uploadPorId,
+      },
+      { id: userId, role: userRole }
+    );
 
-    if (documento.uploadPorId !== user.id && !podeVer) {
+    if (!podeVer) {
       return NextResponse.json(
         { error: 'Sem permissão para excluir este documento' },
         { status: 403 }
@@ -89,6 +87,10 @@ export async function DELETE(
         allowedUserIds: (documento as any).allowedUserIds,
       }));
 
+      const docVis = String((documento as any).visibility || 'PUBLIC').toUpperCase();
+      const docAllowedRoles: string[] = Array.isArray((documento as any).allowedRoles) ? (documento as any).allowedRoles.map((r: any) => String(r)) : [];
+      const docAllowedUserIds: number[] = Array.isArray((documento as any).allowedUserIds) ? (documento as any).allowedUserIds.map((n: any) => Number(n)) : [];
+
       await prisma.itemLixeira.create({
         data: {
           tipoItem: 'DOCUMENTO',
@@ -96,9 +98,9 @@ export async function DELETE(
           dadosOriginais,
           processoId: documento.processoId,
           departamentoId: documento.departamentoId,
-          visibility: vis,
-          allowedRoles: allowedRoles.map(r => r.toLowerCase()),
-          allowedUserIds: allowedUserIds,
+          visibility: docVis,
+          allowedRoles: docAllowedRoles.map(r => r.toLowerCase()),
+          allowedUserIds: docAllowedUserIds,
           deletadoPorId: userId,
           expiraEm: dataExpiracao,
           nomeItem: documento.nome,
@@ -153,49 +155,34 @@ export async function GET(
     const documento = await prisma.documento.findUnique({ where: { id: docId } });
     if (!documento) return NextResponse.json({ error: 'Documento não encontrado' }, { status: 404 });
 
-    // Verificar permissão de visualização conforme os campos de visibilidade
+    // Verificar permissão de visualização usando utilitário centralizado
     const userId = Number((user as any).id);
     const userRole = String((user as any).role || '').toUpperCase();
 
-    const allowedRoles: string[] = Array.isArray((documento as any).allowedRoles) ? (documento as any).allowedRoles.map((r: any) => String(r).toUpperCase()) : [];
-    const allowedUserIds: number[] = Array.isArray((documento as any).allowedUserIds) ? (documento as any).allowedUserIds.map((n: any) => Number(n)) : [];
-    const vis = String((documento as any).visibility || 'PUBLIC').toUpperCase();
-
-    let podeVer = false;
-    if (vis === 'PUBLIC') podeVer = true;
-    else if (vis === 'ROLES') podeVer = allowedRoles.length > 0 && allowedRoles.includes(userRole);
-    else if (vis === 'USERS') podeVer = allowedUserIds.length > 0 && allowedUserIds.includes(userId);
-    else podeVer = allowedUserIds.length > 0 && allowedUserIds.includes(userId);
+    const podeVer = verificarPermissaoDocumento(
+      {
+        visibility: (documento as any).visibility,
+        allowedRoles: (documento as any).allowedRoles,
+        allowedUserIds: (documento as any).allowedUserIds,
+        uploadPorId: documento.uploadPorId,
+      },
+      { id: userId, role: userRole }
+    );
 
     if (!podeVer) return NextResponse.json({ error: 'Sem permissão para visualizar este documento' }, { status: 403 });
 
-    const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'documentos';
-
-    // Se for público e já tivermos URL pública, retornamos ela
-    if (vis === 'PUBLIC' && documento.url) {
-      return NextResponse.json({ url: documento.url });
-    }
-
-    // Gera signed URL temporária (60s)
-    // path pode ser null para documentos confidenciais que não expõem URL
+    // Sempre gerar signed URL temporária (300s) — nunca expor URL pública
     if (!documento.path) {
       console.error('Documento não possui path armazenado, não é possível gerar signed URL', { id: documento.id });
-      return NextResponse.json({ error: 'Documento sem arquivo público' }, { status: 400 });
+      return NextResponse.json({ error: 'Documento sem arquivo disponível' }, { status: 400 });
     }
 
-    try {
-      const expires = 60; // segundos
-      const pathStr: string = documento.path as string;
-      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(pathStr, expires);
-      if (error || !data?.signedUrl) {
-        console.error('Erro ao gerar signed URL:', error);
-        return NextResponse.json({ error: 'Erro ao gerar URL temporária' }, { status: 500 });
-      }
-      return NextResponse.json({ url: data.signedUrl });
-    } catch (e) {
-      console.error('Erro ao gerar signed URL:', e);
+    const signedUrl = await generateSignedUrl(documento.path, 300);
+    if (!signedUrl) {
       return NextResponse.json({ error: 'Erro ao gerar URL temporária' }, { status: 500 });
     }
+
+    return NextResponse.json({ url: signedUrl });
   } catch (error) {
     console.error('Erro no GET /api/documentos/:id', error);
     return NextResponse.json({ error: 'Erro ao buscar documento' }, { status: 500 });

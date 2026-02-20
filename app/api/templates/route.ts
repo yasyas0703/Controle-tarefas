@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -50,7 +51,16 @@ export async function POST(request: NextRequest) {
         },
       },
     });
-    
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'CRIAR',
+      entidade: 'TEMPLATE',
+      entidadeId: template.id,
+      entidadeNome: template.nome,
+      ip: getIp(request),
+    });
+
     return NextResponse.json(template, { status: 201 });
   } catch (error) {
     console.error('Erro ao criar template:', error);

@@ -23,42 +23,48 @@ export default function ModalPreviewDocumento({ documento, onClose }: ModalPrevi
   const isPdf = documento?.tipo === 'application/pdf' || documento?.nome?.toLowerCase()?.endsWith('.pdf');
   const [urlAvailable, setUrlAvailable] = useState<boolean | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
-  const [resolvedUrl, setResolvedUrl] = useState<string | null>(documento?.url ?? null);
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
     setUrlAvailable(null);
     setUrlError(null);
+    setResolvedUrl(null);
 
     const check = async () => {
-      let urlToCheck = resolvedUrl;
+      // Sempre buscar signed URL via API — nunca usar URL armazenada (segurança)
+      if (!documento?.id) {
+        if (mounted) {
+          setUrlAvailable(false);
+          setUrlError('Documento sem ID');
+        }
+        return;
+      }
 
-      // Se não temos URL armazenada, tenta obter do backend (endpoint que retorna signed URL)
-      if (!urlToCheck && documento?.id) {
-        try {
-          const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-          const headers: any = {};
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-          const resp = await fetch(`/api/documentos/${documento.id}`, { method: 'GET', headers });
-          if (resp.ok) {
-            const data = await resp.json().catch(() => null);
-            urlToCheck = data?.url ?? null;
-            if (urlToCheck) setResolvedUrl(urlToCheck);
-          } else {
-            const body = await resp.json().catch(() => ({} as any));
-            if (mounted) {
-              setUrlAvailable(false);
-              setUrlError(body?.error || `Recurso indisponível (status ${resp.status})`);
-            }
-            return;
-          }
-        } catch (e: any) {
+      let urlToCheck: string | null = null;
+      try {
+        const resp = await fetch(`/api/documentos/${documento.id}`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (resp.ok) {
+          const data = await resp.json().catch(() => null);
+          urlToCheck = data?.url ?? null;
+          if (urlToCheck && mounted) setResolvedUrl(urlToCheck);
+        } else {
+          const body = await resp.json().catch(() => ({} as any));
           if (mounted) {
             setUrlAvailable(false);
-            setUrlError('Erro ao recuperar URL do documento');
+            setUrlError(body?.error || `Recurso indisponível (status ${resp.status})`);
           }
           return;
         }
+      } catch (e: any) {
+        if (mounted) {
+          setUrlAvailable(false);
+          setUrlError('Erro ao recuperar URL do documento');
+        }
+        return;
       }
 
       if (!urlToCheck) {
@@ -97,11 +103,11 @@ export default function ModalPreviewDocumento({ documento, onClose }: ModalPrevi
     return () => {
       mounted = false;
     };
-  }, [documento?.id, documento?.url, resolvedUrl]);
+  }, [documento?.id]);
 
   const abrirNovaAba = () => {
     try {
-      window.open(resolvedUrl || documento.url, '_blank', 'noopener,noreferrer');
+      window.open(resolvedUrl || '', '_blank', 'noopener,noreferrer');
     } catch {}
   };
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -105,6 +106,16 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+
+      // Log de auditoria para importação em lote
+      await registrarLog({
+        usuarioId: user.id as number,
+        acao: 'IMPORTAR',
+        entidade: 'EMPRESA',
+        detalhes: `Importação em lote: ${resultados.criadas} criadas, ${resultados.duplicadas} duplicadas, ${resultados.erros} erros`,
+        ip: getIp(request),
+      });
+
       return NextResponse.json(resultados, { status: 201 });
     }
     
@@ -138,7 +149,18 @@ export async function POST(request: NextRequest) {
         cadastrada: empresaCadastrada,
       },
     });
-    
+
+    // Log de auditoria para criação individual
+    await registrarLog({
+      usuarioId: user.id as number,
+      acao: 'CRIAR',
+      entidade: 'EMPRESA',
+      entidadeId: empresa.id,
+      entidadeNome: empresa.razao_social || empresa.codigo,
+      empresaId: empresa.id,
+      ip: getIp(request),
+    });
+
     return NextResponse.json(empresa, { status: 201 });
   } catch (error: any) {
     console.error('Erro ao criar empresa:', error);

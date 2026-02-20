@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,7 +31,19 @@ export async function POST(
         tagId: parseInt(tagId),
       },
     });
-    
+
+    const tag = await prisma.tag.findUnique({ where: { id: parseInt(tagId) } });
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'TAG',
+      entidade: 'TAG',
+      entidadeId: parseInt(tagId),
+      entidadeNome: tag?.nome || 'N/A',
+      processoId: parseInt(params.id),
+      ip: getIp(request),
+    });
+
     const processo = await prisma.processo.findUnique({
       where: { id: parseInt(params.id) },
       include: {
@@ -95,7 +108,20 @@ export async function PUT(
         tags: { include: { tag: true } },
       },
     });
-    
+
+    const tagNames = processo?.tags?.map((t: any) => t.tag.nome).join(', ') || 'N/A';
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'TAG',
+      entidade: 'TAG',
+      entidadeId: processoId,
+      entidadeNome: tagNames,
+      processoId,
+      detalhes: 'Substituicao de tags do processo',
+      ip: getIp(request),
+    });
+
     return NextResponse.json(processo);
   } catch (error: any) {
     console.error('Erro ao atualizar tags:', error);
@@ -121,7 +147,18 @@ export async function DELETE(
         tagId: parseInt(params.tagId),
       },
     });
-    
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'TAG',
+      entidade: 'TAG',
+      entidadeId: parseInt(params.tagId),
+      entidadeNome: 'N/A',
+      processoId: parseInt(params.id),
+      detalhes: 'Remocao de tag do processo',
+      ip: getIp(request),
+    });
+
     return NextResponse.json({ message: 'Tag removida do processo' });
   } catch (error) {
     console.error('Erro ao remover tag:', error);

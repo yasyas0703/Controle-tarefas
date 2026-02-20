@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { getAuthUser } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 // Função para converter data corretamente (evita problema de timezone)
 function parseDate(value: string): Date {
@@ -55,6 +57,7 @@ export async function PUT(
 ) {
   try {
     const id = Number(params.id);
+    const usuario = await getAuthUser(request);
     const body = await request.json();
     
     const {
@@ -93,7 +96,18 @@ export async function PUT(
         ...(alertaMinutosAntes !== undefined && { alertaMinutosAntes }),
       },
     });
-    
+
+    if (usuario?.id) {
+      await registrarLog({
+        usuarioId: usuario.id,
+        acao: 'EDITAR',
+        entidade: 'CALENDARIO',
+        entidadeId: evento.id,
+        entidadeNome: evento.titulo,
+        ip: getIp(request),
+      });
+    }
+
     return NextResponse.json({
       ...evento,
       tipo: evento.tipo.toLowerCase(),
@@ -116,11 +130,26 @@ export async function DELETE(
 ) {
   try {
     const id = Number(params.id);
-    
+    const usuario = await getAuthUser(request);
+
+    // Fetch event before deleting for log purposes
+    const eventoAntes = await (prisma as any).eventoCalendario.findUnique({ where: { id } });
+
     await (prisma as any).eventoCalendario.delete({
       where: { id },
     });
-    
+
+    if (usuario?.id) {
+      await registrarLog({
+        usuarioId: usuario.id,
+        acao: 'EXCLUIR',
+        entidade: 'CALENDARIO',
+        entidadeId: id,
+        entidadeNome: eventoAntes?.titulo || 'N/A',
+        ip: getIp(request),
+      });
+    }
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Erro ao excluir evento:', error);

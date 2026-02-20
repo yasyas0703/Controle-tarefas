@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -74,6 +75,16 @@ export async function DELETE(
     }
 
     await prisma.template.delete({ where: { id: template.id } });
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'EXCLUIR',
+      entidade: 'TEMPLATE',
+      entidadeId: template.id,
+      entidadeNome: template.nome,
+      ip: getIp(request),
+    });
+
     return NextResponse.json({ message: 'Template movido para lixeira' });
   } catch (error) {
     console.error('Erro ao excluir template:', error);

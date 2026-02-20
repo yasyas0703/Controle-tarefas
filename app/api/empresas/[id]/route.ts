@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { registrarLog, detectarMudancas, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -88,11 +89,46 @@ export async function PUT(
       updateData.cadastrada = !!data.cnpj && String(data.cnpj).replace(/\D/g, '').length === 14;
     }
     
+    // Buscar registro antes da atualização para detectar mudanças
+    const antes = await prisma.empresa.findUnique({ where: { id: parseInt(params.id) } });
+
     const empresa = await prisma.empresa.update({
       where: { id: parseInt(params.id) },
       data: updateData,
     });
-    
+
+    // Log de auditoria para edição — registrar cada campo alterado
+    if (antes) {
+      const mudancas = detectarMudancas(antes as any, empresa as any);
+      if (mudancas.length > 0) {
+        for (const m of mudancas) {
+          await registrarLog({
+            usuarioId: user.id as number,
+            acao: 'EDITAR',
+            entidade: 'EMPRESA',
+            entidadeId: empresa.id,
+            entidadeNome: empresa.razao_social || empresa.codigo,
+            empresaId: empresa.id,
+            campo: m.campo,
+            valorAnterior: m.valorAnterior,
+            valorNovo: m.valorNovo,
+            ip: getIp(request),
+          });
+        }
+      } else {
+        await registrarLog({
+          usuarioId: user.id as number,
+          acao: 'EDITAR',
+          entidade: 'EMPRESA',
+          entidadeId: empresa.id,
+          entidadeNome: empresa.razao_social || empresa.codigo,
+          empresaId: empresa.id,
+          detalhes: 'Nenhum campo alterado detectado',
+          ip: getIp(request),
+        });
+      }
+    }
+
     return NextResponse.json(empresa);
   } catch (error: any) {
     console.error('Erro ao atualizar empresa:', error);
@@ -152,6 +188,17 @@ export async function DELETE(
       }
 
       await prisma.empresa.delete({ where: { id: empresaId } });
+
+      // Log de auditoria para exclusão
+      await registrarLog({
+        usuarioId: user.id as number,
+        acao: 'EXCLUIR',
+        entidade: 'EMPRESA',
+        entidadeId: empresa.id,
+        entidadeNome: empresa.razao_social || empresa.codigo,
+        empresaId: empresa.id,
+        ip: getIp(request),
+      });
 
       return NextResponse.json({ message: 'Empresa excluída com sucesso' });
   } catch (error) {

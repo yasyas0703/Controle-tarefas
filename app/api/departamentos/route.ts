@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,7 +64,16 @@ export async function POST(request: NextRequest) {
         ativo: data.ativo !== undefined ? Boolean(data.ativo) : true,
       },
     });
-    
+
+    await registrarLog({
+      usuarioId: user.id as number,
+      acao: 'CRIAR',
+      entidade: 'DEPARTAMENTO',
+      entidadeId: departamento.id,
+      entidadeNome: departamento.nome,
+      ip: getIp(request),
+    });
+
     return NextResponse.json(departamento, { status: 201 });
   } catch (error: any) {
     console.error('Erro ao criar departamento:', error);

@@ -93,23 +93,16 @@ export const useDocumentos = () => {
   }, []);
 
   const baixarDocumento = useCallback((documento: Documento) => {
-    try {
-      const doDownload = async () => {
-        let url = documento.url;
-        if (!url) {
-          try {
-            const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-            const headers: any = {};
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-            const resp = await fetch(`/api/documentos/${documento.id}`, { method: 'GET', headers });
-            if (resp.ok) {
-              const data = await resp.json().catch(() => ({} as any));
-              url = data?.url;
-            }
-          } catch {
-            // fallback
-          }
-        }
+    const doDownload = async () => {
+      try {
+        // Sempre buscar signed URL via API — nunca usar URL direta
+        const resp = await fetch(`/api/documentos/${documento.id}`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (!resp.ok) throw new Error('Sem permissão ou documento indisponível');
+        const data = await resp.json().catch(() => ({} as any));
+        const url = data?.url;
         if (!url) throw new Error('URL do documento indisponível');
         const link = document.createElement('a');
         link.href = url;
@@ -117,21 +110,16 @@ export const useDocumentos = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-      };
-
-      void doDownload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao baixar documento');
-      throw err;
-    }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Erro ao baixar documento');
+      }
+    };
+    void doDownload();
   }, []);
 
-  const previewDocumento = useCallback((documento: Documento): string | null => {
-    // Para imagens/PDFs retornamos a URL (pode ser assinada pelo backend se necessário)
-    if (documento.tipo.startsWith('image/') || documento.tipo === 'application/pdf') {
-      return documento.url || null;
-    }
-
+  const previewDocumento = useCallback((_documento: Documento): string | null => {
+    // URLs publicas nao existem mais — preview deve buscar signed URL via API
+    // Retorna null para que o componente de preview busque via /api/documentos/:id
     return null;
   }, []);
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { registrarLog, getIp, detectarMudancas } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,7 +60,11 @@ export async function PUT(
     }
 
     const data = await request.json();
-    
+
+    const departamentoAntigo = await prisma.departamento.findUnique({
+      where: { id: parseInt(params.id) },
+    });
+
     const departamento = await prisma.departamento.update({
       where: { id: parseInt(params.id) },
       data: {
@@ -72,7 +77,43 @@ export async function PUT(
         ...(data.ativo !== undefined && { ativo: data.ativo }),
       },
     });
-    
+
+    if (departamentoAntigo) {
+      const mudancas = detectarMudancas(departamentoAntigo as Record<string, any>, departamento as Record<string, any>);
+      for (const m of mudancas) {
+        await registrarLog({
+          usuarioId: user.id as number,
+          acao: 'EDITAR',
+          entidade: 'DEPARTAMENTO',
+          entidadeId: departamento.id,
+          entidadeNome: departamento.nome,
+          campo: m.campo,
+          valorAnterior: m.valorAnterior,
+          valorNovo: m.valorNovo,
+          ip: getIp(request),
+        });
+      }
+      if (mudancas.length === 0) {
+        await registrarLog({
+          usuarioId: user.id as number,
+          acao: 'EDITAR',
+          entidade: 'DEPARTAMENTO',
+          entidadeId: departamento.id,
+          entidadeNome: departamento.nome,
+          ip: getIp(request),
+        });
+      }
+    } else {
+      await registrarLog({
+        usuarioId: user.id as number,
+        acao: 'EDITAR',
+        entidade: 'DEPARTAMENTO',
+        entidadeId: departamento.id,
+        entidadeNome: departamento.nome,
+        ip: getIp(request),
+      });
+    }
+
     return NextResponse.json(departamento);
   } catch (error) {
     console.error('Erro ao atualizar departamento:', error);
@@ -140,6 +181,15 @@ export async function DELETE(
 
     // Desativar departamento (soft-delete)
     await prisma.departamento.update({ where: { id: deptId }, data: { ativo: false } });
+
+    await registrarLog({
+      usuarioId: user.id as number,
+      acao: 'EXCLUIR',
+      entidade: 'DEPARTAMENTO',
+      entidadeId: departamento.id,
+      entidadeNome: departamento.nome,
+      ip: getIp(request),
+    });
 
     const respBody: any = { message: 'Departamento movido para lixeira e desativado' };
     if (backupWarning) respBody.warning = backupWarning;

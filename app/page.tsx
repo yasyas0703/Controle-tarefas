@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { Plus, Building2, AlertCircle, LayoutDashboard, Calendar, BarChart3, ScrollText, Layers, Briefcase } from 'lucide-react';
+import { Plus, Building2, AlertCircle, LayoutDashboard, Calendar, BarChart3, ScrollText, Layers, Briefcase, HardDrive } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { api } from '@/app/utils/api';
 import { Processo, Departamento } from '@/app/types';
@@ -39,12 +39,13 @@ import ModalMotivoExclusao from '@/app/components/modals/ModalMotivoExclusao';
 import ModalInterligar from '@/app/components/modals/ModalInterligar';
 import ModalImportarPlanilha from '@/app/components/modals/ModalImportarPlanilha';
 import PainelLogs from '@/app/components/PainelLogs';
+import BackupRestore, { executarAutoBackupSeNecessario, getBackupConfig, deveExecutarAutoBackup } from '@/app/components/BackupRestore';
 import SecaoFavoritos from '@/app/components/sections/SecaoFavoritos';
 import MeusProcessos from '@/app/components/sections/MeusProcessos';
 import { useKeyboardShortcuts } from '@/app/hooks/useKeyboardShortcuts';
 
 // Tipos de aba
-type AbaAtiva = 'dashboard' | 'meus-processos' | 'calendario' | 'graficos' | 'logs' | 'departamentos';
+type AbaAtiva = 'dashboard' | 'meus-processos' | 'calendario' | 'graficos' | 'logs' | 'departamentos' | 'backup';
 
 export default function Home() {
   const {
@@ -263,6 +264,20 @@ export default function Home() {
       }
     };
     carregarFavoritos();
+  }, [usuarioLogado]);
+
+  // Auto-backup: executa ao abrir o app se o prazo já passou (apenas admin)
+  useEffect(() => {
+    if (!usuarioLogado) return;
+    const role = (usuarioLogado.role as string)?.toLowerCase();
+    if (role !== 'admin') return;
+    const config = getBackupConfig();
+    if (!config.ativo || !deveExecutarAutoBackup(config)) return;
+    // Pequeno delay para garantir que o app carregou completamente
+    const timer = setTimeout(() => {
+      executarAutoBackupSeNecessario();
+    }, 3000);
+    return () => clearTimeout(timer);
   }, [usuarioLogado]);
 
   // Função para alternar favorito
@@ -540,6 +555,22 @@ export default function Home() {
                 <span className="sm:hidden">📋</span>
               </button>
             )}
+            {/* Aba Backup - apenas admin */}
+            {usuarioLogado?.role === 'admin' && (
+              <button
+                onClick={() => setAbaAtiva('backup')}
+                className={`
+                  flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                  ${abaAtiva === 'backup'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
+                `}
+              >
+                <HardDrive size={18} />
+                <span className="hidden sm:inline">Backup</span>
+                <span className="sm:hidden">💾</span>
+              </button>
+            )}
           </nav>
         </div>
       </div>
@@ -784,6 +815,11 @@ export default function Home() {
               </div>
             );
           })}
+        </div>
+      ) : abaAtiva === 'backup' ? (
+        /* Aba Backup */
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-8">
+          <BackupRestore />
         </div>
       ) : (
         /* Aba Gráficos */

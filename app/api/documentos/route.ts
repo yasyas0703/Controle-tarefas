@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { uploadFile, deleteFile } from '@/app/utils/supabase';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -54,28 +55,17 @@ export async function GET(request: NextRequest) {
     const userId = Number((user as any).id);
     const userRole = String((user as any).role || '').toUpperCase();
 
-    const documentoPodeSerVisto = (doc: any) => {
-      try {
-        const vis = String(doc.visibility || 'PUBLIC').toUpperCase();
-        const allowedRoles: string[] = Array.isArray(doc.allowedRoles) ? doc.allowedRoles.map(r => String(r).toUpperCase()) : [];
-        const allowedUserIds: number[] = Array.isArray(doc.allowedUserIds) ? doc.allowedUserIds.map((n: any) => Number(n)) : [];
-
-        if (vis === 'PUBLIC') return true;
-        if (vis === 'ROLES') {
-          if (allowedRoles.length === 0) return false;
-          return allowedRoles.includes(userRole);
-        }
-        if (vis === 'USERS') {
-          if (allowedUserIds.length === 0) return false;
-          return allowedUserIds.includes(userId);
-        }
-        return Array.isArray(allowedUserIds) && allowedUserIds.includes(userId);
-      } catch (e) {
-        return false;
-      }
-    };
-
-    const filtrados = documentos.filter(d => documentoPodeSerVisto(d));
+    const filtrados = documentos.filter(d =>
+      verificarPermissaoDocumento(
+        {
+          visibility: (d as any).visibility,
+          allowedRoles: (d as any).allowedRoles,
+          allowedUserIds: (d as any).allowedUserIds,
+          uploadPorId: d.uploadPorId,
+        },
+        { id: userId, role: userRole }
+      )
+    );
     return jsonBigInt(filtrados);
   } catch (error) {
     console.error('Erro ao buscar documentos:', error);
@@ -125,8 +115,13 @@ export async function POST(request: NextRequest) {
       ? (visibilityRawUpper as 'PUBLIC' | 'ROLES' | 'USERS')
       : undefined;
 
-    // Não expor publicUrl quando documento for confidencial
-    const storedUrl = (visibilityRaw && visibilityRaw.toUpperCase() !== 'PUBLIC') ? '' : url;
+    // Garantir que o uploader esteja incluido em allowedUserIds quando visibility=USERS
+    if (visibilityNormalized === 'USERS' && !allowedUserIdsArr.includes(user.id)) {
+      allowedUserIdsArr.push(user.id);
+    }
+
+    // Nunca expor URL publica — tudo via signed URL
+    const storedUrl = '';
 
     const documento = await prisma.documento.create({
       data: {

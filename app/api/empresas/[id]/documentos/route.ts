@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { uploadFile, deleteFile } from '@/app/utils/supabase';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
+import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -49,10 +51,25 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       orderBy: { dataUpload: 'desc' },
     });
 
-    const docsComStatus = documentos.map((doc: any) => {
-      const { status, dias } = calcularStatusValidade(doc.validadeAte, doc.alertarDiasAntes);
-      return { ...doc, validadeStatus: status, validadeDias: dias };
-    });
+    const userId = Number((user as any).id);
+    const userRole = String((user as any).role || '').toUpperCase();
+
+    const docsComStatus = documentos
+      .filter((doc: any) =>
+        verificarPermissaoDocumento(
+          {
+            visibility: doc.visibility,
+            allowedRoles: doc.allowedRoles,
+            allowedUserIds: doc.allowedUserIds,
+            uploadPorId: doc.uploadPorId,
+          },
+          { id: userId, role: userRole }
+        )
+      )
+      .map((doc: any) => {
+        const { status, dias } = calcularStatusValidade(doc.validadeAte, doc.alertarDiasAntes);
+        return { ...doc, validadeStatus: status, validadeDias: dias };
+      });
 
     return jsonBigInt(docsComStatus);
   } catch (e) {
@@ -97,6 +114,22 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       if (Number.isFinite(n) && n >= 0) alertarDiasAntes = n;
     }
 
+    // Parse visibilidade (opcional)
+    const visibilityRaw = (formData.get('visibility') as string) || '';
+    const allowedRolesRaw = (formData.get('allowedRoles') as string) || '';
+    const allowedUserIdsRaw = (formData.get('allowedUserIds') as string) || '';
+    const allowedRolesArr = allowedRolesRaw ? allowedRolesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const allowedUserIdsArr = allowedUserIdsRaw ? allowedUserIdsRaw.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n)) : [];
+    const visUpper = visibilityRaw ? String(visibilityRaw).toUpperCase() : undefined;
+    const visNormalized = visUpper && ['PUBLIC', 'ROLES', 'USERS'].includes(visUpper)
+      ? (visUpper as 'PUBLIC' | 'ROLES' | 'USERS')
+      : undefined;
+
+    // Garantir que uploader esteja incluido quando visibility=USERS
+    if (visNormalized === 'USERS' && !allowedUserIdsArr.includes(user.id)) {
+      allowedUserIdsArr.push(user.id);
+    }
+
     // Upload para Supabase
     const { url, path } = await uploadFile(file, `empresas/${empresaId}`);
 
@@ -107,11 +140,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         tipo,
         descricao: descricao || null,
         tamanho: BigInt(file.size),
-        url,
+        url: '', // Nunca armazenar URL publica - tudo via signed URL
         path,
         uploadPorId: user.id,
         validadeAte: validadeAte || null,
         alertarDiasAntes: alertarDiasAntes ?? 30,
+        ...(visNormalized && { visibility: visNormalized as any }),
+        ...(allowedRolesArr.length > 0 && { allowedRoles: allowedRolesArr }),
+        ...(allowedUserIdsArr.length > 0 && { allowedUserIds: allowedUserIdsArr }),
       },
     });
 
@@ -119,6 +155,18 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       (documento as any).validadeAte,
       (documento as any).alertarDiasAntes
     );
+
+    // Log de auditoria para anexação de documento
+    await registrarLog({
+      usuarioId: user.id as number,
+      acao: 'ANEXAR',
+      entidade: 'DOCUMENTO',
+      entidadeId: documento.id,
+      entidadeNome: documento.nome,
+      empresaId,
+      detalhes: `Tipo: ${tipo}`,
+      ip: getIp(request),
+    });
 
     return jsonBigInt({ ...documento, validadeStatus: status, validadeDias: dias }, { status: 201 });
   } catch (e: any) {

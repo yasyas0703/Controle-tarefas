@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { hashPassword } from '@/app/utils/auth';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { registrarLog, detectarMudancas, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -78,7 +79,7 @@ export async function PUT(
     const departamentoId = Number.isFinite(Number(departamentoIdRaw)) ? Number(departamentoIdRaw) : undefined;
     // Busca target e departamento em paralelo se possível
     const [target, dept] = await Promise.all([
-      prisma.usuario.findUnique({ where: { id: targetId }, select: { id: true, role: true, ativo: true } }),
+      prisma.usuario.findUnique({ where: { id: targetId }, select: { id: true, nome: true, email: true, role: true, ativo: true, departamentoId: true, permissoes: true } }),
       (typeof departamentoId === 'number')
         ? prisma.departamento.findUnique({ where: { id: departamentoId }, select: { id: true, ativo: true } })
         : Promise.resolve(undefined)
@@ -161,6 +162,54 @@ export async function PUT(
       },
     });
     
+    // Audit log: detectar campos alterados e registrar
+    const camposAntes: Record<string, any> = {
+      nome: target.nome,
+      email: target.email,
+      role: target.role,
+      ativo: target.ativo,
+      departamentoId: target.departamentoId,
+      permissoes: JSON.stringify(target.permissoes),
+    };
+    const camposDepois: Record<string, any> = {
+      nome: usuario.nome,
+      email: usuario.email,
+      role: usuario.role,
+      ativo: usuario.ativo,
+      departamentoId: usuario.departamento?.id ?? null,
+      permissoes: JSON.stringify(updateData.permissoes ?? []),
+    };
+    const mudancas = detectarMudancas(camposAntes, camposDepois);
+    if (mudancas.length > 0) {
+      for (const m of mudancas) {
+        await registrarLog({
+          usuarioId: user.id as number,
+          acao: 'EDITAR',
+          entidade: 'USUARIO',
+          entidadeId: usuario.id,
+          entidadeNome: usuario.nome,
+          campo: m.campo,
+          valorAnterior: m.valorAnterior,
+          valorNovo: m.valorNovo,
+          ip: getIp(request),
+        });
+      }
+    } else {
+      // Registra edição mesmo sem mudanças detectáveis (ex: senha alterada)
+      if (data.senha) {
+        await registrarLog({
+          usuarioId: user.id as number,
+          acao: 'EDITAR',
+          entidade: 'USUARIO',
+          entidadeId: usuario.id,
+          entidadeNome: usuario.nome,
+          campo: 'senha',
+          detalhes: 'Senha alterada',
+          ip: getIp(request),
+        });
+      }
+    }
+
     console.timeEnd('PUT /api/usuarios/:id');
     return NextResponse.json(usuario);
   } catch (error: any) {
@@ -251,6 +300,16 @@ export async function DELETE(
       // Tenta excluir permanentemente
       try {
         await prisma.usuario.delete({ where: { id: target.id } });
+        // Audit log: exclusão permanente
+        await registrarLog({
+          usuarioId: user.id as number,
+          acao: 'EXCLUIR',
+          entidade: 'USUARIO',
+          entidadeId: targetData.id,
+          entidadeNome: targetData.nome,
+          detalhes: 'Exclusão permanente',
+          ip: getIp(request),
+        });
         console.timeEnd('DELETE /api/usuarios/:id');
         return NextResponse.json({ message: 'Usuário excluído permanentemente' });
       } catch (err: any) {
@@ -261,6 +320,17 @@ export async function DELETE(
 
     // Caso padrão: desativar usuário (soft-delete)
     await prisma.usuario.update({ where: { id: targetData.id }, data: { ativo: false } });
+
+    // Audit log: soft-delete (movido para lixeira)
+    await registrarLog({
+      usuarioId: user.id as number,
+      acao: 'EXCLUIR',
+      entidade: 'USUARIO',
+      entidadeId: targetData.id,
+      entidadeNome: targetData.nome,
+      detalhes: 'Movido para lixeira (soft-delete)',
+      ip: getIp(request),
+    });
 
     console.timeEnd('DELETE /api/usuarios/:id');
     return NextResponse.json({ message: 'Usuário movido para lixeira e desativado' });

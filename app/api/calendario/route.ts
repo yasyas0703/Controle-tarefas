@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { getAuthUser } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 // Função para converter data corretamente (evita problema de timezone)
 function parseDate(value: string): Date {
@@ -323,7 +324,19 @@ export async function POST(request: NextRequest) {
         alertaMinutosAntes: alertaMinutosAntes ?? 60,
       },
     });
-    
+
+    if (usuarioId) {
+      await registrarLog({
+        usuarioId,
+        acao: 'CRIAR',
+        entidade: 'CALENDARIO',
+        entidadeId: evento.id,
+        entidadeNome: evento.titulo,
+        processoId: processoId ? Number(processoId) : null,
+        ip: getIp(request),
+      });
+    }
+
     return NextResponse.json({
       ...evento,
       tipo: evento.tipo.toLowerCase(),

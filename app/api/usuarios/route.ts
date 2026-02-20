@@ -3,6 +3,7 @@ import { prisma } from '@/app/utils/prisma';
 import { hashPassword } from '@/app/utils/auth';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 import { Role } from '@prisma/client';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -130,6 +131,17 @@ export async function POST(request: NextRequest) {
             },
           },
         });
+        // Audit log: usuário reativado
+        await registrarLog({
+          usuarioId: user.id as number,
+          acao: 'CRIAR',
+          entidade: 'USUARIO',
+          entidadeId: usuarioReativado.id,
+          entidadeNome: usuarioReativado.nome,
+          detalhes: 'Usuário reativado (já existia inativo)',
+          ip: getIp(request),
+        });
+
         console.timeEnd('POST /api/usuarios');
         return NextResponse.json({ ...usuarioReativado, reativado: true });
       }
@@ -171,6 +183,16 @@ export async function POST(request: NextRequest) {
         },
       },
     });
+    // Audit log: novo usuário criado
+    await registrarLog({
+      usuarioId: user.id as number,
+      acao: 'CRIAR',
+      entidade: 'USUARIO',
+      entidadeId: usuario.id,
+      entidadeNome: usuario.nome,
+      ip: getIp(request),
+    });
+
     console.timeEnd('POST /api/usuarios');
     return NextResponse.json(usuario, { status: 201 });
   } catch (error: any) {

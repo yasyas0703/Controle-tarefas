@@ -56,15 +56,32 @@ export async function uploadFile(
     });
   
   if (error) throw error;
-  
-  const { data: { publicUrl } } = supabase.storage
-    .from(bucket)
-    .getPublicUrl(filePath);
-  
+
+  // Nunca gerar URL publica — todos os documentos sao servidos via signed URL
   return {
-    url: publicUrl,
+    url: '',
     path: filePath,
   };
+}
+
+export async function generateSignedUrl(
+  path: string,
+  expiresInSeconds = 300
+): Promise<string | null> {
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET || 'documentos';
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(path, expiresInSeconds);
+    if (error || !data?.signedUrl) {
+      console.error('[Storage] Erro ao gerar signed URL:', error);
+      return null;
+    }
+    return data.signedUrl;
+  } catch (e) {
+    console.error('[Storage] Erro ao gerar signed URL:', e);
+    return null;
+  }
 }
 
 export async function deleteFile(path: string): Promise<void> {

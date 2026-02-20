@@ -402,10 +402,9 @@ function toPrismaEnum(value: any) {
 }
 
 const getToken = () => {
-  if (typeof window === 'undefined') return null;
-  // Primeiro tenta pegar do cookie (o backend seta httpOnly)
-  // Se não tiver, tenta do localStorage como fallback
-  return localStorage.getItem('token');
+  // Token agora e gerenciado exclusivamente via cookie httpOnly
+  // definido pelo servidor. Nao usar mais localStorage por seguranca (XSS).
+  return null;
 };
 
 export const fetchAutenticado = async (url: string, options: RequestInit = {}) => {
@@ -425,9 +424,8 @@ export const fetchAutenticado = async (url: string, options: RequestInit = {}) =
 
   const response = await fetch(url, { ...options, headers, credentials: options.credentials ?? 'include' });
   
-  // Se não autorizado, limpa token e redireciona
+  // Se não autorizado, cookie expirou ou é inválido
   if (response.status === 401) {
-    localStorage.removeItem('token');
     // Não fazemos redirect automático, deixa o componente lidar
   }
 
@@ -451,12 +449,8 @@ export const api = {
       }
       
       const data = await response.json();
-      
-      // Salva token no localStorage também (fallback)
-      if (data.token) {
-        localStorage.setItem('token', data.token);
-      }
-      
+
+      // Token gerenciado via cookie httpOnly pelo servidor
       return data;
     } catch (error) {
       console.error('Erro ao fazer login:', error);
@@ -479,7 +473,7 @@ export const api = {
       }
 
       const data = await response.json();
-      if (data.token) localStorage.setItem('token', data.token);
+      // Token gerenciado via cookie httpOnly pelo servidor
       return data;
     } catch (err) {
       console.error('Erro ao verificar código:', err);
@@ -1563,6 +1557,23 @@ export const api = {
       });
     } catch {
       // Silencioso - não deve impedir operações normais
+    }
+  },
+
+  deleteLogs: async (params: { ids?: number[]; todos?: boolean }): Promise<{ success: boolean; deletados: number }> => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/logs`, {
+        method: 'DELETE',
+        body: JSON.stringify(params),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error((err as any)?.error || 'Erro ao excluir logs');
+      }
+      return await response.json();
+    } catch (error: any) {
+      console.error('Erro ao excluir logs:', error);
+      throw error;
     }
   },
 

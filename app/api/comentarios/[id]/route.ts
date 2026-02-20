@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -52,7 +53,17 @@ export async function PUT(
         },
       },
     });
-    
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'COMENTAR',
+      entidade: 'COMENTARIO',
+      entidadeId: comentario.id,
+      entidadeNome: `Comentario #${comentario.id}`,
+      processoId: comentario.processoId || null,
+      ip: getIp(request),
+    });
+
     return NextResponse.json(comentario);
   } catch (error) {
     console.error('Erro ao atualizar comentário:', error);
@@ -120,6 +131,16 @@ export async function DELETE(
 
     // Agora remove o comentário permanentemente
     await prisma.comentario.delete({ where: { id: parseInt(params.id) } });
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'EXCLUIR',
+      entidade: 'COMENTARIO',
+      entidadeId: comentario.id,
+      entidadeNome: `Comentario #${comentario.id}`,
+      processoId: comentario.processoId || null,
+      ip: getIp(request),
+    });
 
     return NextResponse.json({ message: 'Comentário movido para lixeira' });
   } catch (error) {

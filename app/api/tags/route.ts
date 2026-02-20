@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -50,7 +51,16 @@ export async function POST(request: NextRequest) {
         texto: data.texto || 'text-white',
       },
     });
-    
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'CRIAR',
+      entidade: 'TAG',
+      entidadeId: tag.id,
+      entidadeNome: tag.nome,
+      ip: getIp(request),
+    });
+
     return NextResponse.json(tag, { status: 201 });
   } catch (error: any) {
     console.error('Erro ao criar tag:', error);

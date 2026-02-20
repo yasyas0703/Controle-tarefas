@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { deleteFile } from '@/app/utils/supabase';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { registrarLog, getIp } from '@/app/utils/logAuditoria';
+import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,6 +32,23 @@ export async function DELETE(
       return NextResponse.json({ error: 'Documento não encontrado' }, { status: 404 });
     }
 
+    // Verificar permissão antes de permitir exclusão
+    const userId = Number(user.id);
+    const userRole = String((user as any).role || '').toUpperCase();
+    const podeVer = verificarPermissaoDocumento(
+      {
+        visibility: (documento as any).visibility,
+        allowedRoles: (documento as any).allowedRoles,
+        allowedUserIds: (documento as any).allowedUserIds,
+        uploadPorId: (documento as any).uploadPorId,
+      },
+      { id: userId, role: userRole }
+    );
+
+    if (!podeVer) {
+      return NextResponse.json({ error: 'Sem permissão para excluir este documento' }, { status: 403 });
+    }
+
     // Excluir do storage
     if ((documento as any).path) {
       try {
@@ -52,10 +71,10 @@ export async function DELETE(
           dadosOriginais,
           empresaId: empresaId,
           departamentoId: null,
-          visibility: 'PUBLIC',
-          allowedRoles: [],
-          allowedUserIds: [],
-          deletadoPorId: user.id as number,
+          visibility: String((documento as any).visibility || 'PUBLIC').toUpperCase(),
+          allowedRoles: Array.isArray((documento as any).allowedRoles) ? (documento as any).allowedRoles : [],
+          allowedUserIds: Array.isArray((documento as any).allowedUserIds) ? (documento as any).allowedUserIds : [],
+          deletadoPorId: userId,
           expiraEm: dataExpiracao,
           nomeItem: documento.nome,
           descricaoItem: documento.tipo || null,
@@ -67,6 +86,17 @@ export async function DELETE(
 
     // Excluir do banco
     await prisma.empresaDocumento.delete({ where: { id: docId } });
+
+    // Log de auditoria para exclusão de documento
+    await registrarLog({
+      usuarioId: user.id as number,
+      acao: 'EXCLUIR',
+      entidade: 'DOCUMENTO',
+      entidadeId: documento.id,
+      entidadeNome: documento.nome,
+      empresaId,
+      ip: getIp(request),
+    });
 
     return NextResponse.json({ message: 'Documento movido para lixeira' });
   } catch (e) {

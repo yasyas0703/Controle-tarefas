@@ -121,6 +121,11 @@ model EmpresaDocumento {
   validadeAte      DateTime?
   alertarDiasAntes Int       @default(30)
 
+  // Controle de acesso (mesma logica que Documento de processo)
+  visibility     DocumentoVisibility @default(PUBLIC)
+  allowedRoles   String[]            @default([])
+  allowedUserIds Int[]               @default([])
+
   @@index([empresaId])
   @@index([validadeAte])
 }
