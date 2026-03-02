@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import {
+  createEmpresaDocumentoCompat,
+  getEmpresaDocumentoColumns,
+  getEmpresaDocumentoQueryConfig,
+  normalizeEmpresaDocumento,
+} from '@/app/utils/empresaDocumentoCompat';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,6 +24,66 @@ function sanitizeBigInt(obj: any): any {
     return out;
   }
   return obj;
+}
+
+function isSchemaDriftError(error: any): boolean {
+  const message = String(error?.message || '');
+  return (
+    error?.code === 'P2021' ||
+    error?.code === 'P2022' ||
+    message.includes('does not exist') ||
+    message.includes('does not have a column') ||
+    message.includes('does not exist in the current database')
+  );
+}
+
+async function safeFindMany<T>(label: string, query: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await query();
+  } catch (error: any) {
+    if (!isSchemaDriftError(error)) throw error;
+    console.warn(`[Backup] Ignorando ${label} por incompatibilidade de schema:`, error?.message || error);
+    return [];
+  }
+}
+
+function buildChecklistDepartamentoQueryConfig(columns: Set<string>) {
+  const select: Record<string, any> = {
+    id: true,
+    processoId: true,
+    departamentoId: true,
+    concluido: true,
+    concluidoPorId: true,
+    concluidoEm: true,
+  };
+
+  if (columns.has('responsavelId')) select.responsavelId = true;
+  if (columns.has('responsavelNome')) select.responsavelNome = true;
+
+  return {
+    select,
+    hasResponsavelId: columns.has('responsavelId'),
+    hasResponsavelNome: columns.has('responsavelNome'),
+  };
+}
+
+async function getChecklistDepartamentoQueryConfig() {
+  const rows = await prisma.$queryRaw<Array<{ column_name: string }>>`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND lower(table_name) = lower('ChecklistDepartamento')
+  `;
+
+  return buildChecklistDepartamentoQueryConfig(new Set(rows.map((row) => String(row.column_name))));
+}
+
+function normalizeChecklistDepartamento(item: any, config: { hasResponsavelId: boolean; hasResponsavelNome: boolean }) {
+  return {
+    ...item,
+    responsavelId: config.hasResponsavelId ? item.responsavelId ?? null : null,
+    responsavelNome: config.hasResponsavelNome ? item.responsavelNome ?? null : null,
+  };
 }
 
 // GET /api/backup - Exportar todos os dados do sistema
@@ -70,17 +136,25 @@ export async function GET(request: NextRequest) {
       prisma.processoTag.findMany(),
       prisma.comentario.findMany(),
       prisma.documento.findMany(),
-      prisma.empresaDocumento.findMany(),
+      safeFindMany('empresaDocumento', async () => {
+        const { select, acl } = await getEmpresaDocumentoQueryConfig();
+        const docs = await prisma.empresaDocumento.findMany({ select });
+        return docs.map((doc) => normalizeEmpresaDocumento(doc as any, acl));
+      }),
       prisma.questionarioDepartamento.findMany(),
       prisma.respostaQuestionario.findMany(),
       prisma.historicoEvento.findMany(),
       prisma.historicoFluxo.findMany(),
       prisma.template.findMany(),
-      prisma.eventoCalendario.findMany(),
-      prisma.interligacaoProcesso.findMany(),
-      prisma.checklistDepartamento.findMany(),
-      prisma.motivoExclusao.findMany(),
-      prisma.documentoObrigatorio.findMany(),
+      safeFindMany('eventoCalendario', () => prisma.eventoCalendario.findMany()),
+      safeFindMany('interligacaoProcesso', () => prisma.interligacaoProcesso.findMany()),
+      safeFindMany('checklistDepartamento', async () => {
+        const config = await getChecklistDepartamentoQueryConfig();
+        const rows = await prisma.checklistDepartamento.findMany({ select: config.select });
+        return rows.map((item) => normalizeChecklistDepartamento(item, config));
+      }),
+      safeFindMany('motivoExclusao', () => prisma.motivoExclusao.findMany()),
+      safeFindMany('documentoObrigatorio', () => prisma.documentoObrigatorio.findMany()),
     ]);
 
     const backup = sanitizeBigInt({
@@ -147,6 +221,8 @@ export async function POST(request: NextRequest) {
     }
 
     const dados = body.dados;
+    const empresaDocumentoColumns = await getEmpresaDocumentoColumns();
+    const checklistConfig = await getChecklistDepartamentoQueryConfig();
 
     // Executar restauração em uma transação
     await prisma.$transaction(async (tx) => {
@@ -369,8 +445,9 @@ export async function POST(request: NextRequest) {
 
       if (Array.isArray(dados.empresaDocumentos) && dados.empresaDocumentos.length > 0) {
         for (const d of dados.empresaDocumentos) {
-          await tx.empresaDocumento.create({
-            data: {
+          await createEmpresaDocumentoCompat(
+            tx,
+            {
               id: d.id,
               empresaId: d.empresaId,
               nome: d.nome,
@@ -383,8 +460,14 @@ export async function POST(request: NextRequest) {
               uploadPorId: d.uploadPorId || null,
               validadeAte: d.validadeAte ? new Date(d.validadeAte) : null,
               alertarDiasAntes: d.alertarDiasAntes ?? 30,
+              visibility: d.visibility || 'PUBLIC',
+              allowedRoles: Array.isArray(d.allowedRoles) ? d.allowedRoles : [],
+              allowedUserIds: Array.isArray(d.allowedUserIds) ? d.allowedUserIds : [],
+              allowedDepartamentos: Array.isArray(d.allowedDepartamentos) ? d.allowedDepartamentos : [],
             },
-          });
+            undefined,
+            empresaDocumentoColumns
+          );
         }
       }
 
@@ -512,7 +595,14 @@ export async function POST(request: NextRequest) {
               concluido: c.concluido || false,
               concluidoPorId: c.concluidoPorId || null,
               concluidoEm: c.concluidoEm ? new Date(c.concluidoEm) : null,
+              ...(checklistConfig.hasResponsavelId && c.responsavelId !== undefined
+                ? { responsavelId: c.responsavelId || null }
+                : {}),
+              ...(checklistConfig.hasResponsavelNome && c.responsavelNome !== undefined
+                ? { responsavelNome: c.responsavelNome || null }
+                : {}),
             },
+            select: checklistConfig.select,
           });
         }
       }

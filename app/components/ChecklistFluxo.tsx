@@ -9,6 +9,7 @@ interface ChecklistItem {
   concluido: boolean;
   observacao?: string;
   concluidoEm?: string;
+  responsavelNome?: string;
 }
 
 interface ChecklistFluxoProps {
@@ -86,13 +87,20 @@ export default function ChecklistFluxo({
         .map((deptId) => Number(deptId))
         .filter((deptId) => Number.isFinite(deptId) && deptId > 0);
 
-      const checklist: ChecklistItem[] = fluxoNormalizado.map((deptId) => ({
-        departamentoId: deptId,
-        departamentoNome: getDeptNome(deptId),
-        concluido: !!checklistMap.get(deptId)?.concluido,
-        observacao: checklistMap.get(deptId)?.observacao || '',
-        concluidoEm: checklistMap.get(deptId)?.concluidoEm,
-      }));
+      const checklist: ChecklistItem[] = fluxoNormalizado.map((deptId) => {
+        const checklistEntry = checklistMap.get(deptId);
+        const dept = departamentos.find((d: any) => d.id === deptId);
+        return {
+          departamentoId: deptId,
+          departamentoNome: getDeptNome(deptId),
+          concluido: !!checklistEntry?.concluido,
+          observacao: checklistEntry?.observacao || '',
+          concluidoEm: checklistEntry?.concluidoEm,
+          // Responsável: usa o campo da checklist (gerente no momento da criação),
+          // ou fallback para o campo "responsavel" do departamento
+          responsavelNome: checklistEntry?.responsavelNome || dept?.responsavel || undefined,
+        };
+      });
 
       setItems(checklist);
       setLoading(false);
@@ -292,9 +300,14 @@ export default function ChecklistFluxo({
                     </span>
                   )}
                 </div>
+                {deptIndependente && item.responsavelNome && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-7">
+                    Responsavel: {item.responsavelNome}
+                  </span>
+                )}
                 {item.concluidoEm && (
                   <span className="text-xs text-gray-400 ml-7">
-                    Concluído em {new Date(item.concluidoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    Concluido em {new Date(item.concluidoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
                 )}
               </div>

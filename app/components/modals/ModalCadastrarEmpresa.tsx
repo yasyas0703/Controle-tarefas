@@ -147,7 +147,6 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
     // Validação básica com zod (CPF/CNPJ/CEP) e obrigatórios
     const novosErros: Record<string, string> = {};
     if (!formData.codigo) novosErros.codigo = 'Código é obrigatório';
-    if (empresaCadastrada && !formData.razao_social) novosErros.razao_social = 'Razão Social é obrigatória';
 
     const digits = String(formData.cnpj || '').replace(/\D/g, '');
     if (digits.length === 11) {
@@ -165,8 +164,8 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
     setErros(novosErros);
     if (Object.keys(novosErros).length > 0) return;
 
-    if (!formData.codigo || !formData.razao_social) {
-      void mostrarAlerta('Campos obrigatórios', 'Código e Razão Social são obrigatórios.', 'aviso');
+    if (!formData.codigo) {
+      void mostrarAlerta('Campos obrigatórios', 'Código é obrigatório.', 'aviso');
       return;
     }
 
@@ -327,7 +326,7 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Razão Social {empresaCadastrada && <span className="text-red-500">*</span>}
+                  Razão Social
                 </label>
                 <input
                   type="text"
@@ -335,7 +334,6 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
                   onChange={(e) => handleChange('razao_social', e.target.value)}
                   className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-green-500 ${erros.razao_social ? 'border-red-500' : 'border-gray-300 dark:border-[var(--border)]'} bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]`}
                   placeholder={empresaCadastrada ? "Nome oficial da empresa" : "Nome provisório (opcional)"}
-                  required={empresaCadastrada}
                 />
                 {erros.razao_social && <p className="mt-1 text-sm text-red-500">{erros.razao_social}</p>}
               </div>

@@ -2,7 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Building, User, Plus, MoreVertical, Edit, Trash2, Eye, FileText, Users, Calculator, FileCheck, Briefcase, Headphones, Scale, CheckCircle, Building2, Landmark, ShieldCheck, Truck, Package, Heart, Wallet, CreditCard, BarChart3, PieChart, Settings, Wrench, Globe, Mail, Phone, MessageSquare, Clipboard, FolderOpen, Archive, BookOpen, GraduationCap, Award, Target, Flag, Zap, Star, ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react';
+import { Building, User, Plus, MoreVertical, Edit, Trash2, Eye, FileText, Users, Calculator, FileCheck, Briefcase, Headphones, Scale, CheckCircle, Building2, Landmark, ShieldCheck, Truck, Package, Heart, Wallet, CreditCard, BarChart3, PieChart, Settings, Wrench, Globe, Mail, Phone, MessageSquare, Clipboard, FolderOpen, Archive, BookOpen, GraduationCap, Award, Target, Flag, Zap, Star, ChevronLeft, ChevronRight, ArrowLeftRight, Upload } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { api } from '@/app/utils/api';
 import { useDragDrop } from '@/app/hooks/useDragDrop';
@@ -10,7 +10,7 @@ import { temPermissao } from '@/app/utils/permissions';
 import { Processo } from '@/app/types';
 import ProcessoCard from './ProcessoCard';
 
-// Mapeamento de nomes de ícones para componentes
+// Mapeamento de nomes de Ã­cones para componentes
 const iconMap: Record<string, any> = {
   FileText,
   Users,
@@ -97,7 +97,7 @@ export default function DepartamentosGrid({
   const [modoReordenar, setModoReordenar] = useState(false);
 
   // Checklist cache para processos deptIndependente
-  // Mapa: processoId -> Set<deptId> (departamentos já concluídos)
+  // Mapa: processoId -> Set<deptId> (departamentos jÃ¡ concluÃ­dos)
   const [checklistCache, setChecklistCache] = useState<Map<number, Set<number>>>(new Map());
 
   // Buscar checklist para processos com deptIndependente
@@ -130,8 +130,10 @@ export default function DepartamentosGrid({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processosParalelos.map(p => p.id).join(',')]);
 
-  const isAdmin = usuarioLogado?.role === 'admin';
+  const isAdmin = usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento';
   const isUsuarioNormal = usuarioLogado?.role === 'usuario';
+  const podeEditarDepartamento = temPermissao(usuarioLogado, 'editar_departamento');
+  const podeExcluirDepartamento = temPermissao(usuarioLogado, 'excluir_departamento');
 
   const departamentoUsuario =
     typeof (usuarioLogado as any)?.departamentoId === 'number'
@@ -141,8 +143,8 @@ export default function DepartamentosGrid({
         : undefined;
 
   const handleQuestionario = (processo: any, deptIdOverride?: number) => {
-    // Para processos paralelos (deptIndependente), usar o dept da coluna onde o card está,
-    // não o departamentoAtual (que pode ser o 1º dept do fluxo)
+    // Para processos paralelos (deptIndependente), usar o dept da coluna onde o card estÃ¡,
+    // nÃ£o o departamentoAtual (que pode ser o 1Âº dept do fluxo)
     const deptId = deptIdOverride ?? processo.departamentoAtual;
     setShowQuestionario({
       processoId: processo.id,
@@ -154,8 +156,37 @@ export default function DepartamentosGrid({
     setShowUploadDocumento(processo);
   };
 
-  // Handler para "Avançar" em processos paralelos (deptIndependente)
-  // Marca o departamento como concluído no checklist, removendo o card da coluna
+  const podeAdicionarDocumentoNoDept = (deptId: number) => {
+    if (!usuarioLogado) return false;
+    // Usuario normal so pode anexar no proprio departamento.
+    if (String(usuarioLogado.role).toLowerCase() === 'usuario') {
+      return typeof departamentoUsuario === 'number' && Number(departamentoUsuario) === Number(deptId);
+    }
+    return true;
+  };
+
+  const handleAdicionarDocumentoDepartamento = async (dept: any, processosDept: any[]) => {
+    if (!Array.isArray(processosDept) || processosDept.length === 0) {
+      await mostrarAlerta?.(
+        'Sem processo',
+        'Nao ha processo em andamento neste departamento para anexar documento.',
+        'aviso'
+      );
+      return;
+    }
+
+    const processoAlvo =
+      processosDept.find((p: any) => Number(p?.departamentoAtual) === Number(dept?.id)) ||
+      processosDept[0];
+
+    setShowUploadDocumento({
+      id: Number(processoAlvo.id),
+      departamentoId: Number(dept.id),
+    });
+  };
+
+  // Handler para "AvanÃ§ar" em processos paralelos (deptIndependente)
+  // Marca o departamento como concluÃ­do no checklist, removendo o card da coluna
   const handleAvancarParalelo = async (processoId: number, deptId: number) => {
     const processo = processos.find((p: any) => p.id === processoId);
     if (!processo) return;
@@ -163,22 +194,23 @@ export default function DepartamentosGrid({
     const fluxo = (processo.fluxoDepartamentos || []).map(Number);
     const idxDept = fluxo.indexOf(Number(deptId));
 
-    // Verificar ordem sequencial: dept anterior precisa ter concluído
+    // Verificar ordem sequencial: dept anterior precisa ter concluÃ­do
     if (idxDept > 0) {
       const deptAnterior = fluxo[idxDept - 1];
       const concluidos = checklistCache.get(processoId);
       if (!concluidos || !concluidos.has(deptAnterior)) {
         const nomeAnterior = departamentos.find((d: any) => d.id === deptAnterior)?.nome || `Dept #${deptAnterior}`;
-        void mostrarAlerta?.('Ordem sequencial', `O departamento "${nomeAnterior}" precisa concluir primeiro antes que este possa avançar.`, 'aviso');
+        void mostrarAlerta?.('Ordem sequencial', `O departamento "${nomeAnterior}" precisa concluir primeiro antes que este possa avanÃ§ar.`, 'aviso');
         return;
       }
     }
 
     // ============================================
-    // VALIDAÇÃO DE PERGUNTAS OBRIGATÓRIAS DO DEPT
+    // VALIDAÃ‡ÃƒO DE PERGUNTAS OBRIGATÃ“RIAS DO DEPT
     // ============================================
-    try {
-      // Buscar processo atualizado para ter respostas e questionários frescos
+    if (!isAdmin) {
+      try {
+        // Buscar processo atualizado para ter respostas e questionÃ¡rios frescos
       const processoAtualizado = await api.getProcesso(processoId).catch(() => null);
       const pDados = processoAtualizado ?? processo;
 
@@ -232,15 +264,16 @@ export default function DepartamentosGrid({
       if (faltando.length > 0) {
         const nomes = faltando.map((p: any) => p.label).join(', ');
         const nomeDept = departamentos.find((d: any) => d.id === deptId)?.nome || `Dept #${deptId}`;
-        void mostrarAlerta?.('Campos obrigatórios', `Preencha os campos obrigatórios do departamento "${nomeDept}" antes de concluir:\n\n${nomes}`, 'aviso');
+        void mostrarAlerta?.('Campos obrigatÃ³rios', `Preencha os campos obrigatÃ³rios do departamento "${nomeDept}" antes de concluir:\n\n${nomes}`, 'aviso');
         return;
       }
-    } catch (err) {
-      console.warn('Validação de questionário paralelo falhou:', err);
+      } catch (err) {
+        console.warn('Validação de questionário paralelo falhou:', err);
+      }
     }
 
     try {
-      // Marcar o departamento como concluído via API de checklist
+      // Marcar o departamento como concluÃ­do via API de checklist
       const res = await fetch(`/api/processos/${processoId}/checklist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -266,13 +299,13 @@ export default function DepartamentosGrid({
       const nomeDepto = departamentos.find((d: any) => d.id === deptId)?.nome || `Dept #${deptId}`;
       adicionarNotificacao(`Departamento "${nomeDepto}" concluiu sua parte`, 'sucesso');
 
-      // Se todos os depts do fluxo concluíram, finalizar o processo
+      // Se todos os depts do fluxo concluÃ­ram, finalizar o processo
       const concluidosAtualizado = new Set(checklistCache.get(processoId) || []);
       concluidosAtualizado.add(Number(deptId));
       const todosConcluiram = fluxo.every((id: number) => concluidosAtualizado.has(id));
       if (todosConcluiram) {
-        adicionarNotificacao('Todos os departamentos concluíram! Processo finalizado.', 'sucesso');
-        // Usar onFinalizarProcesso (que trata interligação) se disponível
+        adicionarNotificacao('Todos os departamentos concluÃ­ram! Processo finalizado.', 'sucesso');
+        // Usar onFinalizarProcesso (que trata interligaÃ§Ã£o) se disponÃ­vel
         if (onFinalizarProcesso) {
           await onFinalizarProcesso(processoId);
         } else {
@@ -280,7 +313,7 @@ export default function DepartamentosGrid({
         }
       }
     } catch (err: any) {
-      void mostrarAlerta?.('Erro', err.message || 'Erro ao avançar', 'erro');
+      void mostrarAlerta?.('Erro', err.message || 'Erro ao avanÃ§ar', 'erro');
     }
   };
 
@@ -296,7 +329,7 @@ export default function DepartamentosGrid({
     if (movendo) return;
     setMovendo(true);
     try {
-      // Montar lista ordenada atual (mesma lógica do sort do render)
+      // Montar lista ordenada atual (mesma lÃ³gica do sort do render)
       const ordenados = [...departamentos].sort((a, b) => {
         const oA = typeof (a as any).ordem === 'number' ? (a as any).ordem : 9999;
         const oB = typeof (b as any).ordem === 'number' ? (b as any).ordem : 9999;
@@ -316,16 +349,16 @@ export default function DepartamentosGrid({
         ordensNormalizadas[d.id] = i;
       });
 
-      // Trocar as posições
-      const novaOrdemMovido = ordensNormalizadas[ordenados[swapIdx].id]; // pega posição do outro
-      const novaOrdemOutro = ordensNormalizadas[ordenados[idx].id];     // pega posição do movido
+      // Trocar as posiÃ§Ãµes
+      const novaOrdemMovido = ordensNormalizadas[ordenados[swapIdx].id]; // pega posiÃ§Ã£o do outro
+      const novaOrdemOutro = ordensNormalizadas[ordenados[idx].id];     // pega posiÃ§Ã£o do movido
 
       // Atualizar localmente para feedback imediato
       setDepartamentos((prev) =>
         prev.map((d) => {
           if (d.id === ordenados[idx].id) return { ...d, ordem: novaOrdemMovido } as any;
           if (d.id === ordenados[swapIdx].id) return { ...d, ordem: novaOrdemOutro } as any;
-          // Normalizar todos os outros também para evitar conflitos futuros
+          // Normalizar todos os outros tambÃ©m para evitar conflitos futuros
           if (ordensNormalizadas[d.id] !== undefined) return { ...d, ordem: ordensNormalizadas[d.id] } as any;
           return d;
         })
@@ -357,7 +390,7 @@ export default function DepartamentosGrid({
           Nenhum departamento criado
         </h3>
         <p className="text-gray-600 mb-6">
-          Crie seu primeiro departamento para começar a gerenciar processos
+          Crie seu primeiro departamento para comeÃ§ar a gerenciar processos
         </p>
         <button
           onClick={onCriarDepartamento}
@@ -389,7 +422,7 @@ export default function DepartamentosGrid({
     if (typeof ordemA === 'number' && typeof ordemB === 'number') {
       const diff = ordemA - ordemB;
       if (diff !== 0) return diff;
-      // Tie-break determinístico: evita “trocar de lugar” quando a ordem empata
+      // Tie-break determinÃ­stico: evita â€œtrocar de lugarâ€ quando a ordem empata
       return a.id - b.id;
     }
     if (typeof ordemA === 'number') return -1;
@@ -399,7 +432,7 @@ export default function DepartamentosGrid({
 
   return (
     <>
-      {/* Botão de reordenar departamentos (apenas admin) */}
+      {/* BotÃ£o de reordenar departamentos (apenas admin) */}
       {isAdmin && departamentosOrdenados.length > 1 && (
         <div className="w-full flex justify-end mb-2 col-span-full">
           <button
@@ -412,7 +445,7 @@ export default function DepartamentosGrid({
             }`}
           >
             <ArrowLeftRight size={16} />
-            {modoReordenar ? 'Concluir Reordenação' : 'Reordenar Departamentos'}
+            {modoReordenar ? 'Concluir ReordenaÃ§Ã£o' : 'Reordenar Departamentos'}
           </button>
         </div>
       )}
@@ -421,8 +454,8 @@ export default function DepartamentosGrid({
         const processosNoDept = processos.filter((p) => {
           if (p.status !== 'em_andamento') return false;
 
-          // Fluxo paralelo (deptIndependente): usa APENAS a lógica de checklist
-          // Processo aparece em TODOS os depts do fluxo, EXCETO nos que já concluíram
+          // Fluxo paralelo (deptIndependente): usa APENAS a lÃ³gica de checklist
+          // Processo aparece em TODOS os depts do fluxo, EXCETO nos que jÃ¡ concluÃ­ram
           if (
             p.deptIndependente &&
             Array.isArray(p.fluxoDepartamentos) &&
@@ -431,11 +464,11 @@ export default function DepartamentosGrid({
             const estaNeste = p.fluxoDepartamentos.some((id: any) => Number(id) === Number(dept.id));
             if (!estaNeste) return false;
             const concluidos = checklistCache.get(p.id);
-            if (concluidos && concluidos.has(Number(dept.id))) return false; // já deu check → some
+            if (concluidos && concluidos.has(Number(dept.id))) return false; // jÃ¡ deu check â†’ some
             return true;
           }
 
-          // Fluxo normal: processo está no departamento atual
+          // Fluxo normal: processo estÃ¡ no departamento atual
           if (p.departamentoAtual === dept.id) return true;
 
           return false;
@@ -446,10 +479,15 @@ export default function DepartamentosGrid({
         const corTexto = 'text-white';
         const isFirst = posicao === 0;
         const isLast = posicao === departamentosOrdenados.length - 1;
+        const podeAdicionarDocumentoMenu = podeAdicionarDocumentoNoDept(Number(dept.id));
+        const mostrarMenuDepartamento =
+          Boolean(podeAdicionarDocumentoMenu) ||
+          Boolean(podeEditarDepartamento) ||
+          Boolean(podeExcluirDepartamento);
 
         return (
           <div key={dept.id} className="relative w-full min-w-0">
-            {/* Setas de reordenação */}
+            {/* Setas de reordenaÃ§Ã£o */}
             {modoReordenar && isAdmin && (
               <div className="flex items-center justify-center gap-2 mb-2">
                 <button
@@ -466,7 +504,7 @@ export default function DepartamentosGrid({
                   <ChevronLeft size={18} />
                 </button>
                 <span className="text-xs font-semibold text-gray-400 select-none">
-                  {posicao + 1}º
+                  {posicao + 1}Âº
                 </span>
                 <button
                   type="button"
@@ -502,7 +540,7 @@ export default function DepartamentosGrid({
                             // Se for string, busca no mapeamento
                             IconeComponent = iconMap[dept.icone] || Building;
                           } else if (typeof dept.icone === 'function') {
-                            // Se for função/componente, usa diretamente
+                            // Se for funÃ§Ã£o/componente, usa diretamente
                             IconeComponent = dept.icone;
                           }
                           
@@ -520,13 +558,13 @@ export default function DepartamentosGrid({
                     <div className="flex items-center gap-2 text-sm opacity-95">
                       <User size={14} />
                       <span className="break-words line-clamp-1" title={dept.responsavel}>
-                        {dept.responsavel || 'Sem responsável'}
+                        {dept.responsavel || 'Sem responsÃ¡vel'}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-2 flex-shrink-0">
-                    {isAdmin && (
+                    {mostrarMenuDepartamento && (
                       <div className="relative">
                         <button
                           type="button"
@@ -539,28 +577,48 @@ export default function DepartamentosGrid({
 
                         {menuDeptAberto === dept.id && (
                           <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMenuDeptAberto(null);
-                                onEditarDepartamento(dept);
-                              }}
-                              className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                            >
-                              <Edit size={16} className="text-gray-500" />
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setMenuDeptAberto(null);
-                                onExcluirDepartamento(dept);
-                              }}
-                              className="w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                            >
-                              <Trash2 size={16} className="text-red-500" />
-                              Excluir
-                            </button>
+                            {podeAdicionarDocumentoMenu && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMenuDeptAberto(null);
+                                  void handleAdicionarDocumentoDepartamento(dept, processosNoDept);
+                                }}
+                                disabled={processosNoDept.length === 0}
+                                className={`w-full px-3 py-2 text-sm text-cyan-700 hover:bg-cyan-50 flex items-center gap-2 ${
+                                  processosNoDept.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                              >
+                                <Upload size={16} className="text-cyan-600" />
+                                Adicionar documento
+                              </button>
+                            )}
+                            {podeEditarDepartamento && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMenuDeptAberto(null);
+                                  onEditarDepartamento(dept);
+                                }}
+                                className="w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                              >
+                                <Edit size={16} className="text-gray-500" />
+                                Editar
+                              </button>
+                            )}
+                            {podeExcluirDepartamento && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setMenuDeptAberto(null);
+                                  onExcluirDepartamento(dept);
+                                }}
+                                className="w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                              >
+                                <Trash2 size={16} className="text-red-500" />
+                                Excluir
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -665,7 +723,7 @@ export default function DepartamentosGrid({
                             } else {
                               const ok = await mostrarConfirmacao({
                                 titulo: 'Excluir Processo',
-                                mensagem: 'Tem certeza que deseja excluir este processo?\n\nEssa ação não poderá ser desfeita.',
+                                mensagem: 'Tem certeza que deseja excluir este processo?\n\nEssa aÃ§Ã£o nÃ£o poderÃ¡ ser desfeita.',
                                 tipo: 'perigo',
                                 textoConfirmar: 'Sim, Excluir',
                                 textoCancelar: 'Cancelar',
@@ -704,5 +762,6 @@ export default function DepartamentosGrid({
     </>
   );
 }
+
 
 

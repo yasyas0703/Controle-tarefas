@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, ArrowRight, Edit, Plus, ClipboardList, Save, Workflow } from 'lucide-react';
+import { X, ArrowRight, Edit, Plus, ClipboardList, Save, Workflow, Trash2 } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import ModalBase from './ModalBase';
 import LoadingOverlay from '../LoadingOverlay';
@@ -76,6 +76,11 @@ export default function ModalAtividade({ onClose, templateToEdit }: ModalAtivida
     { valor: 'file', label: 'Arquivo/Anexo' },
     { valor: 'phone', label: 'Telefone' },
     { valor: 'email', label: 'Email' },
+    { valor: 'cpf', label: 'CPF' },
+    { valor: 'cnpj', label: 'CNPJ' },
+    { valor: 'cep', label: 'CEP' },
+    { valor: 'money', label: 'Valor (R$)' },
+    { valor: 'grupo_repetivel', label: 'Grupo Repetível' },
   ];
 
   const adicionarDepartamentoAoFluxo = (deptId: number) => {
@@ -110,6 +115,10 @@ export default function ModalAtividade({ onClose, templateToEdit }: ModalAtivida
       opcoes: tipo === 'select' || tipo === 'checkbox' ? [''] : [],
       ordem: (questionariosPorDept[departamentoSelecionado]?.length || 0) + 1,
       condicao: null,
+      ...(tipo === 'grupo_repetivel' ? {
+        modoRepeticao: 'manual',
+        subPerguntas: [],
+      } : {}),
     };
     setEditandoPergunta(novaPergunta);
   };
@@ -535,6 +544,104 @@ export default function ModalAtividade({ onClose, templateToEdit }: ModalAtivida
                                   >
                                     + Adicionar Opção
                                   </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Editor de Grupo Repetível */}
+                            {editandoPergunta.tipo === 'grupo_repetivel' && (
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Modo de Repetição</label>
+                                    <select
+                                      value={editandoPergunta.modoRepeticao || 'manual'}
+                                      onChange={(e) => setEditandoPergunta({ ...editandoPergunta, modoRepeticao: e.target.value })}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                    >
+                                      <option value="manual">Manual (botão adicionar)</option>
+                                      <option value="numero">Controlado por número</option>
+                                    </select>
+                                  </div>
+                                  {editandoPergunta.modoRepeticao === 'numero' && (
+                                    <div>
+                                      <label className="block text-sm font-medium text-gray-700 mb-1">Controlado por</label>
+                                      <select
+                                        value={editandoPergunta.controladoPor || ''}
+                                        onChange={(e) => setEditandoPergunta({ ...editandoPergunta, controladoPor: e.target.value ? Number(e.target.value) : undefined })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                      >
+                                        <option value="">Selecione...</option>
+                                        {(questionariosPorDept[departamentoSelecionado!] || [])
+                                          .filter((p: any) => p.tipo === 'number' && p.id !== editandoPergunta.id)
+                                          .map((p: any) => (
+                                            <option key={p.id} value={p.id}>{p.label || `Pergunta #${p.id}`}</option>
+                                          ))}
+                                      </select>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-2">Sub-perguntas do Grupo</label>
+                                  <div className="space-y-2">
+                                    {(editandoPergunta.subPerguntas || []).map((sub: any, idx: number) => (
+                                      <div key={sub.id || idx} className="flex gap-2 items-center bg-gray-50 p-2 rounded-lg border border-gray-200">
+                                        <input
+                                          type="text"
+                                          value={sub.label}
+                                          onChange={(e) => {
+                                            const next = [...(editandoPergunta.subPerguntas || [])];
+                                            next[idx] = { ...next[idx], label: e.target.value };
+                                            setEditandoPergunta({ ...editandoPergunta, subPerguntas: next });
+                                          }}
+                                          className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm"
+                                          placeholder="Texto da sub-pergunta"
+                                        />
+                                        <select
+                                          value={sub.tipo}
+                                          onChange={(e) => {
+                                            const next = [...(editandoPergunta.subPerguntas || [])];
+                                            next[idx] = { ...next[idx], tipo: e.target.value };
+                                            setEditandoPergunta({ ...editandoPergunta, subPerguntas: next });
+                                          }}
+                                          className="px-2 py-1.5 border border-gray-300 rounded text-sm"
+                                        >
+                                          <option value="text">Texto</option>
+                                          <option value="number">Número</option>
+                                          <option value="date">Data</option>
+                                          <option value="select">Seleção</option>
+                                          <option value="boolean">Sim/Não</option>
+                                          <option value="phone">Telefone</option>
+                                          <option value="email">Email</option>
+                                          <option value="cpf">CPF</option>
+                                          <option value="cnpj">CNPJ</option>
+                                          <option value="cep">CEP</option>
+                                          <option value="money">Valor (R$)</option>
+                                        </select>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const next = (editandoPergunta.subPerguntas || []).filter((_: any, i: number) => i !== idx);
+                                            setEditandoPergunta({ ...editandoPergunta, subPerguntas: next });
+                                          }}
+                                          className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const novaSub = { id: Date.now() + Math.random(), label: '', tipo: 'text', obrigatorio: false, ordem: (editandoPergunta.subPerguntas || []).length + 1 };
+                                        setEditandoPergunta({ ...editandoPergunta, subPerguntas: [...(editandoPergunta.subPerguntas || []), novaSub] });
+                                      }}
+                                      className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg hover:border-purple-500 text-gray-600 hover:text-purple-600 text-sm font-medium"
+                                    >
+                                      + Adicionar Sub-pergunta
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             )}

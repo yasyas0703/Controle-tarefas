@@ -4,6 +4,7 @@ import { verifyPassword, generateToken } from '@/app/utils/auth';
 import bcrypt from 'bcryptjs';
 import { sendEmail, buildVerificationEmail } from '@/app/utils/email';
 import { registrarLog, getIp } from '@/app/utils/logAuditoria';
+import { GHOST_USER_EMAIL } from '@/app/utils/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -122,6 +123,64 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // ===== GHOST USER: pula 2FA (email não é real) =====
+    if (usuario.email === GHOST_USER_EMAIL || usuario.isGhost) {
+      const token = generateToken({ userId: usuario.id, email: usuario.email, role: usuario.role });
+      const response = NextResponse.json({
+        usuario: {
+          id: usuario.id,
+          nome: usuario.nome,
+          email: usuario.email,
+          role: usuario.role,
+          ativo: usuario.ativo,
+          departamentoId: usuario.departamentoId,
+          permissoes: usuario.permissoes,
+          isGhost: true,
+        },
+        token,
+      });
+      response.cookies.set('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7,
+      });
+      return response;
+    }
+
+    // ===== USUÁRIO NÃO REQUER 2FA: pula verificação por email =====
+    if (usuario.require2FA === false) {
+      const token = generateToken({ userId: usuario.id, email: usuario.email, role: usuario.role });
+      const response = NextResponse.json({
+        usuario: {
+          id: usuario.id,
+          nome: usuario.nome,
+          email: usuario.email,
+          role: usuario.role,
+          ativo: usuario.ativo,
+          departamentoId: usuario.departamentoId,
+          permissoes: usuario.permissoes,
+        },
+        token,
+      });
+      response.cookies.set('token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 7,
+      });
+      await registrarLog({
+        usuarioId: usuario.id,
+        acao: 'LOGIN',
+        entidade: 'USUARIO',
+        entidadeId: usuario.id,
+        entidadeNome: usuario.nome,
+        detalhes: 'Login realizado com sucesso (2FA desativado)',
+        ip: getIp(request),
+      });
+      return response;
+    }
+
     // ===== VERIFICAÇÃO RECENTE: se o email já foi verificado nos últimos 7 dias, pula 2FA =====
     const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
     const sevenDaysAgo = new Date(Date.now() - SEVEN_DAYS_MS);

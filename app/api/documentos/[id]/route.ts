@@ -11,6 +11,18 @@ export const preferredRegion = 'gru1';
 // Dias para expiração na lixeira
 const DIAS_EXPIRACAO_LIXEIRA = 15;
 
+function jsonBigInt(data: unknown, init?: { status?: number }) {
+  return new NextResponse(
+    JSON.stringify(data, (_key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    ),
+    {
+      status: init?.status ?? 200,
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+    }
+  );
+}
+
 // DELETE /api/documentos/:id - Move para lixeira ao invés de excluir permanentemente
 export async function DELETE(
   request: NextRequest,
@@ -52,8 +64,9 @@ export async function DELETE(
         allowedRoles: (documento as any).allowedRoles,
         allowedUserIds: (documento as any).allowedUserIds,
         uploadPorId: documento.uploadPorId,
+        allowedDepartamentos: (documento as any).allowedDepartamentos || null,
       },
-      { id: userId, role: userRole }
+      { id: userId, role: userRole, departamentoId: Number((user as any).departamentoId) || null }
     );
 
     if (!podeVer) {
@@ -140,6 +153,73 @@ export async function DELETE(
   }
 }
 
+// PATCH /api/documentos/:id -> atualizar permissões de visibilidade
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    const docId = Number(params.id);
+    if (!Number.isFinite(docId)) return NextResponse.json({ error: 'id inválido' }, { status: 400 });
+
+    const documento = await prisma.documento.findUnique({ where: { id: docId } });
+    if (!documento) return NextResponse.json({ error: 'Documento não encontrado' }, { status: 404 });
+
+    // Apenas quem fez upload ou admin pode editar permissões
+    const userId = Number((user as any).id);
+    const userRole = String((user as any).role || '').toUpperCase();
+    if (documento.uploadPorId !== userId && userRole !== 'ADMIN' && userRole !== 'ADMIN_DEPARTAMENTO') {
+      return NextResponse.json({ error: 'Sem permissão para editar permissões deste documento' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { visibility, allowedRoles, allowedUserIds, allowedDepartamentos } = body;
+
+    const updateData: any = {};
+    if (visibility) {
+      updateData.visibility = String(visibility).toUpperCase();
+      // Ao mudar visibilidade, limpar arrays que não se aplicam ao novo tipo
+      const vis = updateData.visibility;
+      if (vis === 'PUBLIC' || vis === 'NONE') {
+        updateData.allowedRoles = [];
+        updateData.allowedUserIds = [];
+        updateData.allowedDepartamentos = [];
+      } else if (vis === 'ROLES') {
+        updateData.allowedRoles = Array.isArray(allowedRoles) ? allowedRoles.map((r: any) => String(r)) : [];
+        updateData.allowedUserIds = [];
+        updateData.allowedDepartamentos = [];
+      } else if (vis === 'USERS') {
+        updateData.allowedRoles = [];
+        updateData.allowedUserIds = Array.isArray(allowedUserIds) ? allowedUserIds.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : [];
+        updateData.allowedDepartamentos = [];
+      } else if (vis === 'DEPARTAMENTOS') {
+        updateData.allowedRoles = [];
+        updateData.allowedUserIds = [];
+        updateData.allowedDepartamentos = Array.isArray(allowedDepartamentos) ? allowedDepartamentos.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n)) : [];
+      }
+    } else {
+      // Sem mudança de visibilidade, atualizar apenas os arrays enviados
+      if (Array.isArray(allowedRoles)) updateData.allowedRoles = allowedRoles.map((r: any) => String(r));
+      if (Array.isArray(allowedUserIds)) updateData.allowedUserIds = allowedUserIds.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n));
+      if (Array.isArray(allowedDepartamentos)) updateData.allowedDepartamentos = allowedDepartamentos.map((n: any) => Number(n)).filter((n: number) => Number.isFinite(n));
+    }
+
+    const atualizado = await prisma.documento.update({
+      where: { id: docId },
+      data: updateData,
+    });
+
+    return jsonBigInt(atualizado);
+  } catch (error: any) {
+    console.error('Erro no PATCH /api/documentos/:id', error);
+    const msg = error instanceof Error ? error.message : 'Erro ao atualizar documento';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 // GET /api/documentos/:id -> retorna URL temporária (signed) se permitido
 export async function GET(
   request: NextRequest,
@@ -165,8 +245,9 @@ export async function GET(
         allowedRoles: (documento as any).allowedRoles,
         allowedUserIds: (documento as any).allowedUserIds,
         uploadPorId: documento.uploadPorId,
+        allowedDepartamentos: (documento as any).allowedDepartamentos || null,
       },
-      { id: userId, role: userRole }
+      { id: userId, role: userRole, departamentoId: Number((user as any).departamentoId) || null }
     );
 
     if (!podeVer) return NextResponse.json({ error: 'Sem permissão para visualizar este documento' }, { status: 403 });

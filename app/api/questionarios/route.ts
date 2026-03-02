@@ -6,9 +6,23 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const preferredRegion = 'gru1';
 
+let tipoCampoEnumEnsured = false;
+
+const ensureTipoCampoEnum = async () => {
+  if (tipoCampoEnumEnsured) return;
+  try {
+    const valores = ['CHECKBOX', 'CPF', 'CNPJ', 'CEP', 'MONEY', 'GRUPO_REPETIVEL'];
+    for (const valor of valores) {
+      await prisma.$executeRawUnsafe(`ALTER TYPE "TipoCampo" ADD VALUE IF NOT EXISTS '${valor}'`);
+    }
+    tipoCampoEnumEnsured = true;
+  } catch (error) {
+    console.warn('Aviso: nao foi possivel garantir valores do enum TipoCampo:', error);
+  }
+};
+
 const toTipoCampo = (tipo: any) => {
   const t = String(tipo || '').trim().toUpperCase();
-  // aceita enum do Prisma (TEXT, TEXTAREA...) ou tipos do UI (text, textarea...)
   switch (t) {
     case 'TEXT':
     case 'TEXTAREA':
@@ -20,9 +34,12 @@ const toTipoCampo = (tipo: any) => {
     case 'FILE':
     case 'PHONE':
     case 'EMAIL':
+    case 'CPF':
+    case 'CNPJ':
+    case 'CEP':
+    case 'MONEY':
+    case 'GRUPO_REPETIVEL':
       return t;
-    case 'TEXTAREA':
-      return 'TEXTAREA';
     default: {
       const low = String(tipo || '').trim().toLowerCase();
       switch (low) {
@@ -47,6 +64,17 @@ const toTipoCampo = (tipo: any) => {
           return 'PHONE';
         case 'email':
           return 'EMAIL';
+        case 'cpf':
+          return 'CPF';
+        case 'cpj':
+        case 'cnpj':
+          return 'CNPJ';
+        case 'cep':
+          return 'CEP';
+        case 'money':
+          return 'MONEY';
+        case 'grupo_repetivel':
+          return 'GRUPO_REPETIVEL';
         default:
           return 'TEXT';
       }
@@ -99,13 +127,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
+    await ensureTipoCampoEnum();
     
     const questionario = await prisma.questionarioDepartamento.create({
       data: {
         departamentoId: data.departamentoId,
         processoId: data.processoId || null,
         label: data.label,
-        tipo: data.tipo,
+        tipo: toTipoCampo(data.tipo) as any,
         obrigatorio: data.obrigatorio || false,
         ordem: data.ordem || 0,
         opcoes: data.opcoes || [],
@@ -132,6 +161,7 @@ export async function PUT(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureTipoCampoEnum();
 
     // Permite admin/gerente editar questionários
     if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
@@ -173,6 +203,11 @@ export async function PUT(request: NextRequest) {
         const tipo = toTipoCampo(p.tipo);
         const obrigatorio = Boolean(p.obrigatorio);
 
+        // Campos do grupo_repetivel
+        const isGrupoRepetivel = tipo === 'GRUPO_REPETIVEL';
+        const modoRepeticao = isGrupoRepetivel ? (p.modoRepeticao || 'manual') : null;
+        const subPerguntas = isGrupoRepetivel && Array.isArray(p.subPerguntas) ? p.subPerguntas : undefined;
+
         if (Number.isFinite(originalId) && existentesIds.has(originalId)) {
           await tx.questionarioDepartamento.update({
             where: { id: originalId },
@@ -185,6 +220,9 @@ export async function PUT(request: NextRequest) {
               condicaoPerguntaId: null,
               condicaoOperador: null,
               condicaoValor: null,
+              modoRepeticao,
+              subPerguntas: subPerguntas !== undefined ? JSON.parse(JSON.stringify(subPerguntas)) : undefined,
+              controladoPor: null, // será resolvido depois do mapeamento de IDs
             },
           });
           idMap.set(originalId, originalId);
@@ -203,6 +241,9 @@ export async function PUT(request: NextRequest) {
               condicaoPerguntaId: null,
               condicaoOperador: null,
               condicaoValor: null,
+              modoRepeticao,
+              subPerguntas: subPerguntas !== undefined ? JSON.parse(JSON.stringify(subPerguntas)) : undefined,
+              controladoPor: null,
             },
           });
           if (Number.isFinite(originalId)) idMap.set(originalId, created.id);
@@ -223,6 +264,23 @@ export async function PUT(request: NextRequest) {
             condicaoValor: item.condicao?.valor ? String(item.condicao.valor) : null,
           },
         });
+      }
+
+      // 2b) aplicar controladoPor para grupo_repetivel (convertendo ids temporários -> ids reais)
+      for (let i = 0; i < list.length; i++) {
+        const p: any = list[i] || {};
+        if (p.tipo?.toLowerCase() !== 'grupo_repetivel' && p.tipo?.toUpperCase() !== 'GRUPO_REPETIVEL') continue;
+        if (!p.controladoPor) continue;
+        const originalId = Number(p.id);
+        const realId = idMap.get(originalId) ?? originalId;
+        const controladoPorOrig = Number(p.controladoPor);
+        const mappedControladoPor = idMap.get(controladoPorOrig) ?? controladoPorOrig;
+        if (keptIds.includes(realId)) {
+          await tx.questionarioDepartamento.update({
+            where: { id: realId },
+            data: { controladoPor: mappedControladoPor },
+          });
+        }
       }
 
       // 3) remover perguntas que não estão mais na lista

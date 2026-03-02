@@ -17,6 +17,7 @@ import {
   Save,
   User as UserIcon,
   Building2,
+  RotateCcw,
 } from 'lucide-react';
 import { Processo } from '@/app/types';
 import { useSistema } from '@/app/context/SistemaContext';
@@ -133,6 +134,7 @@ export default function ProcessoCard({
   const [editResponsavelId, setEditResponsavelId] = useState<number | undefined>((processo as any).responsavelId);
   const [editCliente, setEditCliente] = useState(processo.cliente || '');
   const [salvandoEdit, setSalvandoEdit] = useState(false);
+  const [voltandoDept, setVoltandoDept] = useState(false);
 
   // Sincronizar estado de edição quando o processo muda
   useEffect(() => {
@@ -157,6 +159,39 @@ export default function ProcessoCard({
       mostrarAlerta('Erro', err?.message || 'Falha ao salvar', 'erro');
     } finally {
       setSalvandoEdit(false);
+    }
+  };
+
+  // Permissao para voltar ao departamento (apenas admin/gerente)
+  const podeVoltarAoDepartamento =
+    processo.status === 'finalizado' &&
+    (usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente');
+
+  const handleVoltarAoDepartamento = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (voltandoDept) return;
+    setVoltandoDept(true);
+    try {
+      // Recuperar o ultimo departamento do fluxo
+      const fluxoDepts = Array.isArray(processo.fluxoDepartamentos)
+        ? processo.fluxoDepartamentos.map(Number).filter(Number.isFinite)
+        : [];
+      const ultimoDeptId = fluxoDepts.length > 0
+        ? fluxoDepts[fluxoDepts.length - 1]
+        : processo.departamentoAtual;
+      const ultimoIndex = fluxoDepts.length > 0 ? fluxoDepts.length - 1 : 0;
+
+      await atualizarProcesso(processo.id, {
+        status: 'em_andamento' as any,
+        dataFinalizacao: null as any,
+        departamentoAtual: ultimoDeptId,
+        departamentoAtualIndex: ultimoIndex,
+      });
+      mostrarAlerta('Sucesso', 'Processo retornado ao departamento. Agora voce pode finalizar novamente para interligar.', 'info');
+    } catch (err: any) {
+      mostrarAlerta('Erro', err?.message || 'Falha ao retornar processo', 'erro');
+    } finally {
+      setVoltandoDept(false);
     }
   };
 
@@ -273,10 +308,32 @@ export default function ProcessoCard({
             )}
           </div>
 
-          {/* Responsável */}
+          {/* Responsável — para processos paralelos, mostra o responsável do departamento */}
           {(() => {
-            const resp = (processo as any).responsavel;
-            const respNome = typeof resp === 'object' && resp?.nome ? resp.nome : typeof resp === 'string' ? resp : null;
+            let respNome: string | null = null;
+
+            if (processo.deptIndependente && departamento) {
+              // Para processos paralelos: usar o responsável do departamento, não do processo
+              // 1. Tenta o campo "responsavel" do departamento (string no modelo Departamento)
+              if (typeof departamento.responsavel === 'string' && departamento.responsavel) {
+                respNome = departamento.responsavel;
+              } else {
+                // 2. Fallback: busca gerente do departamento na lista de usuários
+                const gerenteDept = (usuarios || []).find(
+                  (u: any) => u.departamentoId === departamento.id && String(u.role).toLowerCase() === 'gerente' && u.ativo !== false
+                );
+                if (gerenteDept) {
+                  respNome = gerenteDept.nome;
+                }
+              }
+            }
+
+            // Se não é paralelo ou não encontrou responsável do dept, usa o responsável do processo
+            if (!respNome) {
+              const resp = (processo as any).responsavel;
+              respNome = typeof resp === 'object' && resp?.nome ? resp.nome : typeof resp === 'string' ? resp : null;
+            }
+
             return (
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1 truncate" title={respNome || 'Sem responsável'}>
                 <UserIcon size={10} className="flex-shrink-0" />
@@ -543,10 +600,27 @@ export default function ProcessoCard({
         )}
 
         {processo.status === 'finalizado' && (
-          <div className="col-span-2 bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-xs text-center flex items-center justify-center gap-2">
-            <CheckCircle size={14} />
-            <span className="font-medium">Processo Finalizado</span>
-          </div>
+          <>
+            <div className="col-span-2 bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-xs text-center flex items-center justify-center gap-2">
+              <CheckCircle size={14} />
+              <span className="font-medium">Processo Finalizado</span>
+            </div>
+            {podeVoltarAoDepartamento && (
+              <button
+                onClick={handleVoltarAoDepartamento}
+                disabled={voltandoDept}
+                className="col-span-2 w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                title="Retornar ao departamento para poder interligar"
+              >
+                {voltandoDept ? (
+                  <Loader2 size={10} className="animate-spin" />
+                ) : (
+                  <RotateCcw size={10} />
+                )}
+                {voltandoDept ? 'Retornando...' : 'Voltar ao Departamento'}
+              </button>
+            )}
+          </>
         )}
 
         <div className="mt-3"></div>

@@ -22,3 +22,21 @@ export function maskCEP(value: string) {
   const v = value.replace(/\D/g, '').slice(0, 8);
   return v.replace(/(\d{5})(\d{0,3})/, '$1-$2').trim();
 }
+
+export function maskMoney(value: string) {
+  // Remove tudo que não é dígito
+  let v = value.replace(/\D/g, '');
+  if (!v) return '';
+  // Converte para centavos
+  const cents = parseInt(v, 10);
+  const formatted = (cents / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return 'R$ ' + formatted;
+}
+
+export function unmaskMoney(value: string): number {
+  const v = value.replace(/[^\d,]/g, '').replace(',', '.');
+  return parseFloat(v) || 0;
+}

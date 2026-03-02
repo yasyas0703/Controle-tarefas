@@ -1,10 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const preferredRegion = 'gru1';
+
+let tipoCampoEnumEnsured = false;
+
+async function ensureTipoCampoEnum() {
+  if (tipoCampoEnumEnsured) return;
+  try {
+    const valores = ['CHECKBOX', 'CPF', 'CNPJ', 'CEP', 'MONEY', 'GRUPO_REPETIVEL'];
+    for (const valor of valores) {
+      await prisma.$executeRawUnsafe(`ALTER TYPE "TipoCampo" ADD VALUE IF NOT EXISTS '${valor}'`);
+    }
+    tipoCampoEnumEnsured = true;
+  } catch (error) {
+    console.warn('Aviso: nao foi possivel garantir valores do enum TipoCampo:', error);
+  }
+}
 
 function parseDateMaybe(value: any): Date | undefined {
   if (!value) return undefined;
@@ -105,33 +121,62 @@ export async function GET(request: NextRequest) {
       orderBy: { dataCriacao: 'desc' },
     });
 
-    // Filtrar documentos por visibilidade para o usuário autenticado
+    // Filtrar documentos por visibilidade usando utilitário centralizado
     const userId = Number((user as any).id);
     const userRole = String((user as any).role || '').toUpperCase();
-    const documentoPodeSerVisto = (doc: any) => {
-      try {
-        const vis = String(doc.visibility || 'PUBLIC').toUpperCase();
-        const allowedRoles: string[] = Array.isArray(doc.allowedRoles) ? doc.allowedRoles.map(r => String(r).toUpperCase()) : [];
-        const allowedUserIds: number[] = Array.isArray(doc.allowedUserIds) ? doc.allowedUserIds.map((n: any) => Number(n)) : [];
-
-        if (vis === 'PUBLIC') return true;
-        if (vis === 'ROLES') {
-          if (allowedRoles.length === 0) return false;
-          return allowedRoles.includes(userRole);
-        }
-        if (vis === 'USERS') {
-          if (allowedUserIds.length === 0) return false;
-          return allowedUserIds.includes(userId);
-        }
-        return Array.isArray(allowedUserIds) && allowedUserIds.includes(userId);
-      } catch (e) {
-        return false;
-      }
-    };
+    const userDeptId = Number((user as any).departamentoId) || null;
+    const usuarioPermissao = { id: userId, role: userRole, departamentoId: userDeptId };
 
     for (const p of processos) {
       if (Array.isArray((p as any).documentos)) {
-        (p as any).documentos = (p as any).documentos.filter((d: any) => documentoPodeSerVisto(d));
+        (p as any).documentos = (p as any).documentos.filter((d: any) =>
+          verificarPermissaoDocumento(
+            {
+              visibility: d.visibility,
+              allowedRoles: d.allowedRoles,
+              allowedUserIds: d.allowedUserIds,
+              uploadPorId: d.uploadPorId,
+              allowedDepartamentos: d.allowedDepartamentos || null,
+            },
+            usuarioPermissao
+          )
+        );
+      }
+
+    }
+
+    // No modo lite, _count.documentos vem do Prisma sem filtro de visibilidade.
+    // Sobrescrever com a contagem real de documentos visíveis para o usuário.
+    if (lite) {
+      try {
+        const processoIds = processos.map((p: any) => p.id);
+        const allDocs = await prisma.documento.findMany({
+          where: { processoId: { in: processoIds } },
+          select: { id: true, processoId: true, visibility: true, allowedRoles: true, allowedUserIds: true, allowedDepartamentos: true, uploadPorId: true },
+        });
+        // Contar documentos visíveis por processo
+        const countPorProcesso: Record<number, number> = {};
+        for (const d of allDocs) {
+          if (verificarPermissaoDocumento(
+            {
+              visibility: (d as any).visibility,
+              allowedRoles: (d as any).allowedRoles,
+              allowedUserIds: (d as any).allowedUserIds,
+              uploadPorId: d.uploadPorId,
+              allowedDepartamentos: (d as any).allowedDepartamentos || null,
+            },
+            usuarioPermissao
+          )) {
+            countPorProcesso[d.processoId] = (countPorProcesso[d.processoId] || 0) + 1;
+          }
+        }
+        for (const p of processos) {
+          if ((p as any)._count) {
+            (p as any)._count.documentos = countPorProcesso[p.id] || 0;
+          }
+        }
+      } catch {
+        // manter contagens originais se falhar
       }
     }
 
@@ -168,6 +213,9 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json();
     console.log('[LOG] request.json:', Date.now() - t0, 'ms');
+
+    // Compatibilidade com bancos antigos que ainda nao possuem todos os valores atuais de TipoCampo.
+    await ensureTipoCampoEnum();
 
     const roleUpper = String((user as any).role || '').toUpperCase();
     const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
@@ -256,9 +304,24 @@ export async function POST(request: NextRequest) {
           return 'PHONE';
         case 'email':
           return 'EMAIL';
-        default:
-          // Prisma enum default
+        case 'cpf':
+          return 'CPF';
+        case 'cpj':
+        case 'cnpj':
+          return 'CNPJ';
+        case 'cep':
+          return 'CEP';
+        case 'money':
+          return 'MONEY';
+        case 'grupo_repetivel':
+          return 'GRUPO_REPETIVEL';
+        default: {
+          // Pode vir ja em uppercase (enum do Prisma)
+          const upper = String(tipo || '').trim().toUpperCase();
+          const validos = ['TEXT','TEXTAREA','NUMBER','DATE','BOOLEAN','SELECT','CHECKBOX','FILE','PHONE','EMAIL','CPF','CNPJ','CEP','MONEY','GRUPO_REPETIVEL'];
+          if (validos.includes(upper)) return upper;
           return 'TEXT';
+        }
       }
     };
     
@@ -285,7 +348,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Auto-assign: busca o gerente do departamento inicial
       try {
-        const gerente = await prisma.usuario.findFirst({
+        let candidato = await prisma.usuario.findFirst({
           where: {
             departamentoId: departamentoInicial,
             role: 'GERENTE',
@@ -293,14 +356,44 @@ export async function POST(request: NextRequest) {
           },
           select: { id: true, nome: true },
         });
-        if (gerente) {
-          responsavelId = gerente.id;
-          responsavelNome = gerente.nome;
-          responsavelAtivoId = gerente.id;
-          console.log('[LOG] Auto-assign gerente do departamento inicial:', gerente.nome);
+
+        // Fallback: usuário definido como "responsavel" no cadastro do departamento
+        if (!candidato) {
+          const dept = await prisma.departamento.findUnique({
+            where: { id: departamentoInicial },
+            select: { responsavel: true },
+          });
+          if (dept?.responsavel) {
+            candidato = await prisma.usuario.findFirst({
+              where: {
+                ativo: true,
+                nome: { equals: dept.responsavel, mode: 'insensitive' },
+              },
+              select: { id: true, nome: true },
+            });
+          }
+        }
+
+        // Fallback final: qualquer usuário ativo no departamento
+        if (!candidato) {
+          candidato = await prisma.usuario.findFirst({
+            where: {
+              ativo: true,
+              departamentoId: departamentoInicial,
+            },
+            orderBy: { role: 'asc' },
+            select: { id: true, nome: true },
+          });
+        }
+
+        if (candidato) {
+          responsavelId = candidato.id;
+          responsavelNome = candidato.nome;
+          responsavelAtivoId = candidato.id;
+          console.log('[LOG] Auto-assign responsável do departamento inicial:', candidato.nome);
         }
       } catch (e) {
-        console.log('[LOG] Erro ao buscar gerente para auto-assign:', e);
+        console.log('[LOG] Erro ao buscar responsável para auto-assign:', e);
       }
     }
 
@@ -366,19 +459,60 @@ export async function POST(request: NextRequest) {
     console.log('[LOG] prisma.processo.create:', Date.now() - t0, 'ms');
 
     // Se deptIndependente, criar entradas de checklist para cada departamento do fluxo
+    // com o responsável (gerente) de cada departamento
     if (data.deptIndependente && Array.isArray(fluxoFinal) && fluxoFinal.length > 1) {
       try {
+        const deptIdsParalelo = fluxoFinal
+          .map((deptId: any) => Number(deptId))
+          .filter((deptId: number) => Number.isFinite(deptId) && deptId > 0);
+
+        // Buscar o gerente de cada departamento do fluxo paralelo
+        const gerentesPorDept = await prisma.usuario.findMany({
+          where: {
+            departamentoId: { in: deptIdsParalelo },
+            role: 'GERENTE',
+            ativo: true,
+          },
+          select: { id: true, nome: true, departamentoId: true },
+        });
+
+        // Mapear departamentoId -> gerente (pega o primeiro gerente ativo de cada dept)
+        const gerenteMap = new Map<number, { id: number; nome: string }>();
+        for (const g of gerentesPorDept) {
+          if (g.departamentoId && !gerenteMap.has(g.departamentoId)) {
+            gerenteMap.set(g.departamentoId, { id: g.id, nome: g.nome });
+          }
+        }
+
+        // Também buscar o campo "responsavel" (string) de cada departamento como fallback
+        const deptsInfo = await prisma.departamento.findMany({
+          where: { id: { in: deptIdsParalelo } },
+          select: { id: true, responsavel: true },
+        });
+        const deptResponsavelMap = new Map<number, string>();
+        for (const d of deptsInfo) {
+          if (d.responsavel) deptResponsavelMap.set(d.id, d.responsavel);
+        }
+
         await (prisma as any).checklistDepartamento.createMany({
-          data: fluxoFinal
-            .map((deptId: any) => Number(deptId))
-            .filter((deptId: number) => Number.isFinite(deptId) && deptId > 0)
-            .map((deptId: number) => ({
+          data: deptIdsParalelo.map((deptId: number) => {
+            const gerente = gerenteMap.get(deptId);
+            // Use the department's gerente if available; otherwise fall back to
+            // the original process responsavelId so each department shows its
+            // own responsible instead of leaving it null (which would cause the
+            // frontend to display the process creator for every department).
+            const deptResponsavelNome = gerente?.nome || deptResponsavelMap.get(deptId) || responsavelNome || null;
+            return {
               processoId: processo.id,
               departamentoId: deptId,
               concluido: false,
-            })),
+              responsavelId: gerente?.id || responsavelId || null,
+              responsavelNome: deptResponsavelNome,
+            };
+          }),
           skipDuplicates: true,
         });
+        console.log('[LOG] Checklist paralelo criado com responsáveis por departamento');
       } catch (e) {
         console.error('Erro ao criar checklist inicial:', e);
       }
@@ -446,6 +580,10 @@ export async function POST(request: NextRequest) {
               createdId: number;
               condicao: { perguntaId: number; operador?: string; valor?: string };
             }> = [];
+            const pendentesControladoPor: Array<{
+              createdId: number;
+              controladoPorOriginal: number;
+            }> = [];
 
             for (let i = 0; i < perguntas.length; i++) {
               const p: any = perguntas[i] || {};
@@ -474,6 +612,11 @@ export async function POST(request: NextRequest) {
                   condicaoPerguntaId: null,
                   condicaoOperador: null,
                   condicaoValor: null,
+                  // grupo_repetivel
+                  modoRepeticao: p.modoRepeticao || null,
+                  subPerguntas: p.subPerguntas ? JSON.parse(JSON.stringify(p.subPerguntas)) : undefined,
+                  // controladoPor será remapeado depois
+                  controladoPor: null,
                 },
               });
 
@@ -491,8 +634,17 @@ export async function POST(request: NextRequest) {
                   },
                 });
               }
+
+              // Guardar controladoPor para remapear depois
+              if (p.controladoPor && Number.isFinite(Number(p.controladoPor))) {
+                pendentesControladoPor.push({
+                  createdId: created.id,
+                  controladoPorOriginal: Number(p.controladoPor),
+                });
+              }
             }
 
+            // Resolver condições com IDs reais
             for (const item of pendentesCondicao) {
               const mapped = idMap.get(Number(item.condicao.perguntaId));
               await tx.questionarioDepartamento.update({
@@ -503,6 +655,17 @@ export async function POST(request: NextRequest) {
                   condicaoValor: item.condicao.valor ?? null,
                 },
               });
+            }
+
+            // Resolver controladoPor com IDs reais
+            for (const item of pendentesControladoPor) {
+              const mapped = idMap.get(item.controladoPorOriginal);
+              if (mapped) {
+                await tx.questionarioDepartamento.update({
+                  where: { id: item.createdId },
+                  data: { controladoPor: mapped },
+                });
+              }
             }
           }
         });

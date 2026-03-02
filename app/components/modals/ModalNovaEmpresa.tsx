@@ -33,7 +33,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
   useEffect(() => {
     let ativo = true;
     if (!usuarioLogado) return;
-    if (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'gerente') return;
+    if (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'admin_departamento' && usuarioLogado.role !== 'gerente') return;
 
     setErroUsuariosResponsaveis(null);
 
@@ -367,7 +367,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
                     setResponsavelId(Number.isFinite(id) ? id : null);
                   }}
                   className="w-full px-4 py-3 border border-gray-300 dark:border-[var(--border)] rounded-xl focus:ring-2 focus:ring-cyan-500 bg-white dark:bg-[var(--card)] text-gray-900 dark:text-[var(--fg)]"
-                  required={usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente'}
+                  required={usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente'}
                   disabled={usuarioLogado?.role === 'usuario'}
                 >
                   <option value="">Selecione um usuário</option>
@@ -387,7 +387,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
                     {erroUsuariosResponsaveis}
                   </p>
                 )}
-                {(usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente') && usuariosResponsaveis.length === 0 && !erroUsuariosResponsaveis && (
+                {(usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente') && usuariosResponsaveis.length === 0 && !erroUsuariosResponsaveis && (
                   <p className="text-xs text-gray-600 mt-2">
                     Nenhum usuário encontrado para seleção.
                   </p>

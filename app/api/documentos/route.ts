@@ -7,6 +7,8 @@ import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocum
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const preferredRegion = 'gru1';
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_DOCUMENTOS_POR_PROCESSO = 50;
 
 function jsonBigInt(data: unknown, init?: { status?: number }) {
   return new NextResponse(
@@ -62,8 +64,9 @@ export async function GET(request: NextRequest) {
           allowedRoles: (d as any).allowedRoles,
           allowedUserIds: (d as any).allowedUserIds,
           uploadPorId: d.uploadPorId,
+          allowedDepartamentos: (d as any).allowedDepartamentos || null,
         },
-        { id: userId, role: userRole }
+        { id: userId, role: userRole, departamentoId: Number((user as any).departamentoId) || null }
       )
     );
     return jsonBigInt(filtrados);
@@ -96,6 +99,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json(
+        { error: `Arquivo excede o limite de ${Math.floor(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB` },
+        { status: 400 }
+      );
+    }
+
+    const documentosExistentes = await prisma.documento.count({
+      where: { processoId },
+    });
+    if (documentosExistentes >= MAX_DOCUMENTOS_POR_PROCESSO) {
+      return NextResponse.json(
+        { error: `Limite de ${MAX_DOCUMENTOS_POR_PROCESSO} documentos por processo atingido` },
+        { status: 400 }
+      );
+    }
     
     // Upload para Supabase Storage
     const { url, path } = await uploadFile(file, `processos/${processoId}`);
@@ -109,10 +129,13 @@ export async function POST(request: NextRequest) {
     const allowedRolesArr = allowedRolesRaw ? allowedRolesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
     const allowedUserIdsArr = allowedUserIdsRaw ? allowedUserIdsRaw.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n)) : [];
 
+    const allowedDepartamentosRaw = (formData.get('allowedDepartamentos') as string) || undefined;
+    const allowedDepartamentosArr = allowedDepartamentosRaw ? allowedDepartamentosRaw.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n)) : [];
+
     // Normaliza visibility para o enum aceito pelo Prisma
     const visibilityRawUpper = visibilityRaw ? String(visibilityRaw).toUpperCase() : undefined;
-    const visibilityNormalized = visibilityRawUpper && ['PUBLIC', 'ROLES', 'USERS'].includes(visibilityRawUpper)
-      ? (visibilityRawUpper as 'PUBLIC' | 'ROLES' | 'USERS')
+    const visibilityNormalized = visibilityRawUpper && ['PUBLIC', 'ROLES', 'USERS', 'DEPARTAMENTOS', 'NONE'].includes(visibilityRawUpper)
+      ? (visibilityRawUpper as 'PUBLIC' | 'ROLES' | 'USERS' | 'DEPARTAMENTOS' | 'NONE')
       : undefined;
 
     // Garantir que o uploader esteja incluido em allowedUserIds quando visibility=USERS
@@ -138,6 +161,7 @@ export async function POST(request: NextRequest) {
         ...(visibilityNormalized && { visibility: visibilityNormalized as any }),
         ...(allowedRolesArr.length > 0 && { allowedRoles: allowedRolesArr }),
         ...(allowedUserIdsArr.length > 0 && { allowedUserIds: allowedUserIdsArr }),
+        ...(allowedDepartamentosArr.length > 0 && { allowedDepartamentos: allowedDepartamentosArr }),
       },
       include: {
         departamento: {

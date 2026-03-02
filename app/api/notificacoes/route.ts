@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     if (!user) return error;
 
     const roleUpper = String((user as any).role || '').toUpperCase();
-    if (roleUpper !== 'ADMIN') {
+    if (roleUpper !== 'ADMIN' && roleUpper !== 'ADMIN_DEPARTAMENTO') {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 

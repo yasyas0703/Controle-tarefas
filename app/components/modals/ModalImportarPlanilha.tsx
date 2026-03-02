@@ -77,40 +77,74 @@ const MAPEAMENTO_CABECALHOS: Record<string, string> = {
   'cadastrada': 'cadastrada', 'ativa': 'cadastrada',
 };
 
+function parseCSVLine(line: string, separator: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  let i = 0;
+  while (i < line.length) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        // Aspas duplas escapadas ("") → literal "
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i += 2;
+          continue;
+        }
+        // Fim do campo entre aspas
+        inQuotes = false;
+        i++;
+        continue;
+      }
+      current += ch;
+      i++;
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+        i++;
+      } else if (ch === separator) {
+        cells.push(current.trim());
+        current = '';
+        i++;
+      } else {
+        current += ch;
+        i++;
+      }
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
 function parseCSV(text: string): { headers: string[]; rows: string[][] } {
   const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
   if (lines.length === 0) return { headers: [], rows: [] };
 
   const separator = lines[0].includes(';') ? ';' : ',';
-  const headers = lines[0].split(separator).map(h => h.trim().replace(/^["']|["']$/g, ''));
-  const rows = lines.slice(1).map(line => {
-    const cells: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        inQuotes = !inQuotes;
-      } else if (ch === separator && !inQuotes) {
-        cells.push(current.trim());
-        current = '';
-      } else {
-        current += ch;
-      }
-    }
-    cells.push(current.trim());
-    return cells;
-  });
+  const headers = parseCSVLine(lines[0], separator).map(h => h.replace(/^["']|["']$/g, ''));
+  const rows = lines.slice(1).map(line => parseCSVLine(line, separator));
   return { headers, rows };
 }
 
+// Cabeçalhos que devem ser ignorados automaticamente
+const CABECALHOS_IGNORADOS = new Set(['id', 'ativo/inativo', 'ativo', 'inativo', 'status', 'ccm', 'administrativo', 'cadastro', 'contabil', 'contábil', 'fiscal', 'pessoal', 'declaracoes', 'declarações', 'financeiro', 'parcelamentos', 'treinamento', 'teste', 'solicitacao']);
+
 function mapearCabecalho(header: string): string | null {
   const norm = header.toLowerCase().trim().replace(/[_\-\.]/g, ' ').replace(/\s+/g, ' ');
+  // Ignora cabeçalhos conhecidos que não são campos úteis
+  if (CABECALHOS_IGNORADOS.has(norm)) return null;
+  // Ignora se contém palavras de colunas do Gestta que não são úteis
+  for (const ignorado of CABECALHOS_IGNORADOS) {
+    if (norm.includes(ignorado)) return null;
+  }
   // Tenta match exato primeiro
   if (MAPEAMENTO_CABECALHOS[norm]) return MAPEAMENTO_CABECALHOS[norm];
-  // Tenta match parcial
-  for (const [chave, campo] of Object.entries(MAPEAMENTO_CABECALHOS)) {
-    if (norm.includes(chave) || chave.includes(norm)) return campo;
+  // Tenta match parcial (só para strings com 3+ caracteres para evitar falsos positivos)
+  if (norm.length >= 3) {
+    for (const [chave, campo] of Object.entries(MAPEAMENTO_CABECALHOS)) {
+      if (norm.includes(chave) || (chave.length >= 3 && chave.includes(norm))) return campo;
+    }
   }
   return null;
 }

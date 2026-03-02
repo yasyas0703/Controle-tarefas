@@ -64,7 +64,7 @@ export default function PainelLogs() {
   };
 
   useEffect(() => {
-    if (usuarioLogado?.role === 'admin') {
+    if (usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento') {
       carregarLogs();
     }
   }, [usuarioLogado]);
@@ -224,7 +224,7 @@ export default function PainelLogs() {
     }
   };
 
-  if (usuarioLogado?.role !== 'admin') {
+  if (usuarioLogado?.role !== 'admin' && usuarioLogado?.role !== 'admin_departamento') {
     return (
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 text-center">
         <AlertTriangle className="mx-auto text-amber-500 mb-4" size={48} />

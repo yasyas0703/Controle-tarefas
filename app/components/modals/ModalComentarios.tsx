@@ -215,7 +215,10 @@ export default function ModalComentarios({
     setTextoEditado('');
   };
 
-  const podeExcluir = usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente';
+  const podeExcluir =
+    usuarioLogado?.role === 'admin' ||
+    usuarioLogado?.role === 'admin_departamento' ||
+    usuarioLogado?.role === 'gerente';
 
   const handleExcluir = (comentarioId: number) => {
     if (!processo) return;

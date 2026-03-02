@@ -1,11 +1,12 @@
 'use client';
 
 import React from 'react';
-import { X, Upload, File, Trash2, Download } from 'lucide-react';
+import { X, Upload, File, Trash2, Download, Edit, Shield } from 'lucide-react';
 import { Processo } from '@/app/types';
 import { useSistema } from '@/app/context/SistemaContext';
 import { api } from '@/app/utils/api';
 import { formatarTamanhoParcela, formatarDataHora, formatarNomeArquivo } from '@/app/utils/helpers';
+import { LIMITES, MENSAGENS } from '@/app/utils/constants';
 import ModalBase from './ModalBase';
 import LoadingOverlay from '../LoadingOverlay';
 
@@ -24,19 +25,54 @@ export default function ModalUploadDocumento({
   departamentoId = null,
   onClose,
 }: ModalUploadDocumentoProps) {
-  const { adicionarDocumentoProcesso, adicionarNotificacao, mostrarAlerta, setProcessos, usuarios, usuarioLogado } = useSistema();
+  const { adicionarDocumentoProcesso, adicionarNotificacao, mostrarAlerta, setProcessos, usuarios, usuarioLogado, departamentos } = useSistema();
   const [uploading, setUploading] = React.useState(false);
   const [arquivos, setArquivos] = React.useState<Array<{ id: number; nome: string; tamanho: number; tipo: string; file: File }>>([]);
-  const [visibility, setVisibility] = React.useState<'PUBLIC' | 'ROLES' | 'USERS'>('PUBLIC');
+  const [visibility, setVisibility] = React.useState<'PUBLIC' | 'ROLES' | 'USERS' | 'DEPARTAMENTOS'>('PUBLIC');
   const [selectedRoles, setSelectedRoles] = React.useState<string[]>([]);
   const [selectedUserIds, setSelectedUserIds] = React.useState<number[]>([]);
+  const [selectedDeptIds, setSelectedDeptIds] = React.useState<number[]>([]);
   const [arrastando, setArrastando] = React.useState(false);
+  const [editandoPermissoes, setEditandoPermissoes] = React.useState<number | null>(null);
+  const [editVisibility, setEditVisibility] = React.useState<'PUBLIC' | 'ROLES' | 'USERS' | 'DEPARTAMENTOS'>('PUBLIC');
+  const [editRoles, setEditRoles] = React.useState<string[]>([]);
+  const [editUserIds, setEditUserIds] = React.useState<number[]>([]);
+  const [editDeptIds, setEditDeptIds] = React.useState<number[]>([]);
 
   const [documentosLocal, setDocumentosLocal] = React.useState<any[]>(processo?.documentos || []);
 
+  // Carregar documentos do backend ao abrir o modal (dados filtrados por permissão)
   React.useEffect(() => {
-    setDocumentosLocal(processo?.documentos || []);
-  }, [processo?.id, processo?.documentos]);
+    if (!processo?.id) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const docs = await api.getDocumentos(processo.id);
+        if (!cancelled) setDocumentosLocal(Array.isArray(docs) ? docs : []);
+      } catch {
+        // fallback: usar dados embutidos no processo
+        if (!cancelled) setDocumentosLocal(processo?.documentos || []);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [processo?.id]);
+
+  // Reset selected files and visibility when modal opens for different process/question
+  React.useEffect(() => {
+    setArquivos([]);
+    setVisibility('PUBLIC');
+    setSelectedRoles([]);
+    setSelectedUserIds([]);
+    setSelectedDeptIds([]);
+    setEditandoPermissoes(null);
+  }, [processo?.id, perguntaId]);
+
+  // Auto-include current user in selectedUserIds when visibility is USERS
+  React.useEffect(() => {
+    if (visibility === 'USERS' && usuarioLogado?.id && !selectedUserIds.includes(usuarioLogado.id)) {
+      setSelectedUserIds(prev => prev.includes(usuarioLogado!.id) ? prev : [...prev, usuarioLogado!.id]);
+    }
+  }, [visibility, usuarioLogado?.id]);
 
   const documentos = documentosLocal;
   const documentosFiltrados = React.useMemo(() => {
@@ -62,7 +98,57 @@ export default function ModalUploadDocumento({
 
   const handleArquivosSelecionados = (fileList: FileList | null) => {
     if (!fileList) return;
-    const novos = Array.from(fileList).map((f, idx) => ({ id: Date.now() + idx, nome: f.name, tamanho: f.size, tipo: f.type || 'application/octet-stream', file: f }));
+    const tamanhoMaxBytes = LIMITES.TAMANHO_MAX_ARQUIVO_MB * 1024 * 1024;
+    const docsNoProcesso = Number(
+      (processo as any)?._count?.documentos ??
+      (processo as any)?.documentosCount ??
+      (Array.isArray(documentosLocal) ? documentosLocal.length : 0)
+    );
+    const limiteRestante = LIMITES.LIMITE_DOCUMENTOS_POR_PROCESSO - docsNoProcesso - arquivos.length;
+
+    if (limiteRestante <= 0) {
+      void mostrarAlerta?.(
+        'Limite de documentos',
+        `Este processo já atingiu o limite de ${LIMITES.LIMITE_DOCUMENTOS_POR_PROCESSO} documentos.`,
+        'aviso'
+      );
+      return;
+    }
+
+    const recebidos = Array.from(fileList);
+    const validos: File[] = [];
+    const rejeitadosPorTamanho: string[] = [];
+
+    for (const arquivo of recebidos) {
+      if (arquivo.size > tamanhoMaxBytes) {
+        rejeitadosPorTamanho.push(arquivo.name);
+      } else {
+        validos.push(arquivo);
+      }
+    }
+
+    if (rejeitadosPorTamanho.length > 0) {
+      const exemplo = rejeitadosPorTamanho.slice(0, 3).join(', ');
+      void mostrarAlerta?.(
+        'Arquivo muito grande',
+        `${MENSAGENS.ARQUIVO_MUITO_GRANDE}${exemplo ? `\nArquivos ignorados: ${exemplo}` : ''}`,
+        'aviso'
+      );
+    }
+
+    const permitidos = validos.slice(0, Math.max(0, limiteRestante));
+    const ignoradosPorLimite = validos.length - permitidos.length;
+
+    if (ignoradosPorLimite > 0) {
+      void mostrarAlerta?.(
+        'Limite de documentos',
+        `Somente ${limiteRestante} arquivo(s) foram adicionados. Limite por processo: ${LIMITES.LIMITE_DOCUMENTOS_POR_PROCESSO}.`,
+        'aviso'
+      );
+    }
+
+    if (permitidos.length === 0) return;
+    const novos = permitidos.map((f, idx) => ({ id: Date.now() + idx, nome: f.name, tamanho: f.size, tipo: f.type || 'application/octet-stream', file: f }));
     setArquivos(prev => [...prev, ...novos]);
   };
 
@@ -105,6 +191,7 @@ export default function ModalUploadDocumento({
                 visibility,
                 allowedRoles: selectedRoles,
                 allowedUserIds: selectedUserIds,
+                allowedDepartamentos: selectedDeptIds,
               }
             );
             if (process.env.NODE_ENV !== 'production') {
@@ -133,7 +220,18 @@ export default function ModalUploadDocumento({
       }
       setArquivos([]);
       if (sucessos > 0) {
-        adicionarNotificacao(sucessos === 1 ? '✅ Documento enviado com sucesso!' : `✅ ${sucessos} documentos enviados com sucesso!`, 'sucesso');
+        adicionarNotificacao(sucessos === 1 ? 'Documento enviado com sucesso!' : `${sucessos} documentos enviados com sucesso!`, 'sucesso');
+        // Atualizar estado global e lista local com documentos atualizados
+        if (processo) {
+          try {
+            const [processoAtualizado, docsAtualizados] = await Promise.all([
+              api.getProcesso(processo.id),
+              api.getDocumentos(processo.id),
+            ]);
+            setProcessos((prev: any) => prev.map((p: any) => (p.id === processo.id ? processoAtualizado : p)));
+            setDocumentosLocal(Array.isArray(docsAtualizados) ? docsAtualizados : []);
+          } catch { /* silent */ }
+        }
         onClose();
       }
       if (erros > 0) {
@@ -156,11 +254,14 @@ export default function ModalUploadDocumento({
 
       await api.excluirDocumento(id);
 
-      // Recarrega o processo atualizado do servidor e atualiza o estado global
+      // Recarrega o processo e documentos atualizados do servidor
       try {
-        const processoAtualizado = await api.getProcesso(processo.id);
+        const [processoAtualizado, docsAtualizados] = await Promise.all([
+          api.getProcesso(processo.id),
+          api.getDocumentos(processo.id),
+        ]);
         setProcessos((prevState: any) => prevState.map((p: any) => (p.id === processo.id ? processoAtualizado : p)));
-        setDocumentosLocal(processoAtualizado.documentos || []);
+        setDocumentosLocal(Array.isArray(docsAtualizados) ? docsAtualizados : []);
       } catch (err) {
         // Se falhar ao recarregar, mantemos a remoção local já aplicada
       }
@@ -174,6 +275,41 @@ export default function ModalUploadDocumento({
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleEditarPermissoes = async (docId: number) => {
+    if (!processo) return;
+    try {
+      setUploading(true);
+      await api.atualizarDocumento(docId, {
+        visibility: editVisibility,
+        allowedRoles: editRoles,
+        allowedUserIds: editUserIds,
+        allowedDepartamentos: editDeptIds,
+      });
+      // Recarregar processo e documentos para refletir alterações
+      const [processoAtualizado, docsAtualizados] = await Promise.all([
+        api.getProcesso(processo.id),
+        api.getDocumentos(processo.id),
+      ]);
+      setProcessos((prev: any) => prev.map((p: any) => (p.id === processo.id ? processoAtualizado : p)));
+      setDocumentosLocal(Array.isArray(docsAtualizados) ? docsAtualizados : []);
+      setEditandoPermissoes(null);
+      adicionarNotificacao('Permissões atualizadas com sucesso', 'sucesso');
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : 'Erro ao atualizar permissões';
+      await mostrarAlerta('Erro', msg, 'erro');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const iniciarEdicaoPermissoes = (doc: any) => {
+    setEditandoPermissoes(doc.id);
+    setEditVisibility(doc.visibility || 'PUBLIC');
+    setEditRoles(doc.allowedRoles || []);
+    setEditUserIds(doc.allowedUserIds || []);
+    setEditDeptIds(doc.allowedDepartamentos || []);
   };
 
   const handleDownload = (doc: any) => {
@@ -226,16 +362,13 @@ export default function ModalUploadDocumento({
           {/* Visibility controls */}
           <div className="p-4 bg-gray-50 dark:bg-[var(--muted)] rounded-lg border border-gray-200 dark:border-[var(--border)]">
             <h4 className="font-semibold mb-2">Visibilidade do Anexo</h4>
-            <div className="flex gap-3 mb-3">
-              <label className={`px-3 py-2 rounded-lg cursor-pointer ${visibility === 'PUBLIC' ? 'bg-cyan-600 text-white' : 'bg-white dark:bg-transparent border border-gray-200'}`}>
-                <input type="radio" name="visibility" value="PUBLIC" className="hidden" checked={visibility === 'PUBLIC'} onChange={() => setVisibility('PUBLIC')} /> Público
-              </label>
-              <label className={`px-3 py-2 rounded-lg cursor-pointer ${visibility === 'ROLES' ? 'bg-cyan-600 text-white' : 'bg-white dark:bg-transparent border border-gray-200'}`}>
-                <input type="radio" name="visibility" value="ROLES" className="hidden" checked={visibility === 'ROLES'} onChange={() => setVisibility('ROLES')} /> Apenas por Funções
-              </label>
-              <label className={`px-3 py-2 rounded-lg cursor-pointer ${visibility === 'USERS' ? 'bg-cyan-600 text-white' : 'bg-white dark:bg-transparent border border-gray-200'}`}>
-                <input type="radio" name="visibility" value="USERS" className="hidden" checked={visibility === 'USERS'} onChange={() => setVisibility('USERS')} /> Usuários Específicos
-              </label>
+            <div className="flex gap-2 mb-3 flex-wrap">
+              {(['PUBLIC', 'ROLES', 'USERS', 'DEPARTAMENTOS'] as const).map(v => (
+                <label key={v} className={`px-3 py-2 rounded-lg cursor-pointer text-sm ${visibility === v ? 'bg-cyan-600 text-white' : 'bg-white dark:bg-transparent border border-gray-200'}`}>
+                  <input type="radio" name="visibility" value={v} className="hidden" checked={visibility === v} onChange={() => setVisibility(v)} />
+                  {v === 'PUBLIC' ? 'Público' : v === 'ROLES' ? 'Por Funções' : v === 'USERS' ? 'Usuários' : 'Departamentos'}
+                </label>
+              ))}
             </div>
 
             {visibility === 'ROLES' && (
@@ -262,6 +395,24 @@ export default function ModalUploadDocumento({
                     ))
                   ) : (
                     <div className="text-sm text-gray-500">Nenhum usuário disponível</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {visibility === 'DEPARTAMENTOS' && (
+              <div className="space-y-2">
+                <p className="text-sm text-gray-600">Selecione quais departamentos podem visualizar este anexo:</p>
+                <div className="max-h-40 overflow-auto border rounded p-2">
+                  {Array.isArray(departamentos) && departamentos.length > 0 ? (
+                    departamentos.map((d: any) => (
+                      <label key={d.id} className="flex items-center gap-2 p-1">
+                        <input type="checkbox" checked={selectedDeptIds.includes(d.id)} onChange={() => setSelectedDeptIds(prev => prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id])} />
+                        <span className="text-sm">{d.nome}</span>
+                      </label>
+                    ))
+                  ) : (
+                    <div className="text-sm text-gray-500">Nenhum departamento disponível</div>
                   )}
                 </div>
               </div>
@@ -327,27 +478,87 @@ export default function ModalUploadDocumento({
               </h3>
               <div className="space-y-2">
                 {documentosFiltrados.map((doc: any) => (
-                  <div key={doc.id} className="flex items-center justify-between p-4 border border-gray-200 dark:border-[var(--border)] rounded-lg hover:bg-gray-50 dark:hover:bg-[var(--muted)] transition-colors">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <File size={20} className="text-gray-400 dark:text-gray-300" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate" title={doc.nome}>{formatarNomeArquivo(doc.nome)}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-300">{formatarTamanhoParcela(Number(doc.tamanho || 0))} • {formatarDataHora(doc.dataUpload)}</p>
+                  <div key={doc.id} className="p-4 border border-gray-200 dark:border-[var(--border)] rounded-lg hover:bg-gray-50 dark:hover:bg-[var(--muted)] transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <File size={20} className="text-gray-400 dark:text-gray-300" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate" title={doc.nome}>{formatarNomeArquivo(doc.nome)}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-300">
+                            {formatarTamanhoParcela(Number(doc.tamanho || 0))} • {formatarDataHora(doc.dataUpload)}
+                            {doc.visibility && doc.visibility !== 'PUBLIC' && (
+                              <span className="ml-2 inline-flex items-center gap-1 text-amber-600">
+                                <Shield size={10} />
+                                {doc.visibility === 'ROLES' ? 'Funções' : doc.visibility === 'USERS' ? 'Usuários' : doc.visibility === 'DEPARTAMENTOS' ? 'Departamentos' : doc.visibility}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <button type="button" onClick={() => iniciarEdicaoPermissoes(doc)} className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded transition-colors" title="Editar permissões">
+                          <Edit size={16} />
+                        </button>
+                        <button type="button" onClick={() => handleDownload(doc)} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-[#132235] rounded transition-colors">
+                          <Download size={18} />
+                        </button>
+                        <button
+                          onClick={() => handleRemover(doc.id)}
+                          disabled={uploading}
+                          className={`p-2 ${uploading ? 'opacity-50 cursor-not-allowed' : 'text-red-600 hover:bg-red-50 dark:hover:bg-[#3b1f26]'} rounded transition-colors`}
+                        >
+                          <Trash2 size={18} />
+                        </button>
                       </div>
                     </div>
-                                    <div className="flex gap-2">
-                                      <button type="button" onClick={() => handleDownload(doc)} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-[#132235] rounded transition-colors">
-                                        <Download size={18} />
-                                      </button>
-                                      <button
-                                        onClick={() => handleRemover(doc.id)}
-                                        disabled={uploading}
-                                        aria-disabled={uploading}
-                                        className={`p-2 ${uploading ? 'opacity-50 cursor-not-allowed' : 'text-red-600 hover:bg-red-50 dark:hover:bg-[#3b1f26]'} rounded transition-colors`}
-                                      >
-                                        <Trash2 size={18} />
-                                      </button>
-                                    </div>
+
+                    {/* Formulário inline de edição de permissões */}
+                    {editandoPermissoes === doc.id && (
+                      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[var(--border)] space-y-3">
+                        <div className="flex gap-2 flex-wrap">
+                          {(['PUBLIC', 'ROLES', 'USERS', 'DEPARTAMENTOS'] as const).map(v => (
+                            <label key={v} className={`px-2 py-1 rounded text-xs cursor-pointer ${editVisibility === v ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 border border-gray-200'}`}>
+                              <input type="radio" className="hidden" checked={editVisibility === v} onChange={() => setEditVisibility(v)} />
+                              {v === 'PUBLIC' ? 'Público' : v === 'ROLES' ? 'Funções' : v === 'USERS' ? 'Usuários' : 'Departamentos'}
+                            </label>
+                          ))}
+                        </div>
+                        {editVisibility === 'ROLES' && (
+                          <div className="flex gap-2 flex-wrap">
+                            {['ADMIN', 'GERENTE', 'USUARIO'].map(r => (
+                              <label key={r} className={`px-2 py-1 rounded text-xs cursor-pointer border ${editRoles.includes(r) ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-transparent border-gray-200'}`}>
+                                <input type="checkbox" className="hidden" checked={editRoles.includes(r)} onChange={() => setEditRoles(p => p.includes(r) ? p.filter(x => x !== r) : [...p, r])} />
+                                {r}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {editVisibility === 'USERS' && (
+                          <div className="max-h-28 overflow-auto border rounded p-2">
+                            {Array.isArray(usuarios) && usuarios.map((u: any) => (
+                              <label key={u.id} className="flex items-center gap-2 p-0.5 text-xs">
+                                <input type="checkbox" checked={editUserIds.includes(u.id)} onChange={() => setEditUserIds(p => p.includes(u.id) ? p.filter(x => x !== u.id) : [...p, u.id])} />
+                                {u.nome}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        {editVisibility === 'DEPARTAMENTOS' && (
+                          <div className="max-h-28 overflow-auto border rounded p-2">
+                            {Array.isArray(departamentos) && departamentos.map((d: any) => (
+                              <label key={d.id} className="flex items-center gap-2 p-0.5 text-xs">
+                                <input type="checkbox" checked={editDeptIds.includes(d.id)} onChange={() => setEditDeptIds(p => p.includes(d.id) ? p.filter(x => x !== d.id) : [...p, d.id])} />
+                                {d.nome}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <button onClick={() => handleEditarPermissoes(doc.id)} disabled={uploading} className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg disabled:opacity-50">Salvar</button>
+                          <button onClick={() => setEditandoPermissoes(null)} className="px-3 py-1.5 text-gray-600 text-xs border rounded-lg">Cancelar</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

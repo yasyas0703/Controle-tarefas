@@ -1,12 +1,13 @@
 'use client';
 
 import React from 'react';
-import { X, Save, Upload, FileText, Eye, Download, MessageSquare, CheckCircle, Pencil } from 'lucide-react';
+import { X, Save, Upload, FileText, Eye, Download, MessageSquare, CheckCircle, Pencil, Plus, Trash2 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import LoadingOverlay from '../LoadingOverlay';
 import { Questionario } from '@/app/types';
 import { formatarDataHora, formatarTamanhoParcela, formatarNomeArquivo } from '@/app/utils/helpers';
+import { maskCPF, maskCNPJ, maskCEP, maskMoney, maskTelefone } from '@/app/utils/masks';
 
 interface ModalQuestionarioProcessoProps {
   processoId: number;
@@ -88,6 +89,13 @@ export default function ModalQuestionarioProcesso({
     questionarioAtual = (processo as any).questionarios;
   }
   console.log('DEBUG questionarioAtual', questionarioAtual);
+
+  // IDs de campos controladores de grupos repetíveis (para ocultá-los da lista principal)
+  const camposControladores = new Set(
+    questionarioAtual
+      .filter(p => p.tipo === 'grupo_repetivel' && p.modoRepeticao === 'numero' && p.controladoPor)
+      .map(p => p.controladoPor!)
+  );
 
   // Exibir loading enquanto carrega o processo detalhado e não há questionário
   const showLoading = carregandoProcesso && questionarioAtual.length === 0;
@@ -174,10 +182,34 @@ export default function ModalQuestionarioProcesso({
   };
 
   const handleRespostaChange = (perguntaId: number, valor: any) => {
-    setRespostas((prev) => ({
-      ...prev,
-      [String(perguntaId)]: valor,
-    }));
+    setRespostas((prev) => {
+      const next = {
+        ...prev,
+        [String(perguntaId)]: valor,
+      };
+
+      // When a controlling question changes, clear responses for any
+      // conditional questions that are no longer visible.
+      // This cascades: clearing a dependent question may hide further
+      // questions that depend on it, so we loop until stable.
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const p of questionarioAtual) {
+          if (!p.condicao) continue;
+          const k = String(p.id);
+          // Only act if this question currently has a response stored
+          if (next[k] === undefined || next[k] === null || next[k] === '') continue;
+          // If the condition is no longer met, clear the response
+          if (!avaliarCondicao(p, next)) {
+            next[k] = '';
+            changed = true;
+          }
+        }
+      }
+
+      return next;
+    });
   };
 
   const docsAnexadosPergunta = (perguntaId: number) => {
@@ -222,6 +254,8 @@ export default function ModalQuestionarioProcesso({
   };
 
   const avaliarCondicao = (pergunta: Questionario, respostasAtuais: Record<string, any>) => {
+    // grupo_repetivel nunca deve ser filtrado por condicao - tem seu proprio mecanismo (controladoPor)
+    if (pergunta.tipo === 'grupo_repetivel') return true;
     if (!pergunta.condicao) return true;
     const { perguntaId, operador, valor } = pergunta.condicao;
     const respostaCondicional = respostasAtuais[String(perguntaId)];
@@ -343,6 +377,22 @@ export default function ModalQuestionarioProcesso({
       const { api } = await import('@/app/utils/api');
       await api.salvarRespostasQuestionario(processoId, departamentoId, respostas);
 
+      // Clean up documents for conditional questions that are no longer visible
+      const perguntasOcultas = (questionarioAtual || []).filter(p =>
+        p.condicao && p.tipo === 'file' && !avaliarCondicao(p, respostas)
+      );
+
+      for (const pergOculta of perguntasOcultas) {
+        const docsParaRemover = docsAnexadosPergunta(pergOculta.id);
+        for (const doc of docsParaRemover) {
+          try {
+            await api.excluirDocumento(doc.id);
+          } catch {
+            // Silent - best effort cleanup
+          }
+        }
+      }
+
       // Recarregar o processo atualizado
       const processoAtualizado = await api.getProcesso(processoId);
       if (process.env.NODE_ENV !== 'production') {
@@ -400,15 +450,17 @@ export default function ModalQuestionarioProcesso({
     const isEmpty = valor === undefined || valor === null || valor === '';
 
     // DEBUG: log do tipo da pergunta
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('DEBUG renderCampo:', { 
-        id: pergunta.id, 
-        label: pergunta.label, 
-        tipo: pergunta.tipo, 
-        tipoOf: typeof pergunta.tipo,
-        opcoes: pergunta.opcoes 
-      });
-    }
+    console.log('[renderCampo] pergunta:', {
+      id: pergunta.id,
+      label: pergunta.label,
+      tipo: pergunta.tipo,
+      tipoOf: typeof pergunta.tipo,
+      opcoes: pergunta.opcoes,
+      subPerguntas: pergunta.subPerguntas?.length,
+      modoRepeticao: pergunta.modoRepeticao,
+      controladoPor: pergunta.controladoPor,
+      valorAtual: valor,
+    });
 
     switch (pergunta.tipo) {
       case 'text':
@@ -445,7 +497,7 @@ export default function ModalQuestionarioProcesso({
           />
         );
 
-      case 'number':
+      case 'number': {
         return bloqueado ? (
           <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700">
             {isEmpty ? '—' : String(valor)}
@@ -454,12 +506,16 @@ export default function ModalQuestionarioProcesso({
           <input
             type="number"
             value={safeValue(valor)}
-            onChange={(e) => handleRespostaChange(pergunta.id, e.target.value)}
+            onChange={(e) => {
+              console.log('[renderCampo] number change:', { perguntaId: pergunta.id, label: pergunta.label, novoValor: e.target.value });
+              handleRespostaChange(pergunta.id, e.target.value);
+            }}
             className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500"
             required={pergunta.obrigatorio}
             placeholder="Digite um número"
           />
         );
+      }
 
       case 'date':
         return bloqueado ? (
@@ -492,21 +548,31 @@ export default function ModalQuestionarioProcesso({
           />
         );
 
-      case 'phone':
+      case 'phone': {
+        const phoneDigits = String(valor || '').replace(/\D/g, '');
+        const phoneIncompleto = phoneDigits.length > 0 && phoneDigits.length < 10;
         return bloqueado ? (
           <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700">
             {isEmpty ? '—' : String(valor)}
           </div>
         ) : (
-          <input
-            type="tel"
-            value={safeValue(valor)}
-            onChange={(e) => handleRespostaChange(pergunta.id, e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500"
-            required={pergunta.obrigatorio}
-            placeholder="(00) 00000-0000"
-          />
+          <div>
+            <input
+              type="tel"
+              inputMode="numeric"
+              value={safeValue(valor)}
+              onChange={(e) => handleRespostaChange(pergunta.id, maskTelefone(e.target.value))}
+              maxLength={15}
+              className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 ${phoneIncompleto ? 'border-red-400' : 'border-gray-300'}`}
+              required={pergunta.obrigatorio}
+              placeholder="(00) 00000-0000"
+            />
+            {phoneIncompleto && (
+              <p className="text-xs text-red-500 mt-1">Telefone incompleto — faltam {10 - phoneDigits.length} dígito(s)</p>
+            )}
+          </div>
         );
+      }
 
       case 'file': {
         const docsAnexados = docsAnexadosPergunta(pergunta.id);
@@ -806,6 +872,308 @@ export default function ModalQuestionarioProcesso({
         );
       }
 
+      case 'cpf': {
+        const cpfDigits = String(valor || '').replace(/\D/g, '');
+        const cpfIncompleto = cpfDigits.length > 0 && cpfDigits.length < 11;
+        return bloqueado ? (
+          <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700">
+            {isEmpty ? '—' : String(valor)}
+          </div>
+        ) : (
+          <div>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={safeValue(valor)}
+              onChange={(e) => handleRespostaChange(pergunta.id, maskCPF(e.target.value))}
+              maxLength={14}
+              className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 ${cpfIncompleto ? 'border-red-400' : 'border-gray-300'}`}
+              required={pergunta.obrigatorio}
+              placeholder="000.000.000-00"
+            />
+            {cpfIncompleto && (
+              <p className="text-xs text-red-500 mt-1">CPF incompleto — faltam {11 - cpfDigits.length} dígito(s)</p>
+            )}
+          </div>
+        );
+      }
+
+      case 'cnpj': {
+        const cnpjDigits = String(valor || '').replace(/\D/g, '');
+        const cnpjIncompleto = cnpjDigits.length > 0 && cnpjDigits.length < 14;
+        return bloqueado ? (
+          <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700">
+            {isEmpty ? '—' : String(valor)}
+          </div>
+        ) : (
+          <div>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={safeValue(valor)}
+              onChange={(e) => handleRespostaChange(pergunta.id, maskCNPJ(e.target.value))}
+              maxLength={18}
+              className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 ${cnpjIncompleto ? 'border-red-400' : 'border-gray-300'}`}
+              required={pergunta.obrigatorio}
+              placeholder="00.000.000/0000-00"
+            />
+            {cnpjIncompleto && (
+              <p className="text-xs text-red-500 mt-1">CNPJ incompleto — faltam {14 - cnpjDigits.length} dígito(s)</p>
+            )}
+          </div>
+        );
+      }
+
+      case 'cep': {
+        const cepDigits = String(valor || '').replace(/\D/g, '');
+        const cepIncompleto = cepDigits.length > 0 && cepDigits.length < 8;
+        return bloqueado ? (
+          <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700">
+            {isEmpty ? '—' : String(valor)}
+          </div>
+        ) : (
+          <div>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={safeValue(valor)}
+              onChange={(e) => handleRespostaChange(pergunta.id, maskCEP(e.target.value))}
+              maxLength={9}
+              className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-cyan-500 ${cepIncompleto ? 'border-red-400' : 'border-gray-300'}`}
+              required={pergunta.obrigatorio}
+              placeholder="00000-000"
+            />
+            {cepIncompleto && (
+              <p className="text-xs text-red-500 mt-1">CEP incompleto — faltam {8 - cepDigits.length} dígito(s)</p>
+            )}
+          </div>
+        );
+      }
+
+      case 'money':
+        return bloqueado ? (
+          <div className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 text-gray-700">
+            {isEmpty ? '—' : String(valor)}
+          </div>
+        ) : (
+          <input
+            type="text"
+            inputMode="numeric"
+            value={safeValue(valor)}
+            onChange={(e) => handleRespostaChange(pergunta.id, maskMoney(e.target.value))}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500"
+            required={pergunta.obrigatorio}
+            placeholder="R$ 0,00"
+          />
+        );
+
+      case 'grupo_repetivel': {
+        // Normalizar tipo das sub-perguntas (podem vir uppercase do DB)
+        const subPerguntasRaw = pergunta.subPerguntas || [];
+        const subPerguntas = subPerguntasRaw.map((sp: any) => ({
+          ...sp,
+          tipo: typeof sp.tipo === 'string' ? sp.tipo.toLowerCase() : (sp.tipo || 'text'),
+        }));
+        const gruposAtual: Record<string, any>[] = Array.isArray(valor) ? valor : [];
+
+        // Determine how many groups to render
+        let numGrupos = gruposAtual.length || 1;
+        const modoRepeticao = pergunta.modoRepeticao || 'manual';
+        const controladoPorId = pergunta.controladoPor;
+
+        if (modoRepeticao === 'numero' && controladoPorId) {
+          const valorControlador = respostas[String(controladoPorId)];
+          const parsed = parseInt(String(valorControlador ?? ''), 10);
+          if (Number.isFinite(parsed) && parsed > 0) {
+            numGrupos = parsed;
+          } else {
+            numGrupos = 0;
+          }
+        }
+
+        // Encontrar label da pergunta controladora para exibir dica
+        const perguntaControladora = controladoPorId
+          ? questionarioAtual.find((p) => p.id === controladoPorId)
+          : null;
+
+        console.log('[renderCampo] grupo_repetivel detalhes:', {
+          perguntaId: pergunta.id,
+          label: pergunta.label,
+          modoRepeticao,
+          controladoPor: controladoPorId,
+          perguntaControladoraLabel: perguntaControladora?.label,
+          subPerguntasCount: subPerguntas.length,
+          subPerguntas: subPerguntas.map((s: any) => ({ id: s.id, label: s.label, tipo: s.tipo })),
+          gruposAtualCount: gruposAtual.length,
+          numGrupos,
+          valorControlador: controladoPorId ? respostas[String(controladoPorId)] : 'N/A',
+          todasRespostasKeys: Object.keys(respostas),
+        });
+
+        // Ensure gruposAtual has the right number of entries
+        const gruposRender: Record<string, any>[] = [];
+        for (let i = 0; i < numGrupos; i++) {
+          gruposRender.push(gruposAtual[i] || {});
+        }
+
+        const atualizarGrupo = (index: number, subPerguntaId: number, subValor: any) => {
+          const novoGrupos = [...gruposRender];
+          novoGrupos[index] = { ...novoGrupos[index], [String(subPerguntaId)]: subValor };
+          handleRespostaChange(pergunta.id, novoGrupos);
+        };
+
+        const adicionarGrupo = () => {
+          handleRespostaChange(pergunta.id, [...gruposRender, {}]);
+        };
+
+        const removerGrupo = (index: number) => {
+          const novoGrupos = gruposRender.filter((_, i) => i !== index);
+          handleRespostaChange(pergunta.id, novoGrupos.length > 0 ? novoGrupos : [{}]);
+        };
+
+        if (bloqueado) {
+          return (
+            <div className="space-y-4">
+              {gruposRender.length === 0 ? (
+                <div className="w-full px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-gray-50 dark:bg-slate-900/70 text-gray-700 dark:text-slate-200">—</div>
+              ) : gruposRender.map((grupo, gIdx) => (
+                <div key={gIdx} className="border border-gray-200 dark:border-cyan-500/30 rounded-xl p-4 bg-gray-50 dark:bg-slate-900/70">
+                  <h5 className="text-sm font-semibold text-gray-600 dark:text-cyan-200 mb-3 flex items-center">
+                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-200 text-xs font-bold">{gIdx + 1}</span>
+                  </h5>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {subPerguntas.map((sub) => (
+                      <div key={sub.id}>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-slate-300 mb-1">{sub.label}</label>
+                        <div className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-950/70 text-gray-700 dark:text-slate-200 text-sm">
+                          {grupo[String(sub.id)] || '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+
+        // Helper para renderizar um campo de sub-pergunta
+        const renderSubCampo = (sub: any, grupo: Record<string, any>, gIdx: number) => {
+          const subTipo = (typeof sub.tipo === 'string' ? sub.tipo.toLowerCase() : 'text');
+          const subValor = grupo[String(sub.id)] || '';
+          const baseSubCampoClass = 'w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 text-sm bg-white dark:bg-slate-950/85 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500';
+          switch (subTipo) {
+            case 'select':
+              return (
+                <select value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value)} className={baseSubCampoClass}>
+                  <option value="">Selecione...</option>
+                  {(sub.opcoes || []).map((op: string, oIdx: number) => (<option key={oIdx} value={op}>{op}</option>))}
+                </select>
+              );
+            case 'date':
+              return <input type="date" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value)} className={baseSubCampoClass} />;
+            case 'number':
+              return <input type="number" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value)} className={baseSubCampoClass} placeholder="Digite um numero" />;
+            case 'cpf':
+              return <input type="text" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, maskCPF(e.target.value))} maxLength={14} className={baseSubCampoClass} placeholder="000.000.000-00" />;
+            case 'cnpj':
+              return <input type="text" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, maskCNPJ(e.target.value))} maxLength={18} className={baseSubCampoClass} placeholder="00.000.000/0000-00" />;
+            case 'cep':
+              return <input type="text" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, maskCEP(e.target.value))} maxLength={9} className={baseSubCampoClass} placeholder="00000-000" />;
+            case 'money':
+              return <input type="text" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, maskMoney(e.target.value))} className={baseSubCampoClass} placeholder="R$ 0,00" />;
+            case 'boolean':
+              return (
+                <div className="flex gap-3">
+                  <label className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700 dark:text-slate-200">
+                    <input type="radio" name={`grupo_${pergunta.id}_${gIdx}_${sub.id}`} value="Sim" checked={subValor === 'Sim'} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value)} className="w-4 h-4 text-cyan-600 border-gray-300 dark:border-slate-600 dark:bg-slate-900" />
+                    Sim
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-700 dark:text-slate-200">
+                    <input type="radio" name={`grupo_${pergunta.id}_${gIdx}_${sub.id}`} value="Nao" checked={subValor === 'Nao'} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value)} className="w-4 h-4 text-cyan-600 border-gray-300 dark:border-slate-600 dark:bg-slate-900" />
+                    Nao
+                  </label>
+                </div>
+              );
+            case 'textarea':
+              return <textarea value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value.slice(0, 500))} maxLength={500} rows={3} className={`${baseSubCampoClass} resize-vertical`} placeholder="Digite sua resposta..." />;
+            case 'phone':
+              return <input type="tel" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, maskTelefone(e.target.value))} maxLength={15} className={baseSubCampoClass} placeholder="(00) 00000-0000" />;
+            case 'email':
+              return <input type="email" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value)} className={baseSubCampoClass} placeholder="exemplo@email.com" />;
+            default:
+              return <input type="text" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value.slice(0, 200))} maxLength={200} className={baseSubCampoClass} placeholder="Digite sua resposta..." />;
+          }
+        };
+
+        return (
+          <div className="space-y-4">
+            {modoRepeticao === 'numero' && controladoPorId && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 rounded-xl">
+                <label className="text-sm font-medium text-cyan-700 dark:text-cyan-200">Quantidade:</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={numGrupos || ''}
+                  onChange={(e) => handleRespostaChange(controladoPorId, e.target.value)}
+                  className="w-20 px-3 py-2 border border-cyan-300 dark:border-cyan-500/40 rounded-lg focus:ring-2 focus:ring-cyan-500 text-sm bg-white dark:bg-slate-950/85 text-gray-800 dark:text-slate-100 text-center"
+                  placeholder="0"
+                />
+              </div>
+            )}
+
+            {/* Mensagem quando tem grupos mas nenhuma sub-pergunta */}
+            {numGrupos > 0 && subPerguntas.length === 0 && (
+              <div className="w-full px-4 py-3 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-xl bg-gray-50 dark:bg-slate-900/70 text-gray-500 dark:text-slate-300 text-sm text-center">
+                Este grupo nao possui sub-perguntas configuradas. Edite o questionario para adicionar sub-perguntas.
+              </div>
+            )}
+
+            {gruposRender.map((grupo, gIdx) => (
+              <div key={gIdx} className="border-2 border-cyan-200 dark:border-cyan-500/35 rounded-xl p-4 bg-cyan-50/30 dark:bg-slate-900/80">
+                <div className="flex items-center justify-between mb-3">
+                  <h5 className="text-sm font-semibold text-cyan-700 dark:text-cyan-200 flex items-center">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-cyan-600 dark:bg-cyan-500/25 text-white dark:text-cyan-100 text-xs font-bold">{gIdx + 1}</span>
+                  </h5>
+                  {modoRepeticao === 'manual' && gruposRender.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removerGrupo(gIdx)}
+                      className="p-1.5 text-red-500 dark:text-rose-300 hover:bg-red-50 dark:hover:bg-rose-500/15 rounded-lg transition-colors"
+                      title="Remover grupo"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {subPerguntas.map((sub: any) => (
+                    <div key={sub.id}>
+                      <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">
+                        {sub.label}
+                        {sub.obrigatorio && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      {renderSubCampo(sub, grupo, gIdx)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {modoRepeticao === 'manual' && (
+              <button
+                type="button"
+                onClick={adicionarGrupo}
+                className="w-full px-4 py-3 border-2 border-dashed border-cyan-300 dark:border-cyan-500/40 rounded-xl hover:border-cyan-500 dark:hover:border-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 transition-all flex items-center justify-center gap-2 text-cyan-600 dark:text-cyan-300 hover:text-cyan-700 dark:hover:text-cyan-200 font-medium"
+              >
+                <Plus size={18} />
+                Adicionar Grupo
+              </button>
+            )}
+          </div>
+        );
+      }
+
       default:
         return null;
     }
@@ -1036,7 +1404,14 @@ export default function ModalQuestionarioProcesso({
                   );
                 }
 
+                const camposControladoresDepto = new Set(
+                  questionarioDepto
+                    .filter((p) => p.tipo === 'grupo_repetivel' && p.modoRepeticao === 'numero' && p.controladoPor)
+                    .map((p) => p.controladoPor!)
+                );
+
                 const deveAparecerNaVisualizacao = (pergunta: Questionario) => {
+                  if (camposControladoresDepto.has(pergunta.id)) return false;
                   if (!pergunta.condicao) return true;
                   const { perguntaId, operador, valor } = pergunta.condicao;
                   const respostaCondicional = respostasDepto[String(perguntaId)];
@@ -1284,13 +1659,13 @@ export default function ModalQuestionarioProcesso({
                     )}
                   </div>
                   <span className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                    {questionarioAtual.filter((p) => avaliarCondicao(p, respostas)).length} respostas
+                    {questionarioAtual.filter((p) => !camposControladores.has(p.id) && avaliarCondicao(p, respostas)).length} respostas
                   </span>
                 </div>
 
                 <div className="space-y-4">
                   {(() => {
-                    const perguntasVisiveis = questionarioAtual.filter((p) => avaliarCondicao(p, respostas));
+                    const perguntasVisiveis = questionarioAtual.filter((p) => !camposControladores.has(p.id) && avaliarCondicao(p, respostas));
                     const pares: Questionario[][] = [];
                     for (let i = 0; i < perguntasVisiveis.length; i += 2) {
                       pares.push(perguntasVisiveis.slice(i, i + 2));
@@ -1375,11 +1750,11 @@ export default function ModalQuestionarioProcesso({
               <h4 className="font-semibold text-gray-800 mb-6">Preencha o Questionário:</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {questionarioAtual
-                  .filter((p) => avaliarCondicao(p, respostas))
+                  .filter((p) => !camposControladores.has(p.id) && avaliarCondicao(p, respostas))
                   .map((pergunta) => (
                     <div
                       key={pergunta.id}
-                      className={pergunta.tipo === 'textarea' || pergunta.tipo === 'file' ? 'md:col-span-2' : ''}
+                      className={pergunta.tipo === 'textarea' || pergunta.tipo === 'file' || pergunta.tipo === 'grupo_repetivel' ? 'md:col-span-2' : ''}
                     >
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
                         {pergunta.label}{' '}

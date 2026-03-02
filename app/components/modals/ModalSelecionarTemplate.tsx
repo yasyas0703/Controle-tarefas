@@ -46,7 +46,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
   useEffect(() => {
     let ativo = true;
     if (!usuarioLogado) return;
-    if (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'gerente') return;
+    if (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'admin_departamento' && usuarioLogado.role !== 'gerente') return;
 
     setErroUsuariosResponsaveis(null);
 
@@ -134,7 +134,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
       return typeof responsavelId === 'number' ? responsavelId : null;
     })();
 
-    if (usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente') {
+    if (usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente') {
       if (typeof responsavelIdFinal !== 'number') {
         void mostrarAlerta('Atenção', 'Selecione o responsável (usuário).', 'aviso');
         return;
@@ -191,7 +191,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
   };
 
   const excluirTemplate = (templateId: number, templateNome: string) => {
-    if (!usuarioLogado || usuarioLogado.role !== "admin") {
+    if (!usuarioLogado || (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'admin_departamento')) {
       void mostrarAlerta('Permissão negada', 'Apenas administradores podem excluir templates.', 'aviso');
       return;
     }
@@ -317,7 +317,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
                     setResponsavelId(Number.isFinite(id) ? id : null);
                   }}
                   className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  required={usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente'}
+                  required={usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente'}
                   disabled={usuarioLogado?.role === 'usuario'}
                 >
                   <option value="">
@@ -336,7 +336,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
                     {erroUsuariosResponsaveis}
                   </p>
                 )}
-                {(usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'gerente') && usuariosResponsaveis.length === 0 && !erroUsuariosResponsaveis && (
+                {(usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente') && usuariosResponsaveis.length === 0 && !erroUsuariosResponsaveis && (
                   <p className="text-xs text-gray-600 mt-2">
                     Nenhum usuário encontrado para seleção.
                   </p>

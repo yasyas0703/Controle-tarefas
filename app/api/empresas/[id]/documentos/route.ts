@@ -4,9 +4,17 @@ import { uploadFile, deleteFile } from '@/app/utils/supabase';
 import { requireAuth } from '@/app/utils/routeAuth';
 import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
+import {
+  createEmpresaDocumentoCompat,
+  getEmpresaDocumentoQueryConfig,
+  hasEmpresaDocumentoAclStorage,
+  normalizeEmpresaDocumento,
+} from '@/app/utils/empresaDocumentoCompat';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_DOCUMENTOS_POR_EMPRESA = 50;
 
 function jsonBigInt(data: unknown, init?: { status?: number }) {
   return new NextResponse(
@@ -43,13 +51,16 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const empresaId = Number(params.id);
     if (!Number.isFinite(empresaId)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+      return NextResponse.json({ error: 'ID invÃ¡lido' }, { status: 400 });
     }
 
-    const documentos = await prisma.empresaDocumento.findMany({
+    const { select, acl } = await getEmpresaDocumentoQueryConfig();
+    const documentosRaw = await prisma.empresaDocumento.findMany({
       where: { empresaId },
       orderBy: { dataUpload: 'desc' },
+      select,
     });
+    const documentos = documentosRaw.map((doc) => normalizeEmpresaDocumento(doc as any, acl));
 
     const userId = Number((user as any).id);
     const userRole = String((user as any).role || '').toUpperCase();
@@ -62,8 +73,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
             allowedRoles: doc.allowedRoles,
             allowedUserIds: doc.allowedUserIds,
             uploadPorId: doc.uploadPorId,
+            allowedDepartamentos: doc.allowedDepartamentos || null,
           },
-          { id: userId, role: userRole }
+          { id: userId, role: userRole, departamentoId: Number((user as any).departamentoId) || null }
         )
       )
       .map((doc: any) => {
@@ -86,7 +98,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const empresaId = Number(params.id);
     if (!Number.isFinite(empresaId)) {
-      return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+      return NextResponse.json({ error: 'ID invÃ¡lido' }, { status: 400 });
     }
 
     const formData = await request.formData();
@@ -97,7 +109,24 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const alertarDiasAntesRaw = (formData.get('alertarDiasAntes') as string) || '';
 
     if (!file || !tipo) {
-      return NextResponse.json({ error: 'Arquivo e tipo são obrigatórios' }, { status: 400 });
+      return NextResponse.json({ error: 'Arquivo e tipo sÃ£o obrigatÃ³rios' }, { status: 400 });
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      return NextResponse.json(
+        { error: `Arquivo excede o limite de ${Math.floor(MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB` },
+        { status: 400 }
+      );
+    }
+
+    const documentosExistentes = await prisma.empresaDocumento.count({
+      where: { empresaId },
+    });
+    if (documentosExistentes >= MAX_DOCUMENTOS_POR_EMPRESA) {
+      return NextResponse.json(
+        { error: `Limite de ${MAX_DOCUMENTOS_POR_EMPRESA} documentos por empresa atingido` },
+        { status: 400 }
+      );
     }
 
     // Parse validade (opcional)
@@ -118,12 +147,27 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const visibilityRaw = (formData.get('visibility') as string) || '';
     const allowedRolesRaw = (formData.get('allowedRoles') as string) || '';
     const allowedUserIdsRaw = (formData.get('allowedUserIds') as string) || '';
+    const allowedDepartamentosRaw = (formData.get('allowedDepartamentos') as string) || '';
     const allowedRolesArr = allowedRolesRaw ? allowedRolesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
     const allowedUserIdsArr = allowedUserIdsRaw ? allowedUserIdsRaw.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n)) : [];
+    const allowedDepartamentosArr = allowedDepartamentosRaw ? allowedDepartamentosRaw.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n)) : [];
     const visUpper = visibilityRaw ? String(visibilityRaw).toUpperCase() : undefined;
-    const visNormalized = visUpper && ['PUBLIC', 'ROLES', 'USERS'].includes(visUpper)
-      ? (visUpper as 'PUBLIC' | 'ROLES' | 'USERS')
+    const visNormalized = visUpper && ['PUBLIC', 'ROLES', 'USERS', 'DEPARTAMENTOS', 'NONE'].includes(visUpper)
+      ? (visUpper as 'PUBLIC' | 'ROLES' | 'USERS' | 'DEPARTAMENTOS' | 'NONE')
       : undefined;
+    const { select, acl } = await getEmpresaDocumentoQueryConfig();
+    const aclRequested =
+      (visNormalized && visNormalized !== 'PUBLIC') ||
+      allowedRolesArr.length > 0 ||
+      allowedUserIdsArr.length > 0 ||
+      allowedDepartamentosArr.length > 0;
+
+    if (aclRequested && !hasEmpresaDocumentoAclStorage(acl)) {
+      return NextResponse.json(
+        { error: 'O banco atual ainda nao suporta permissoes por documento da empresa. Execute as migrations pendentes.' },
+        { status: 409 }
+      );
+    }
 
     // Garantir que uploader esteja incluido quando visibility=USERS
     if (visNormalized === 'USERS' && !allowedUserIdsArr.includes(user.id)) {
@@ -133,8 +177,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // Upload para Supabase
     const { url, path } = await uploadFile(file, `empresas/${empresaId}`);
 
-    const documento = await prisma.empresaDocumento.create({
-      data: {
+    const documento = await createEmpresaDocumentoCompat(
+      prisma,
+      {
         empresaId,
         nome: file.name,
         tipo,
@@ -145,18 +190,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         uploadPorId: user.id,
         validadeAte: validadeAte || null,
         alertarDiasAntes: alertarDiasAntes ?? 30,
-        ...(visNormalized && { visibility: visNormalized as any }),
-        ...(allowedRolesArr.length > 0 && { allowedRoles: allowedRolesArr }),
-        ...(allowedUserIdsArr.length > 0 && { allowedUserIds: allowedUserIdsArr }),
+        ...(acl.visibility && visNormalized && { visibility: visNormalized as any }),
+        ...(acl.allowedRoles && allowedRolesArr.length > 0 && { allowedRoles: allowedRolesArr }),
+        ...(acl.allowedUserIds && allowedUserIdsArr.length > 0 && { allowedUserIds: allowedUserIdsArr }),
+        ...(acl.allowedDepartamentos && allowedDepartamentosArr.length > 0 && { allowedDepartamentos: allowedDepartamentosArr }),
       },
-    });
+      select
+    );
 
     const { status, dias } = calcularStatusValidade(
       (documento as any).validadeAte,
       (documento as any).alertarDiasAntes
     );
 
-    // Log de auditoria para anexação de documento
+    // Log de auditoria para anexaÃ§Ã£o de documento
     await registrarLog({
       usuarioId: user.id as number,
       acao: 'ANEXAR',
@@ -174,3 +221,4 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: e.message || 'Erro ao fazer upload' }, { status: 500 });
   }
 }
+

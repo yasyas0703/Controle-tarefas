@@ -38,6 +38,9 @@ import ModalLixeira from '@/app/components/modals/ModalLixeira';
 import ModalMotivoExclusao from '@/app/components/modals/ModalMotivoExclusao';
 import ModalInterligar from '@/app/components/modals/ModalInterligar';
 import ModalImportarPlanilha from '@/app/components/modals/ModalImportarPlanilha';
+import ModalPainelControle from '@/app/components/modals/ModalPainelControle';
+import TelaManutencao from '@/app/components/TelaManutencao';
+import { GHOST_USER_EMAIL, MASTER_USER_EMAIL } from '@/app/utils/constants';
 import PainelLogs from '@/app/components/PainelLogs';
 import BackupRestore, { executarAutoBackupSeNecessario, getBackupConfig, deveExecutarAutoBackup } from '@/app/components/BackupRestore';
 import SecaoFavoritos from '@/app/components/sections/SecaoFavoritos';
@@ -93,6 +96,10 @@ export default function Home() {
     setShowPreviewDocumento,
     showLixeira,
     setShowLixeira,
+    showPainelControle,
+    setShowPainelControle,
+    modoManutencao,
+    setModoManutencao,
     excluirProcesso,
     avancarParaProximoDepartamento,
     voltarParaDepartamentoAnterior,
@@ -121,6 +128,36 @@ export default function Home() {
   // Estado do modal de atividade
   const [showAtividade, setShowAtividade] = useState(false);
 
+  // Verificação periódica de modo manutenção (tempo real)
+  const isSuperUser = useMemo(() => {
+    if (!usuarioLogado) return false;
+    return (usuarioLogado as any).isGhost === true ||
+           usuarioLogado.email === GHOST_USER_EMAIL ||
+           usuarioLogado.email === MASTER_USER_EMAIL;
+  }, [usuarioLogado]);
+
+  const isAdminLike = useMemo(() => {
+    const role = String(usuarioLogado?.role || '').toLowerCase();
+    return role === 'admin' || role === 'admin_departamento';
+  }, [usuarioLogado?.role]);
+
+  useEffect(() => {
+    if (!usuarioLogado) return;
+    // Checar manutenção a cada 10 segundos
+    const checkManutencao = async () => {
+      try {
+        const res = await fetch('/api/admin/manutencao');
+        if (res.ok) {
+          const data = await res.json();
+          setModoManutencao(data.ativo || false);
+        }
+      } catch { /* silent */ }
+    };
+    checkManutencao();
+    const interval = setInterval(checkManutencao, 10000);
+    return () => clearInterval(interval);
+  }, [usuarioLogado, setModoManutencao]);
+
   // Estado do modal de importação CSV
   const [showImportarPlanilha, setShowImportarPlanilha] = useState(false);
 
@@ -133,63 +170,82 @@ export default function Home() {
   // Estado do modal de edição de template/atividade
   const [templateParaEditar, setTemplateParaEditar] = useState<any>(null);
 
-  // Helper: finalizar processo com prompt de interligação
+  // Helper: finalizar processo com interligação
+  // Se já houver interligação definida no processo, cria a continuação automaticamente.
   const handleFinalizarComInterligar = useCallback(async (processoId: number) => {
     try {
       const result = await finalizarProcesso(processoId);
       if (result && result.finalizado) {
-        // Se já tem interligação definida, criar automaticamente a próxima solicitação
-        if (result.interligadoComId) {
-          const templateOrigem = (templates || []).find(t => t.id === result.interligadoComId);
-          if (templateOrigem) {
-            // Auto-criar a próxima solicitação usando o template interligado
-            // O processo já foi finalizado, então criamos o novo com referência ao anterior
-            const processoOrigem = processos.find(p => p.id === processoId);
-            if (processoOrigem) {
+        const processoOrigem = processos.find((p) => p.id === result.processoId);
+        const templateAutomatico = result.interligadoComId
+          ? (templates || []).find((t) => Number(t.id) === Number(result.interligadoComId))
+          : null;
+
+        if (templateAutomatico) {
+          try {
+            const fluxo = (() => {
+              const v: any = (templateAutomatico as any).fluxoDepartamentos ?? (templateAutomatico as any).fluxo_departamentos;
+              if (Array.isArray(v)) return v.map(Number);
               try {
-                const fluxo = (() => {
-                  const v: any = (templateOrigem as any).fluxoDepartamentos ?? (templateOrigem as any).fluxo_departamentos;
-                  if (Array.isArray(v)) return v.map(Number);
-                  try { const p = JSON.parse(v as any); return Array.isArray(p) ? p.map(Number) : []; } catch { return []; }
-                })();
-                const qpd = (() => {
-                  const v: any = (templateOrigem as any).questionariosPorDepartamento ?? (templateOrigem as any).questionarios_por_departamento;
-                  if (v && typeof v === 'object' && !Array.isArray(v)) return v;
-                  try { const p = JSON.parse(v as any); return p && typeof p === 'object' ? p : {}; } catch { return {}; }
-                })();
-                await criarProcesso({
-                  nome: templateOrigem.nome,
-                  nomeServico: templateOrigem.nome,
-                  nomeEmpresa: processoOrigem.nomeEmpresa || processoOrigem.nome,
-                  empresa: processoOrigem.nomeEmpresa || processoOrigem.nome,
-                  empresaId: (processoOrigem as any).empresaId,
-                  fluxoDepartamentos: fluxo,
-                  departamentoAtual: fluxo[0],
-                  departamentoAtualIndex: 0,
-                  questionariosPorDepartamento: qpd as any,
-                  personalizado: false,
-                  templateId: templateOrigem.id,
-                  criadoPor: usuarioLogado?.nome,
-                  descricao: `Solicitação interligada (continuação de #${processoId})`,
-                  interligadoComId: processoId,
-                  interligadoNome: result.processoNome,
-                  ...(result.interligadoParalelo ? { deptIndependente: true } : {}),
-                } as any);
-                void mostrarAlerta?.('Interligação automática', `A solicitação "${templateOrigem.nome}" foi criada automaticamente como continuação.`, 'sucesso');
-              } catch (err: any) {
-                console.error('Erro ao criar solicitação interligada:', err);
+                const p = JSON.parse(v as any);
+                return Array.isArray(p) ? p.map(Number) : [];
+              } catch {
+                return [];
               }
+            })();
+            const qpd = (() => {
+              const v: any = (templateAutomatico as any).questionariosPorDepartamento ?? (templateAutomatico as any).questionarios_por_departamento;
+              if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+              try {
+                const p = JSON.parse(v as any);
+                return p && typeof p === 'object' ? p : {};
+              } catch {
+                return {};
+              }
+            })();
+
+            if (!Array.isArray(fluxo) || fluxo.length === 0) {
+              throw new Error('Template interligado sem fluxo de departamentos válido');
             }
+
+            await criarProcesso({
+              nome: templateAutomatico.nome,
+              nomeServico: templateAutomatico.nome,
+              nomeEmpresa: processoOrigem?.nomeEmpresa || processoOrigem?.nome || 'Empresa',
+              empresa: processoOrigem?.nomeEmpresa || processoOrigem?.nome || 'Empresa',
+              empresaId: (processoOrigem as any)?.empresaId,
+              fluxoDepartamentos: fluxo,
+              departamentoAtual: fluxo[0],
+              departamentoAtualIndex: 0,
+              questionariosPorDepartamento: qpd as any,
+              personalizado: false,
+              templateId: templateAutomatico.id,
+              criadoPor: usuarioLogado?.nome,
+              descricao: `Solicitação interligada (continuação de #${result.processoId})`,
+              ...(result.interligadoParalelo ? { deptIndependente: true } : {}),
+            } as any);
+
+            void mostrarAlerta?.(
+              'Interligação automática',
+              `A solicitação "${templateAutomatico.nome}" foi criada automaticamente após finalizar o processo #${result.processoId}.`,
+              'sucesso'
+            );
+            return;
+          } catch (err: any) {
+            void mostrarAlerta?.(
+              'Erro na interligação automática',
+              err?.message || 'Não foi possível criar a continuação automática. Você pode interligar manualmente.',
+              'erro'
+            );
           }
-        } else {
-          // Não tinha interligação definida → perguntar se quer interligar
-          setInterligarInfo({ processoId: result.processoId, processoNome: result.processoNome });
         }
+
+        setInterligarInfo({ processoId: result.processoId, processoNome: result.processoNome });
       }
     } catch {
       // Erro já tratado dentro de finalizarProcesso
     }
-  }, [finalizarProcesso, templates, processos, criarProcesso, usuarioLogado, mostrarAlerta]);
+  }, [finalizarProcesso, processos, templates, criarProcesso, usuarioLogado?.nome, mostrarAlerta]);
 
   // ─── Atalhos de Teclado ⌨️ ────────────────────────────────────
   useKeyboardShortcuts({
@@ -269,8 +325,7 @@ export default function Home() {
   // Auto-backup: executa ao abrir o app se o prazo já passou (apenas admin)
   useEffect(() => {
     if (!usuarioLogado) return;
-    const role = (usuarioLogado.role as string)?.toLowerCase();
-    if (role !== 'admin') return;
+    if (!isAdminLike) return;
     const config = getBackupConfig();
     if (!config.ativo || !deveExecutarAutoBackup(config)) return;
     // Pequeno delay para garantir que o app carregou completamente
@@ -278,7 +333,7 @@ export default function Home() {
       executarAutoBackupSeNecessario();
     }, 3000);
     return () => clearTimeout(timer);
-  }, [usuarioLogado]);
+  }, [usuarioLogado, isAdminLike]);
 
   // Função para alternar favorito
   const handleToggleFavorito = async (processoId: number) => {
@@ -458,6 +513,11 @@ export default function Home() {
     return <ModalLogin onLogin={handleLogin} />;
   }
 
+  // Mostrar tela de manutenção para não-super users
+  if (modoManutencao && !isSuperUser) {
+    return <TelaManutencao />;
+  }
+
   return (
     <div className="min-h-screen bg-[var(--bg)] transition-colors">
       <Header
@@ -539,8 +599,8 @@ export default function Home() {
               <span className="hidden sm:inline">Departamentos</span>
               <span className="sm:hidden">🏢</span>
             </button>
-            {/* Aba Logs - apenas admin */}
-            {usuarioLogado?.role === 'admin' && (
+            {/* Aba Logs - apenas admin/admin_departamento */}
+            {isAdminLike && (
               <button
                 onClick={() => setAbaAtiva('logs')}
                 className={`
@@ -555,8 +615,8 @@ export default function Home() {
                 <span className="sm:hidden">📋</span>
               </button>
             )}
-            {/* Aba Backup - apenas admin */}
-            {usuarioLogado?.role === 'admin' && (
+            {/* Aba Backup - apenas admin/admin_departamento */}
+            {isAdminLike && (
               <button
                 onClick={() => setAbaAtiva('backup')}
                 className={`
@@ -596,8 +656,8 @@ export default function Home() {
               </p>
             </div>
             <div className="flex flex-wrap lg:flex-nowrap gap-2 w-full lg:w-auto lg:justify-end">
-              {/* Botão Cadastrar Empresa - apenas admin */}
-              {usuarioLogado?.role === 'admin' && (
+              {/* Botão Cadastrar Empresa - apenas admin/admin_departamento */}
+              {isAdminLike && (
                 <button
                   onClick={() => setShowCadastrarEmpresa(true)}
                   className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2 sm:px-6 sm:py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl flex items-center justify-center gap-2 whitespace-nowrap"
@@ -625,8 +685,8 @@ export default function Home() {
                   Empresas Novas ({empresasNovasCount})
                 </span>
               </button>
-              {/* Botão Criar Departamento - apenas admin */}
-              {usuarioLogado?.role === 'admin' && (
+              {/* Botão Criar Departamento - apenas admin/admin_departamento */}
+              {isAdminLike && (
                 <button
                   onClick={() => setShowCriarDepartamento(true)}
                   className="w-full sm:w-auto bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2 sm:px-6 sm:py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl whitespace-nowrap"
@@ -690,7 +750,7 @@ export default function Home() {
           }
           onDocumentos={(processo, options) => {
             if (options?.abrirGaleria) {
-              const docs = (processo.documentos || []).length;
+              const docs = (processo.documentos || []).length || Number((processo as any)?._count?.documentos || 0);
               if (docs > 0) {
                 const nomeEmpresa = (() => {
                   const nome = (processo as any).nomeEmpresa;
@@ -878,6 +938,23 @@ export default function Home() {
           templates={(templates || []).map(t => ({ id: t.id, nome: t.nome, descricao: t.descricao }))}
           onClose={() => setInterligarInfo(null)}
           onPular={() => setInterligarInfo(null)}
+          onCancelar={async () => {
+            // Undo finalization: revert process back to em_andamento
+            try {
+              await api.atualizarProcesso(interligarInfo.processoId, {
+                status: 'EM_ANDAMENTO',
+                dataFinalizacao: null,
+                progresso: undefined, // leave progress as-is or API handles it
+              });
+              // Refresh local state
+              const processoAtualizado = await api.getProcesso(interligarInfo.processoId);
+              setProcessos((prev: any[]) => prev.map((p: any) => p.id === interligarInfo.processoId ? processoAtualizado : p));
+              void mostrarAlerta?.('Finalização cancelada', `O processo #${interligarInfo.processoId} voltou para "Em andamento".`, 'info');
+            } catch (err: any) {
+              void mostrarAlerta?.('Erro', err.message || 'Erro ao desfazer finalização', 'erro');
+            }
+            setInterligarInfo(null);
+          }}
           onConfirmar={async (templateId, deptIndependente, interligarComId, interligarParalelo) => {
             const template = (templates || []).find(t => t.id === templateId);
             if (!template) return;
@@ -893,8 +970,8 @@ export default function Home() {
                 if (v && typeof v === 'object' && !Array.isArray(v)) return v;
                 try { const p = JSON.parse(v as any); return p && typeof p === 'object' ? p : {}; } catch { return {}; }
               })();
-              // Se o usuário escolheu interligar a continuação com outra atividade, usar template ID
-              // Caso contrário, apenas referenciar o processo original
+              // Se o usuario escolheu interligar a continuacao com outra atividade, usar template ID
+              // Caso contrario, apenas referenciar o processo original
               const templateInterligar = interligarComId ? (templates || []).find(t => t.id === interligarComId) : null;
               await criarProcesso({
                 nome: template.nome,
@@ -920,8 +997,8 @@ export default function Home() {
               void mostrarAlerta?.('Interligação realizada', `A solicitação "${template.nome}" foi criada como continuação de #${interligarInfo.processoId}.`, 'sucesso');
             } catch (err: any) {
               void mostrarAlerta?.('Erro', err.message || 'Erro ao criar solicitação interligada', 'erro');
+              throw err;
             }
-            setInterligarInfo(null);
           }}
         />
       )}
@@ -1058,7 +1135,21 @@ export default function Home() {
               });
             }}
             onDocumentos={() => {
-              setShowUploadDocumento(showProcessoDetalhado);
+              if (showProcessoDetalhado.status === 'finalizado') {
+                const nomeEmpresa = (() => {
+                  const nome = (showProcessoDetalhado as any).nomeEmpresa;
+                  if (typeof nome === 'string' && nome.trim()) return nome;
+                  const empresa = (showProcessoDetalhado as any).empresa;
+                  if (typeof empresa === 'string' && empresa.trim()) return empresa;
+                  if (empresa && typeof empresa === 'object') {
+                    return (empresa as any).razao_social || (empresa as any).apelido || (empresa as any).codigo || 'Processo';
+                  }
+                  return 'Processo';
+                })();
+                setShowGaleria({ processoId: showProcessoDetalhado.id, titulo: `Documentos - ${nomeEmpresa}` });
+              } else {
+                setShowUploadDocumento(showProcessoDetalhado);
+              }
             }}
             onAvancar={() => {
               avancarParaProximoDepartamento(showProcessoDetalhado.id);
@@ -1119,6 +1210,10 @@ export default function Home() {
         />
       )}
 
+      {/* Painel de Controle (ghost only) */}
+      {showPainelControle && (
+        <ModalPainelControle onClose={() => setShowPainelControle(false)} />
+      )}
     </div>
   );
 }

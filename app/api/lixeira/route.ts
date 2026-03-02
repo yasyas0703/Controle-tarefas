@@ -37,7 +37,7 @@ function usuarioPodeVerItem(item: any, userId: number, userRole: string): boolea
   if (item.deletadoPorId === userId) return true;
 
   // Admin sempre pode ver
-  if (userRole === 'ADMIN') return true;
+  if (userRole === 'ADMIN' || userRole === 'ADMIN_DEPARTAMENTO') return true;
 
   // Verificação de visibilidade original
   if (vis === 'PUBLIC') return true;
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     const userRole = String((user as any).role || '').toUpperCase();
     
     // Apenas admin pode forçar limpeza
-    if (userRole !== 'ADMIN') {
+    if (userRole !== 'ADMIN' && userRole !== 'ADMIN_DEPARTAMENTO') {
       return jsonBigInt({ error: 'Sem permissão para esta ação' }, { status: 403 });
     }
 
@@ -140,7 +140,7 @@ export async function DELETE(request: NextRequest) {
     const userRole = String((user as any).role || '').toUpperCase();
     
     // Apenas admin pode esvaziar toda a lixeira
-    if (userRole !== 'ADMIN') {
+    if (userRole !== 'ADMIN' && userRole !== 'ADMIN_DEPARTAMENTO') {
       return jsonBigInt({ error: 'Sem permissão para esvaziar lixeira' }, { status: 403 });
     }
 

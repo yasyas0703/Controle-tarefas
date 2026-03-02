@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { Departamento, Processo, Tag, Usuario, Notificacao, Empresa, Template } from '@/app/types';
@@ -55,7 +55,7 @@ interface SistemaContextType {
   showSelecionarTemplate: boolean;
   showLixeira: boolean;
 
-  // Funções
+  // FunÃ§Ãµes
   setProcessos: React.Dispatch<React.SetStateAction<Processo[]>>;
   setEmpresas: React.Dispatch<React.SetStateAction<Empresa[]>>;
   setTemplates: React.Dispatch<React.SetStateAction<Template[]>>;
@@ -84,6 +84,10 @@ interface SistemaContextType {
   setShowQuestionarioSolicitacao: (show: any) => void;
   setShowSelecionarTemplate: (show: boolean) => void;
   setShowLixeira: (show: boolean) => void;
+  showPainelControle: boolean;
+  setShowPainelControle: (show: boolean) => void;
+  modoManutencao: boolean;
+  setModoManutencao: (v: boolean) => void;
 
   adicionarNotificacao: (mensagem: string, tipo: 'sucesso' | 'erro' | 'info') => void;
   removerNotificacao: (id: number) => void;
@@ -120,7 +124,7 @@ interface SistemaContextType {
   aplicarTagsProcesso: (processoId: number, tags: number[]) => Promise<void>;
   adicionarComentarioProcesso: (processoId: number, texto: string, mencoes?: string[]) => Promise<void>;
   voltarParaDepartamentoAnterior: (processoId: number) => Promise<void>;
-  adicionarDocumentoProcesso: (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number, meta?: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[] }) => Promise<any>;
+  adicionarDocumentoProcesso: (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number, meta?: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[]; allowedDepartamentos?: number[] }) => Promise<any>;
   inicializandoUsuario: boolean;
 }
 
@@ -145,8 +149,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   const [tags, setTags] = useState<Tag[]>([
     { id: 1, nome: 'Urgente', cor: 'bg-red-500', texto: 'text-white' },
     { id: 2, nome: 'Aguardando Cliente', cor: 'bg-yellow-500', texto: 'text-white' },
-    { id: 3, nome: 'Revisão', cor: 'bg-purple-500', texto: 'text-white' },
-    { id: 4, nome: 'Documentação Pendente', cor: 'bg-orange-500', texto: 'text-white' },
+    { id: 3, nome: 'RevisÃ£o', cor: 'bg-purple-500', texto: 'text-white' },
+    { id: 4, nome: 'DocumentaÃ§Ã£o Pendente', cor: 'bg-orange-500', texto: 'text-white' },
   ]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
@@ -200,6 +204,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   const [showQuestionarioSolicitacao, setShowQuestionarioSolicitacao] = useState<any>(null);
   const [showSelecionarTemplate, setShowSelecionarTemplate] = useState(false);
   const [showLixeira, setShowLixeira] = useState(false);
+  const [showPainelControle, setShowPainelControle] = useState(false);
+  const [modoManutencao, setModoManutencao] = useState(false);
 
   const mostrarAlerta = useCallback(
     (titulo: string, mensagem: string, tipo: TipoAlerta = 'info') => {
@@ -249,7 +255,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  // Funções de notificação
+  // FunÃ§Ãµes de notificaÃ§Ã£o
   const adicionarNotificacao = useCallback((mensagem: string, tipo: 'sucesso' | 'erro' | 'info') => {
     const novaNotificacao: Notificacao = {
       id: Date.now(),
@@ -264,7 +270,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
   const ativarNotificacoesNavegador = useCallback(async () => {
     if (typeof window === 'undefined' || typeof Notification === 'undefined') {
-      adicionarNotificacao('Seu navegador não suporta notificações', 'erro');
+      adicionarNotificacao('Seu navegador nÃ£o suporta notificaÃ§Ãµes', 'erro');
       return false;
     }
 
@@ -279,7 +285,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (Notification.permission === 'denied') {
-      adicionarNotificacao('Notificações bloqueadas no navegador. Libere nas permissões do site.', 'erro');
+      adicionarNotificacao('NotificaÃ§Ãµes bloqueadas no navegador. Libere nas permissÃµes do site.', 'erro');
       return false;
     }
 
@@ -292,7 +298,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     }
     setNotificacoesNavegadorAtivas(ok);
     if (!ok) {
-      adicionarNotificacao('Permissão de notificação não concedida', 'info');
+      adicionarNotificacao('PermissÃ£o de notificaÃ§Ã£o nÃ£o concedida', 'info');
     }
     return ok;
   }, [adicionarNotificacao]);
@@ -301,7 +307,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     notificacoesRef.current = notificacoes;
   }, [notificacoes]);
 
-  // DEBUG: expõe `processos` no window para inspeção rápida durante desenvolvimento
+  // DEBUG: expÃµe `processos` no window para inspeÃ§Ã£o rÃ¡pida durante desenvolvimento
   useEffect(() => {
     if (process.env.NODE_ENV !== 'production') {
       try {
@@ -314,13 +320,13 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   const removerNotificacao = useCallback((id: number) => {
     const notif = notificacoes.find(n => n.id === id);
 
-    // Se for local, só remove do estado
+    // Se for local, sÃ³ remove do estado
     if (!notif || notif.origem === 'local') {
       setNotificacoes(prev => prev.filter(n => n.id !== id));
       return;
     }
 
-    // Se for do banco, apaga no backend e só então remove do estado.
+    // Se for do banco, apaga no backend e sÃ³ entÃ£o remove do estado.
     // (Se falhar, mantemos no UI e avisamos.)
     api
       .excluirNotificacao(id)
@@ -328,8 +334,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         setNotificacoes(prev => prev.filter(n => n.id !== id));
       })
       .catch((error: any) => {
-        console.error('Erro ao excluir notificação:', error);
-        adicionarNotificacao(error?.message || 'Erro ao excluir notificação', 'erro');
+        console.error('Erro ao excluir notificaÃ§Ã£o:', error);
+        adicionarNotificacao(error?.message || 'Erro ao excluir notificaÃ§Ã£o', 'erro');
       });
   }, [notificacoes, adicionarNotificacao]);
 
@@ -369,10 +375,10 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     async (id: number) => {
       const notif = notificacoes.find(n => n.id === id);
 
-      // Sempre refletir no UI, mesmo se for notificação local
+      // Sempre refletir no UI, mesmo se for notificaÃ§Ã£o local
       setNotificacoes(prev => prev.map(n => (n.id === id ? { ...n, lida: true } : n)));
 
-      // Notificação local não existe no banco
+      // NotificaÃ§Ã£o local nÃ£o existe no banco
       if (!notif || notif.origem === 'local') return;
 
       try {
@@ -410,11 +416,11 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       } catch {
         // Se nem recarregar der, deixa tudo como lido no UI
       }
-      throw new Error('Erro ao marcar algumas notificações como lidas');
+      throw new Error('Erro ao marcar algumas notificaÃ§Ãµes como lidas');
     }
   }, [notificacoes]);
 
-  // Carregar dados do back-end quando usuário estiver logado
+  // Carregar dados do back-end quando usuÃ¡rio estiver logado
   useEffect(() => {
     if (!usuarioLogado) return;
 
@@ -443,7 +449,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           setProcessos(processosRes.value || []);
         }
 
-        // Carrega notificações sem bloquear a tela
+        // Carrega notificaÃ§Ãµes sem bloquear a tela
         void (async () => {
           try {
             const notificacoesData = await api.getNotificacoes();
@@ -455,13 +461,13 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
             });
           } catch (error) {
             if (cancelled) return;
-            console.error('Erro ao carregar notificações:', error);
-            // Mantém locais, mas não zera tudo
+            console.error('Erro ao carregar notificaÃ§Ãµes:', error);
+            // MantÃ©m locais, mas nÃ£o zera tudo
             setNotificacoes(prev => prev.filter(n => n.origem === 'local'));
           }
         })();
 
-        // Carrega itens mais pesados depois (não bloqueia o primeiro render)
+        // Carrega itens mais pesados depois (nÃ£o bloqueia o primeiro render)
         void (async () => {
           const [empresasRes, templatesRes] = await Promise.allSettled([
             api.getEmpresas(),
@@ -473,7 +479,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           if (empresasRes.status === 'fulfilled') {
             if (process.env.NODE_ENV !== 'production') {
               try {
-                console.log('📊 Empresas carregadas:', empresasRes.value?.length || 0);
+                console.log('ðŸ“Š Empresas carregadas:', empresasRes.value?.length || 0);
               } catch {
                 // ignore
               }
@@ -486,9 +492,9 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           }
         })();
 
-        // Carrega lista de usuários em background para perfis que gerenciam anexos
-        // (antes era somente `admin` — agora também carregamos para `gerente`)
-        if (usuarioLogado && (usuarioLogado.role === 'admin' || usuarioLogado.role === 'gerente')) {
+        // Carrega lista de usuÃ¡rios em background para todos os perfis logados
+        // (necessÃ¡rio para permissÃµes de documentos, menÃ§Ãµes em comentÃ¡rios, etc.)
+        if (usuarioLogado) {
           void (async () => {
             const usuariosRes = await Promise.allSettled([api.getUsuarios()]);
             if (cancelled) return;
@@ -508,7 +514,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     };
   }, [usuarioLogado]);
 
-  // Tenta restaurar sessão do usuário a partir do cookie httpOnly
+  // Tenta restaurar sessÃ£o do usuÃ¡rio a partir do cookie httpOnly
   useEffect(() => {
     (async () => {
       try {
@@ -521,7 +527,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
             setUsuarioLogado(normalized);
           }
         } catch (err) {
-          // Cookie inválido/expirado — sessão não existe
+          // Cookie invÃ¡lido/expirado â€” sessÃ£o nÃ£o existe
         }
       } finally {
         setInicializandoUsuario(false);
@@ -529,8 +535,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Realtime: quando outro usuário mexer em um card (Processo), atualiza a lista automaticamente.
-  // Implementação intencionalmente simples: ao receber qualquer evento na tabela, faz um refresh via API.
+  // Realtime: quando outro usuÃ¡rio mexer em um card (Processo), atualiza a lista automaticamente.
+  // ImplementaÃ§Ã£o intencionalmente simples: ao receber qualquer evento na tabela, faz um refresh via API.
   // (Podemos evoluir para aplicar patch incremental sem refetch depois.)
   useEffect(() => {
     if (!usuarioLogado) return;
@@ -589,7 +595,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
               const existing = existingMap.get(id);
 
-              // Preserve details (questionários/respostas/documentos) if already present in state
+              // Preserve details (questionÃ¡rios/respostas/documentos) if already present in state
               // Decide se preservamos o objeto existente (com detalhes locais)
               const existingHasDetails = existing && !skipPreserveDetailsRef.current && (
                 (Array.isArray(existing.questionarios) && existing.questionarios.length > 0) ||
@@ -619,7 +625,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           }
         });
       } catch {
-        // silencioso: se falhar momentaneamente, mantém estado atual
+        // silencioso: se falhar momentaneamente, mantÃ©m estado atual
       }
     };
 
@@ -631,7 +637,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       }, 250);
     };
 
-    // Se não há config do Supabase no browser, ativa polling e pronto.
+    // Se nÃ£o hÃ¡ config do Supabase no browser, ativa polling e pronto.
     if (!supabase) {
       startPolling();
       return () => {
@@ -652,13 +658,13 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   // DELETE: remove imediatamente do estado
   if (payload?.eventType === 'DELETE' && payload.old?.id) {
     setProcessos(prev => prev.filter(p => p.id !== payload.old.id));
-    return; // não precisa fazer refresh
+    return; // nÃ£o precisa fazer refresh
   }
   
   // INSERT/UPDATE: faz refresh normal
   scheduleRefresh();
 })
-      // O board também depende de outras tabelas (tags/comentários/histórico).
+      // O board tambÃ©m depende de outras tabelas (tags/comentÃ¡rios/histÃ³rico).
       // Ao mudar qualquer uma delas, fazemos refresh da lista.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'HistoricoFluxo' }, () => scheduleRefresh())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'HistoricoEvento' }, () => scheduleRefresh())
@@ -677,8 +683,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
             console.log('[realtime] Documento change', payload?.eventType, payload);
           } catch {}
         }
-        // Quando documentos mudam, não preservamos o array `documentos` existente
-        // para evitar manter itens já removidos localmente. Força refresh completo.
+        // Quando documentos mudam, nÃ£o preservamos o array `documentos` existente
+        // para evitar manter itens jÃ¡ removidos localmente. ForÃ§a refresh completo.
         skipPreserveDetailsRef.current = true;
         scheduleRefresh();
       })
@@ -708,7 +714,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-    // Se em alguns segundos não conectar, habilita polling como fallback.
+    // Se em alguns segundos nÃ£o conectar, habilita polling como fallback.
     const fallbackTimer = setTimeout(() => {
       if (processosRealtimeStatusRef.current !== 'subscribed') startPolling();
     }, 5000);
@@ -851,7 +857,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     };
   }, [usuarioLogado, setDepartamentos, setEmpresas, setTags, setTemplates]);
 
-  // Notificações: realtime (Supabase) + fallback polling.
+  // NotificaÃ§Ãµes: realtime (Supabase) + fallback polling.
   useEffect(() => {
     if (!usuarioLogado) {
       setRealtimeInfo(prev => ({ ...prev, notificacoes: 'disabled' }));
@@ -889,7 +895,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
         const normalizadas = normalizarNotificacoesDoBackend(notificacoesData);
 
-        // Detectar novas notificações do banco (ids que ainda não existiam no estado)
+        // Detectar novas notificaÃ§Ãµes do banco (ids que ainda nÃ£o existiam no estado)
         const prevDbIds = new Set(
           notificacoesRef.current
             .filter(n => n.origem === 'db')
@@ -902,12 +908,12 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           return [...normalizadas, ...locais];
         });
 
-        // Notificação do navegador (apenas enquanto o Chrome estiver aberto)
+        // NotificaÃ§Ã£o do navegador (apenas enquanto o Chrome estiver aberto)
         const enabled = notificacoesNavegadorAtivas;
         if (enabled && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           for (const n of novas) {
             try {
-              new Notification('Sistema - Nova notificação', {
+              new Notification('Sistema - Nova notificaÃ§Ã£o', {
                 body: String(n.mensagem ?? ''),
               });
             } catch {
@@ -916,7 +922,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } catch {
-        // Silencioso: não queremos poluir o usuário por erro intermitente
+        // Silencioso: nÃ£o queremos poluir o usuÃ¡rio por erro intermitente
       }
     };
 
@@ -928,7 +934,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       }, 250);
     };
 
-    // roda uma vez rápido
+    // roda uma vez rÃ¡pido
     void tick();
 
     // Sem supabase no browser: polling como fallback.
@@ -992,13 +998,47 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       // noop
     }
   }, [templates]);
-// TESTE TEMPORÁRIO - adicione após o useEffect de processos
-useEffect(() => {
-  const supabase = getSupabaseBrowserClient();
-  console.log('🔍 [DEBUG] Supabase client:', supabase ? 'OK' : 'NULL');
-  console.log('🔍 [DEBUG] SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
-  console.log('🔍 [DEBUG] SUPABASE_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'Definida' : 'Não definida');
-}, []);
+
+  // Check maintenance mode on initial load (before anything else)
+  useEffect(() => {
+    fetch('/api/admin/manutencao')
+      .then(r => r.json())
+      .then(data => {
+        if (data.ativo) setModoManutencao(true);
+        else setModoManutencao(false);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Maintenance mode polling: every 30 seconds, check if maintenance mode changed
+  useEffect(() => {
+    if (!usuarioLogado) return;
+
+    const checkManutencao = async () => {
+      try {
+        const res = await fetch('/api/admin/manutencao');
+        if (res.ok) {
+          const data = await res.json();
+          const isGhostOrMaster =
+            (usuarioLogado as any).isGhost === true ||
+            usuarioLogado.email === 'ghost@triar.com' ||
+            usuarioLogado.email === 'master@triar.com';
+          if (data.ativo && !isGhostOrMaster) {
+            setModoManutencao(true);
+          } else if (!data.ativo) {
+            setModoManutencao(false);
+          }
+        }
+      } catch {
+        // silent
+      }
+    };
+
+    // Run immediately on login
+    checkManutencao();
+    const interval = setInterval(checkManutencao, 30000);
+    return () => clearInterval(interval);
+  }, [usuarioLogado, setModoManutencao]);
   const criarEmpresa = useCallback(async (dados: Partial<Empresa>) => {
     try {
       const nova = await api.salvarEmpresa(dados);
@@ -1021,18 +1061,18 @@ useEffect(() => {
 
       // Log detalhado campo a campo
       const LABELS_EMPRESA: Record<string, string> = {
-        razao_social: 'Razão Social', apelido: 'Nome Fantasia', cnpj: 'CNPJ', codigo: 'Código',
-        inscricao_estadual: 'Inscrição Estadual', inscricao_municipal: 'Inscrição Municipal',
+        razao_social: 'RazÃ£o Social', apelido: 'Nome Fantasia', cnpj: 'CNPJ', codigo: 'CÃ³digo',
+        inscricao_estadual: 'InscriÃ§Ã£o Estadual', inscricao_municipal: 'InscriÃ§Ã£o Municipal',
         regime_federal: 'Regime Federal', regime_estadual: 'Regime Estadual', regime_municipal: 'Regime Municipal',
         estado: 'Estado', cidade: 'Cidade', bairro: 'Bairro', logradouro: 'Logradouro',
-        numero: 'Número', cep: 'CEP', email: 'Email', telefone: 'Telefone', data_abertura: 'Data Abertura',
+        numero: 'NÃºmero', cep: 'CEP', email: 'Email', telefone: 'Telefone', data_abertura: 'Data Abertura',
       };
       const camposAlterados: string[] = [];
       for (const [campo, valorNovo] of Object.entries(dados)) {
         const valorAnterior = empresaAnterior ? String((empresaAnterior as any)[campo] ?? '') : '';
         const valorNovoStr = String(valorNovo ?? '');
         if (valorAnterior !== valorNovoStr) {
-          camposAlterados.push(`${LABELS_EMPRESA[campo] || campo}: "${valorAnterior || '(vazio)'}" → "${valorNovoStr || '(vazio)'}"`);
+          camposAlterados.push(`${LABELS_EMPRESA[campo] || campo}: "${valorAnterior || '(vazio)'}" â†’ "${valorNovoStr || '(vazio)'}"`);
           api.registrarLog?.({
             acao: 'EDITAR', entidade: 'EMPRESA', entidadeId: empresaId,
             entidadeNome: empresaAnterior?.razao_social || atualizada?.razao_social,
@@ -1057,13 +1097,13 @@ useEffect(() => {
     try {
       await api.excluirEmpresa(empresaId);
       setEmpresas(prev => prev.filter(e => e.id !== empresaId));
-      adicionarNotificacao('Empresa excluída com sucesso', 'sucesso');
+      adicionarNotificacao('Empresa excluÃ­da com sucesso', 'sucesso');
       const empresaExcluida = empresas.find(e => e.id === empresaId);
       api.registrarLog?.({
         acao: 'EXCLUIR', entidade: 'EMPRESA', entidadeId: empresaId,
         entidadeNome: empresaExcluida?.razao_social,
         empresaId: empresaId,
-        detalhes: `Empresa excluída: "${empresaExcluida?.razao_social || '#' + empresaId}"${empresaExcluida?.cnpj ? ' | CNPJ: ' + empresaExcluida.cnpj : ''}`,
+        detalhes: `Empresa excluÃ­da: "${empresaExcluida?.razao_social || '#' + empresaId}"${empresaExcluida?.cnpj ? ' | CNPJ: ' + empresaExcluida.cnpj : ''}`,
       });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao excluir empresa', 'erro');
@@ -1110,12 +1150,12 @@ useEffect(() => {
     try {
       await api.excluirTemplate(templateId);
       setTemplates(prev => prev.filter(t => t.id !== templateId));
-      adicionarNotificacao('Template excluído com sucesso', 'sucesso');
+      adicionarNotificacao('Template excluÃ­do com sucesso', 'sucesso');
       const templateExcluido = templates.find(t => t.id === templateId);
       api.registrarLog?.({
         acao: 'EXCLUIR', entidade: 'TEMPLATE', entidadeId: templateId,
         entidadeNome: templateExcluido?.nome,
-        detalhes: `Template excluído: "${templateExcluido?.nome || '#' + templateId}"`,
+        detalhes: `Template excluÃ­do: "${templateExcluido?.nome || '#' + templateId}"`,
       });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao excluir template', 'erro');
@@ -1132,13 +1172,13 @@ useEffect(() => {
 
       // Log detalhado campo a campo
       const LABELS_PROCESSO: Record<string, string> = {
-        nomeEmpresa: 'Nome Empresa', nomeServico: 'Nome Serviço', nome: 'Nome',
+        nomeEmpresa: 'Nome Empresa', nomeServico: 'Nome ServiÃ§o', nome: 'Nome',
         cliente: 'Cliente', email: 'Email', telefone: 'Telefone',
-        status: 'Status', prioridade: 'Prioridade', descricao: 'Descrição',
-        notasCriador: 'Notas do Criador', responsavelId: 'Responsável',
+        status: 'Status', prioridade: 'Prioridade', descricao: 'DescriÃ§Ã£o',
+        notasCriador: 'Notas do Criador', responsavelId: 'ResponsÃ¡vel',
         departamentoAtual: 'Departamento Atual', dataEntrega: 'Data de Entrega',
         progresso: 'Progresso', empresaId: 'Empresa',
-        interligadoComId: 'Interligado com', interligadoNome: 'Nome Interligação',
+        interligadoComId: 'Interligado com', interligadoNome: 'Nome InterligaÃ§Ã£o',
         deptIndependente: 'Departamentos Independentes',
       };
       const camposIgnorar = ['questionariosPorDepartamento', 'fluxoDepartamentos', 'dataAtualizacao', 'dataFinalizacao'];
@@ -1165,7 +1205,7 @@ useEffect(() => {
             if (deptAnt) displayAnterior = deptAnt.nome;
             if (deptNovo) displayNovo = deptNovo.nome;
           }
-          camposAlterados.push(`${label}: "${displayAnterior}" → "${displayNovo}"`);
+          camposAlterados.push(`${label}: "${displayAnterior}" â†’ "${displayNovo}"`);
           api.registrarLog?.({
             acao: 'EDITAR', entidade: 'PROCESSO', entidadeId: processoId,
             entidadeNome: processoAnterior?.nomeEmpresa || processoAnterior?.nome || atualizado?.nomeEmpresa,
@@ -1226,14 +1266,14 @@ useEffect(() => {
           deptIndependente: (dados as any).deptIndependente,
         });
 
-        // UI otimista: insere imediatamente (não bloqueia a experiência)
+        // UI otimista: insere imediatamente (nÃ£o bloqueia a experiÃªncia)
         setProcessos(prev => {
           const arr = Array.isArray(prev) ? prev : [];
           if (arr.some(p => p.id === novo.id)) return arr;
           return [novo, ...arr];
         });
 
-        // Refresh em background (não aguarda) para sincronizar com o backend
+        // Refresh em background (nÃ£o aguarda) para sincronizar com o backend
         void (async () => {
           try {
             const processosData = await api.getProcessos();
@@ -1263,7 +1303,7 @@ useEffect(() => {
     try {
       await api.excluirProcesso(processoId, motivoExclusao, motivoExclusaoCustom);
       setProcessos(prev => prev.filter(p => p.id !== processoId));
-      adicionarNotificacao('Processo excluído com sucesso', 'sucesso');
+      adicionarNotificacao('Processo excluÃ­do com sucesso', 'sucesso');
 
       // Registrar log de auditoria
       api.registrarLog?.({
@@ -1280,10 +1320,14 @@ useEffect(() => {
 
   const avancarParaProximoDepartamento = useCallback(
     async (processoId: number) => {
-      // Validação: antes de avançar, verificar se o questionário do departamento atual
-      // possui perguntas obrigatórias não respondidas. Se sim, bloqueia o avanço.
-      try {
-        // Busca o processo completo no backend para garantir que temos questionários e respostas atualizadas
+      const roleLower = String(usuarioLogado?.role || '').toLowerCase();
+      const bypassValidacoesObrigatorias = roleLower === 'admin' || roleLower === 'admin_departamento';
+
+      // ValidaÃ§Ã£o: antes de avanÃ§ar, verificar se o questionÃ¡rio do departamento atual
+      // possui perguntas obrigatÃ³rias nÃ£o respondidas. Se sim, bloqueia o avanÃ§o.
+      if (!bypassValidacoesObrigatorias) {
+        try {
+        // Busca o processo completo no backend para garantir que temos questionÃ¡rios e respostas atualizadas
         const processoAtualizado = await api.getProcesso(processoId).catch(() => null);
         const processoDados = processoAtualizado ?? processos.find(p => p.id === processoId);
         if (processoDados) {
@@ -1323,10 +1367,10 @@ useEffect(() => {
                   if (!Number.isFinite(dDept)) return true;
                   return dDept === deptId;
                 });
-                // Se houver anexos visíveis para o usuário, não está faltando
+                // Se houver anexos visÃ­veis para o usuÃ¡rio, nÃ£o estÃ¡ faltando
                 if (anexosVisiveis.length > 0) return false;
 
-                // Caso contrário, consultar o mapa de contagens retornado pelo backend
+                // Caso contrÃ¡rio, consultar o mapa de contagens retornado pelo backend
                 const counts: Record<string, number> = (processoDados as any)?.documentosCounts ?? {};
                 const keySpecific = `${Number(p.id)}:${Number(deptId)}`;
                 const keyAny = `${Number(p.id)}:0`;
@@ -1344,28 +1388,29 @@ useEffect(() => {
             const nomes = faltando.map((p: any) => p.label).join(', ');
             if (process.env.NODE_ENV !== 'production') {
               try {
-                console.debug('[validação] faltando perguntas obrigatórias antes de avançar', { processoId, deptId, faltandoCount: faltando.length, faltando: faltando.map((p:any)=>({id:p.id,label:p.label})) });
+                console.debug('[validaÃ§Ã£o] faltando perguntas obrigatÃ³rias antes de avanÃ§ar', { processoId, deptId, faltandoCount: faltando.length, faltando: faltando.map((p:any)=>({id:p.id,label:p.label})) });
               } catch {}
             }
             try {
-              await mostrarAlerta?.('Campos obrigatórios', `Preencha os campos obrigatórios antes de avançar: ${nomes}`, 'aviso');
+              await mostrarAlerta?.('Campos obrigatÃ³rios', `Preencha os campos obrigatÃ³rios antes de avanÃ§ar: ${nomes}`, 'aviso');
             } catch {
               // noop
             }
             return;
           }
         }
-      } catch (err) {
-        console.warn('Validação de questionário falhou:', err);
+        } catch (err) {
+        console.warn('ValidaÃ§Ã£o de questionÃ¡rio falhou:', err);
+        }
       }
       try {
         setGlobalLoading(true);
         const processoAntes = processos.find(p => p.id === processoId);
         await api.avancarProcesso(processoId);
-        // Recarrega o processo completo para manter documentos/anexos e histórico
+        // Recarrega o processo completo para manter documentos/anexos e histÃ³rico
         const processoAtualizado = await api.getProcesso(processoId);
         setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
-        adicionarNotificacao('Processo avançado para próximo departamento', 'sucesso');
+        adicionarNotificacao('Processo avanÃ§ado para prÃ³ximo departamento', 'sucesso');
         const deptOrigem = departamentos.find(d => d.id === processoAntes?.departamentoAtual);
         const deptDestino = departamentos.find(d => d.id === processoAtualizado?.departamentoAtual);
         api.registrarLog?.({
@@ -1375,14 +1420,14 @@ useEffect(() => {
           campo: 'Departamento',
           valorAnterior: deptOrigem?.nome || String(processoAntes?.departamentoAtual ?? ''),
           valorNovo: deptDestino?.nome || String(processoAtualizado?.departamentoAtual ?? ''),
-          detalhes: `Processo avançado de "${deptOrigem?.nome || '?'}" para "${deptDestino?.nome || '?'}"`,
+          detalhes: `Processo avanÃ§ado de "${deptOrigem?.nome || '?'}" para "${deptDestino?.nome || '?'}"`,
         });
       } catch (error: any) {
-        const msg = error.message || 'Erro ao avançar processo';
-        // Se a mensagem contém detalhes de validação, mostrar alerta mais detalhado
-        if (msg.includes('Requisitos obrigatórios') || msg.includes('obrigatória') || msg.includes('obrigatório')) {
+        const msg = error.message || 'Erro ao avanÃ§ar processo';
+        // Se a mensagem contÃ©m detalhes de validaÃ§Ã£o, mostrar alerta mais detalhado
+        if (msg.includes('Requisitos obrigatÃ³rios') || msg.includes('obrigatÃ³ria') || msg.includes('obrigatÃ³rio')) {
           try {
-            await mostrarAlerta?.('Campos obrigatórios', msg, 'aviso');
+            await mostrarAlerta?.('Campos obrigatÃ³rios', msg, 'aviso');
           } catch {
             // noop
           }
@@ -1393,10 +1438,12 @@ useEffect(() => {
         setGlobalLoading(false);
       }
     },
-    [adicionarNotificacao, mostrarAlerta, processos, setProcessos, setGlobalLoading]
+    [adicionarNotificacao, mostrarAlerta, processos, setProcessos, setGlobalLoading, usuarioLogado?.role]
   );
 
   const finalizarProcesso = useCallback(async (processoId: number) => {
+    const roleLower = String(usuarioLogado?.role || '').toLowerCase();
+    const bypassValidacoesObrigatorias = roleLower === 'admin' || roleLower === 'admin_departamento';
     try {
       setGlobalLoading(true);
       
@@ -1404,17 +1451,17 @@ useEffect(() => {
       // VALIDAR REQUISITOS ANTES DE FINALIZAR
       // ============================================
       
-      // Buscar processo COMPLETO da API (não do estado)
+      // Buscar processo COMPLETO da API (nÃ£o do estado)
       const processoCompleto = await api.getProcesso(processoId);
       
-      // Importar função de validação
+      // Importar funÃ§Ã£o de validaÃ§Ã£o
       const { validarAvancoDepartamento } = await import('@/app/utils/validation');
       const documentos = processoCompleto.documentos || [];
 
       // ============================================
       // PROCESSO PARALELO (deptIndependente): validar TODOS os departamentos do fluxo
       // ============================================
-      if (processoCompleto.deptIndependente) {
+      if (!bypassValidacoesObrigatorias && processoCompleto.deptIndependente) {
         const fluxoIds: number[] = (Array.isArray(processoCompleto.fluxoDepartamentos)
           ? processoCompleto.fluxoDepartamentos : []).map(Number).filter(Number.isFinite);
 
@@ -1453,7 +1500,7 @@ useEffect(() => {
             if (!validacao.valido) {
               const criticos = validacao.erros.filter(e => e.tipo === 'erro');
               if (criticos.length > 0) {
-                errosGlobais.push(`📌 ${dept.nome}:\n${criticos.map(e => `  • ${e.mensagem}`).join('\n')}`);
+                errosGlobais.push(`ðŸ“Œ ${dept.nome}:\n${criticos.map(e => `  â€¢ ${e.mensagem}`).join('\n')}`);
               }
             }
           }
@@ -1462,13 +1509,13 @@ useEffect(() => {
         if (errosGlobais.length > 0) {
           setGlobalLoading(false);
           await mostrarAlerta(
-            'Requisitos Obrigatórios Pendentes',
+            'Requisitos ObrigatÃ³rios Pendentes',
             `Complete os seguintes itens antes de finalizar:\n\n${errosGlobais.join('\n\n')}`,
             'erro'
           );
           return;
         }
-      } else {
+      } else if (!bypassValidacoesObrigatorias) {
         // ============================================
         // PROCESSO NORMAL: validar apenas o departamento atual
         // ============================================
@@ -1507,7 +1554,7 @@ useEffect(() => {
 
               setGlobalLoading(false);
               await mostrarAlerta(
-                'Requisitos Obrigatórios Pendentes',
+                'Requisitos ObrigatÃ³rios Pendentes',
                 `Complete os seguintes itens antes de finalizar:\n\n${mensagem}`,
                 'erro'
               );
@@ -1518,7 +1565,7 @@ useEffect(() => {
       }
       
       // ============================================
-      // VALIDAÇÃO PASSOU - FINALIZAR PROCESSO
+      // VALIDAÃ‡ÃƒO PASSOU - FINALIZAR PROCESSO
       // ============================================
       
       await api.atualizarProcesso(processoId, {
@@ -1542,7 +1589,7 @@ useEffect(() => {
         detalhes: `Processo "${processoCompleto.nomeEmpresa || processoCompleto.nome || '#' + processoId}" finalizado com sucesso. Progresso: 100%`,
       });
 
-      // Retornar info sobre interligação para o caller decidir mostrar modal
+      // Retornar info sobre interligaÃ§Ã£o para o caller decidir mostrar modal
       return {
         finalizado: true,
         processoId,
@@ -1557,7 +1604,7 @@ useEffect(() => {
     } finally {
       setGlobalLoading(false);
     }
-  }, [adicionarNotificacao, departamentos, mostrarAlerta]);
+  }, [adicionarNotificacao, departamentos, mostrarAlerta, usuarioLogado?.role]);
 
   const aplicarTagsProcesso = useCallback(async (processoId: number, novasTags: number[]) => {
     try {
@@ -1617,21 +1664,21 @@ useEffect(() => {
         const processoAtualizado = await api.getProcesso(processoId);
         setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
         
-        adicionarNotificacao('Comentário adicionado com sucesso', 'sucesso');
+        adicionarNotificacao('ComentÃ¡rio adicionado com sucesso', 'sucesso');
 
-        // Log detalhado de comentário
+        // Log detalhado de comentÃ¡rio
         const preview = texto.length > 100 ? texto.substring(0, 100) + '...' : texto;
         const deptComentario = departamentos.find(d => d.id === processo?.departamentoAtual);
         api.registrarLog?.({
           acao: 'COMENTAR', entidade: 'PROCESSO', entidadeId: processoId,
           entidadeNome: processo?.nomeEmpresa || processo?.nome,
           processoId: processoId,
-          campo: 'Comentário',
+          campo: 'ComentÃ¡rio',
           valorNovo: preview,
-          detalhes: `Comentário adicionado no departamento "${deptComentario?.nome || '?'}": "${preview}"${mencoes && mencoes.length > 0 ? ` | Menções: ${mencoes.join(', ')}` : ''}`,
+          detalhes: `ComentÃ¡rio adicionado no departamento "${deptComentario?.nome || '?'}": "${preview}"${mencoes && mencoes.length > 0 ? ` | MenÃ§Ãµes: ${mencoes.join(', ')}` : ''}`,
         });
       } catch (error: any) {
-        adicionarNotificacao(error.message || 'Erro ao adicionar comentário', 'erro');
+        adicionarNotificacao(error.message || 'Erro ao adicionar comentÃ¡rio', 'erro');
         throw error;
       }
     },
@@ -1643,7 +1690,7 @@ useEffect(() => {
       const processo = processos.find(p => p.id === processoId);
       const confirmado = await mostrarConfirmacao({
         titulo: 'Confirmar retorno',
-        mensagem: 'Deseja realmente retornar este processo ao departamento anterior para permitir edições?',
+        mensagem: 'Deseja realmente retornar este processo ao departamento anterior para permitir ediÃ§Ãµes?',
         tipo: 'aviso',
         textoConfirmar: 'Sim, retornar',
         textoCancelar: 'Cancelar',
@@ -1671,7 +1718,7 @@ useEffect(() => {
     }
   }, [processos, adicionarNotificacao, mostrarConfirmacao]);
 
-  const adicionarDocumentoProcesso = useCallback(async (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number, meta?: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[] }) => {
+  const adicionarDocumentoProcesso = useCallback(async (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number, meta?: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[]; allowedDepartamentos?: number[] }) => {
     try {
       const processo = processos.find(p => p.id === processoId);
       const novoDocumento = await api.uploadDocumento(
@@ -1690,13 +1737,13 @@ useEffect(() => {
         } catch {}
       }
 
-      // Aplicar atualização otimista: inserir o novo documento no processo em memória
+      // Aplicar atualizaÃ§Ã£o otimista: inserir o novo documento no processo em memÃ³ria
       setProcessos(prev => {
         const list = Array.isArray(prev) ? prev : [];
         return list.map(p => {
           if (p.id !== processoId) return p;
           const docs = Array.isArray(p.documentos) ? p.documentos.slice() : [];
-          // prevenir duplicatas caso o backend já tenha retornado o doc
+          // prevenir duplicatas caso o backend jÃ¡ tenha retornado o doc
           const exists = docs.some((d: any) => Number(d.id) === Number(novoDocumento.id));
           if (!exists) docs.push(novoDocumento);
           return { ...p, documentos: docs } as any;
@@ -1775,6 +1822,8 @@ useEffect(() => {
     showQuestionarioSolicitacao,
     showSelecionarTemplate,
     showLixeira,
+    showPainelControle,
+    modoManutencao,
 
     setProcessos,
     setEmpresas,
@@ -1804,6 +1853,8 @@ useEffect(() => {
     setShowQuestionarioSolicitacao,
     setShowSelecionarTemplate,
     setShowLixeira,
+    setShowPainelControle,
+    setModoManutencao,
 
     adicionarNotificacao,
     removerNotificacao,

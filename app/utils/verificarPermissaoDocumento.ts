@@ -7,12 +7,14 @@ interface DocumentoPermissao {
   visibility?: string | null;
   allowedRoles?: string[] | null;
   allowedUserIds?: number[] | null;
+  allowedDepartamentos?: number[] | null;
   uploadPorId?: number | null;
 }
 
 interface UsuarioPermissao {
   id: number;
   role: string;
+  departamentoId?: number | null;
 }
 
 /**
@@ -24,7 +26,8 @@ interface UsuarioPermissao {
  * 3. PUBLIC = qualquer usuário autenticado
  * 4. ROLES = somente usuários com role listada em allowedRoles
  * 5. USERS = somente usuários listados em allowedUserIds
- * 6. NONE / outros = somente uploader e admin (já cobertos acima)
+ * 6. DEPARTAMENTOS = somente usuários do departamento listado em allowedDepartamentos
+ * 7. NONE / outros = somente uploader e admin (já cobertos acima)
  */
 export function verificarPermissaoDocumento(
   documento: DocumentoPermissao,
@@ -39,8 +42,8 @@ export function verificarPermissaoDocumento(
       return true;
     }
 
-    // 2. Admin sempre pode ver
-    if (userRole === 'ADMIN') {
+    // 2. Admin (incluindo admin com departamento) sempre pode ver
+    if (userRole === 'ADMIN' || userRole === 'ADMIN_DEPARTAMENTO') {
       return true;
     }
 
@@ -68,7 +71,16 @@ export function verificarPermissaoDocumento(
       return allowedUserIds.length > 0 && allowedUserIds.includes(userId);
     }
 
-    // 6. NONE ou qualquer outro valor = somente uploader/admin (já tratados)
+    // 6. Por departamentos
+    if (vis === 'DEPARTAMENTOS') {
+      const allowedDepts: number[] = Array.isArray(documento.allowedDepartamentos)
+        ? documento.allowedDepartamentos.map((n) => Number(n)).filter((n) => Number.isFinite(n))
+        : [];
+      const userDeptId = usuario.departamentoId != null ? Number(usuario.departamentoId) : NaN;
+      return allowedDepts.length > 0 && Number.isFinite(userDeptId) && allowedDepts.includes(userDeptId);
+    }
+
+    // 7. NONE ou qualquer outro valor = somente uploader/admin (já tratados)
     return false;
   } catch {
     return false;

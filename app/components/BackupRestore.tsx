@@ -7,6 +7,15 @@ import { useSistema } from '@/app/context/SistemaContext';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
+function getApiErrorMessage(err: any, fallback: string): string {
+  const error = String(err?.error || '').trim();
+  const details = String(err?.details || '').trim();
+  if (error && details) return `${error}: ${details}`;
+  if (error) return error;
+  if (details) return details;
+  return fallback;
+}
+
 // ─── Tipos ──────────────────────────────────────────────────
 type FrequenciaBackup = '4dias' | 'semanal' | 'quinzenal';
 
@@ -366,7 +375,7 @@ export default function BackupRestore() {
       const response = await fetchAutenticado(`${API_URL}/backup`);
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error((err as any)?.error || 'Erro ao exportar backup');
+        throw new Error(getApiErrorMessage(err, 'Erro ao exportar backup'));
       }
       const data = await response.json();
       const jsonStr = JSON.stringify(data, null, 2);
@@ -503,7 +512,7 @@ export default function BackupRestore() {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error((err as any)?.error || 'Erro ao restaurar backup');
+        throw new Error(getApiErrorMessage(err, 'Erro ao restaurar backup'));
       }
 
       void mostrarAlerta?.('Backup Restaurado', 'Todos os dados foram restaurados com sucesso! A página será recarregada.', 'sucesso');
@@ -537,7 +546,11 @@ export default function BackupRestore() {
   };
 
   // ─── Guard: admin-only ──────────────────────────────────
-  const isAdmin = usuarioLogado?.role === 'admin' || (usuarioLogado?.role as string)?.toUpperCase() === 'ADMIN';
+  const isAdmin =
+    usuarioLogado?.role === 'admin' ||
+    usuarioLogado?.role === 'admin_departamento' ||
+    (usuarioLogado?.role as string)?.toUpperCase() === 'ADMIN' ||
+    (usuarioLogado?.role as string)?.toUpperCase() === 'ADMIN_DEPARTAMENTO';
 
   if (!isAdmin) {
     return (
@@ -573,7 +586,7 @@ export default function BackupRestore() {
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
               Baixa um arquivo JSON com todos os dados do sistema.
               {nomePasta && (
-                <span className="text-indigo-600 dark:text-indigo-400"> Será salvo na pasta <strong>"{nomePasta}"</strong>.</span>
+                <span className="text-indigo-600 dark:text-indigo-400"> Será salvo na pasta <strong>&ldquo;{nomePasta}&rdquo;</strong>.</span>
               )}
             </p>
             <button
@@ -606,7 +619,7 @@ export default function BackupRestore() {
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Pasta de Destino</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Escolha uma pasta local para salvar os backups automaticamente (ex: sua pasta "backups" sincronizada com o Drive).
+              Escolha uma pasta local para salvar os backups automaticamente (ex: sua pasta &ldquo;backups&rdquo; sincronizada com o Drive).
             </p>
 
             {!suportaFileSystem && (
@@ -668,7 +681,7 @@ export default function BackupRestore() {
                       <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-2">
                         <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                         <p className="text-sm text-amber-800 dark:text-amber-300">
-                          O navegador perdeu a permissao de acesso a esta pasta. Clique em <strong>"Alterar pasta"</strong> para seleciona-la novamente, ou ao exportar o sistema pedira permissao automaticamente.
+                          O navegador perdeu a permissao de acesso a esta pasta. Clique em <strong>&ldquo;Alterar pasta&rdquo;</strong> para seleciona-la novamente, ou ao exportar o sistema pedira permissao automaticamente.
                         </p>
                       </div>
                     )}
@@ -685,7 +698,7 @@ export default function BackupRestore() {
                     className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl transition-colors text-sm font-medium text-gray-700 dark:text-gray-300"
                   >
                     <FolderOpen size={18} />
-                    Escolher pasta (ex: sua pasta "backups" no Drive)
+                    Escolher pasta (ex: sua pasta &ldquo;backups&rdquo; no Drive)
                   </button>
                 )}
               </div>
@@ -775,7 +788,7 @@ export default function BackupRestore() {
                   <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
                     <FolderCheck size={16} className="text-green-600 dark:text-green-400 shrink-0" />
                     <p className="text-sm text-green-800 dark:text-green-300">
-                      Os backups automáticos serão salvos na pasta <strong>"{nomePasta}"</strong>
+                      Os backups automáticos serão salvos na pasta <strong>&ldquo;{nomePasta}&rdquo;</strong>
                     </p>
                   </div>
                 )}

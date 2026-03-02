@@ -43,7 +43,7 @@ const normalizePrioridade = (prioridade: any) => {
 
 const normalizeTipoCampo = (
   tipo: any
-): 'text' | 'textarea' | 'number' | 'date' | 'boolean' | 'select' | 'checkbox' | 'file' | 'phone' | 'email' => {
+): 'text' | 'textarea' | 'number' | 'date' | 'boolean' | 'select' | 'checkbox' | 'file' | 'phone' | 'email' | 'cpf' | 'cnpj' | 'cep' | 'money' | 'grupo_repetivel' => {
   const t = typeof tipo === 'string' ? tipo.toLowerCase() : '';
   switch (t) {
     case 'text':
@@ -82,6 +82,18 @@ const normalizeTipoCampo = (
       return 'phone';
     case 'email':
       return 'email';
+    case 'cpf':
+      return 'cpf';
+    case 'cpj':
+    case 'cnpj':
+      return 'cnpj';
+    case 'cep':
+      return 'cep';
+    case 'money':
+    case 'valor':
+      return 'money';
+    case 'grupo_repetivel':
+      return 'grupo_repetivel';
     default: {
       // Prisma enum vem como TEXT, TEXTAREA etc
       const upper = typeof tipo === 'string' ? tipo.toUpperCase() : '';
@@ -106,6 +118,17 @@ const normalizeTipoCampo = (
           return 'phone';
         case 'EMAIL':
           return 'email';
+        case 'CPF':
+          return 'cpf';
+        case 'CPJ':
+        case 'CNPJ':
+          return 'cnpj';
+        case 'CEP':
+          return 'cep';
+        case 'MONEY':
+          return 'money';
+        case 'GRUPO_REPETIVEL':
+          return 'grupo_repetivel';
         default:
           return 'text';
       }
@@ -217,10 +240,11 @@ const normalizeProcesso = (raw: any) => {
         .map((q: any) => {
           const id = Number(q?.id);
           if (!Number.isFinite(id)) return null;
+          const tipo = normalizeTipoCampo(q?.tipo);
           return {
             id,
             label: String(q?.label ?? ''),
-            tipo: normalizeTipoCampo(q?.tipo),
+            tipo,
             obrigatorio: Boolean(q?.obrigatorio),
             opcoes: Array.isArray(q?.opcoes) ? q.opcoes : [],
             ordem: Number(q?.ordem ?? 0),
@@ -231,7 +255,37 @@ const normalizeProcesso = (raw: any) => {
                     operador: (q.condicaoOperador || 'igual') as any,
                     valor: String(q.condicaoValor ?? ''),
                   }
-                : undefined,
+                : (q?.condicao || undefined),
+            ...((() => {
+              // Log condicao para TODAS as perguntas
+              const condicaoResult = q?.condicaoPerguntaId
+                ? { perguntaId: Number(q.condicaoPerguntaId), operador: (q.condicaoOperador || 'igual'), valor: String(q.condicaoValor ?? '') }
+                : (q?.condicao || undefined);
+              console.log('[normalizeProcesso] pergunta:', {
+                id,
+                label: String(q?.label ?? ''),
+                tipo,
+                rawCondicaoPerguntaId: q?.condicaoPerguntaId,
+                rawCondicao: q?.condicao,
+                condicaoResult,
+              });
+              return {};
+            })()),
+            ...(tipo === 'grupo_repetivel' ? (() => {
+              const gr = {
+                modoRepeticao: q?.modoRepeticao || 'manual',
+                controladoPor: q?.controladoPor ? Number(q.controladoPor) : undefined,
+                subPerguntas: Array.isArray(q?.subPerguntas) ? q.subPerguntas : [],
+              };
+              console.log('[normalizeProcesso] grupo_repetivel detalhes:', {
+                id,
+                rawControladoPor: q?.controladoPor,
+                rawSubPerguntas: q?.subPerguntas,
+                rawSubPerguntasIsArray: Array.isArray(q?.subPerguntas),
+                normalizado: gr,
+              });
+              return gr;
+            })() : {}),
           };
         })
         .filter(Boolean)
@@ -246,10 +300,11 @@ const normalizeProcesso = (raw: any) => {
   const questionarios = questionariosArray
     .map((q: any) => {
       const departamentoId = Number(q?.departamentoId ?? q?.departamento?.id ?? 0);
+      const tipo = normalizeTipoCampo(q?.tipo);
       const normalized = {
         id: Number(q?.id),
         label: String(q?.label ?? ''),
-        tipo: normalizeTipoCampo(q?.tipo),
+        tipo,
         obrigatorio: Boolean(q?.obrigatorio),
         opcoes: Array.isArray(q?.opcoes) ? q.opcoes : [],
         ordem: Number(q?.ordem ?? 0),
@@ -261,6 +316,12 @@ const normalizeProcesso = (raw: any) => {
                 valor: String(q.condicaoValor ?? ''),
               }
             : undefined,
+        // grupo_repetivel fields
+        ...(tipo === 'grupo_repetivel' ? {
+          modoRepeticao: q?.modoRepeticao || 'manual',
+          controladoPor: q?.controladoPor ? Number(q.controladoPor) : undefined,
+          subPerguntas: Array.isArray(q?.subPerguntas) ? q.subPerguntas : [],
+        } : {}),
         // suporte interno para agrupamento
         departamentoId,
         respostas: Array.isArray(q?.respostas) ? q.respostas : [],
@@ -278,6 +339,11 @@ const normalizeProcesso = (raw: any) => {
             opcoes: normalized.opcoes,
             ordem: normalized.ordem,
             condicao: normalized.condicao,
+            ...((normalized as any).modoRepeticao ? {
+              modoRepeticao: (normalized as any).modoRepeticao,
+              controladoPor: (normalized as any).controladoPor,
+              subPerguntas: (normalized as any).subPerguntas,
+            } : {}),
           });
         }
 
@@ -329,6 +395,11 @@ const normalizeProcesso = (raw: any) => {
         opcoes: normalized.opcoes,
         ordem: normalized.ordem,
         condicao: normalized.condicao,
+        ...((normalized as any).modoRepeticao ? {
+          modoRepeticao: (normalized as any).modoRepeticao,
+          controladoPor: (normalized as any).controladoPor,
+          subPerguntas: (normalized as any).subPerguntas,
+        } : {}),
         departamentoId,
       };
     })
@@ -384,7 +455,7 @@ async function parseError(response: Response) {
     if (typeof data?.details === 'string' && data.details.trim()) return String(data.details).slice(0, 300);
     if (data?.details && typeof data.details === 'object') {
       try {
-        return JSON.stringify(data.details).slice(0, 300);
+        return stringifyJsonSafe(data.details).slice(0, 300);
       } catch {
         // ignore
       }
@@ -394,6 +465,21 @@ async function parseError(response: Response) {
   } catch {
     return 'Erro na requisição';
   }
+}
+
+function stringifyJsonSafe(payload: unknown) {
+  const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
+  const minSafe = BigInt(Number.MIN_SAFE_INTEGER);
+
+  return JSON.stringify(payload, (_key, value) => {
+    if (typeof value === 'bigint') {
+      if (value <= maxSafe && value >= minSafe) {
+        return Number(value);
+      }
+      return value.toString();
+    }
+    return value;
+  });
 }
 
 function toPrismaEnum(value: any) {
@@ -710,7 +796,7 @@ export const api = {
     }
   },
 
-  uploadDocumento: async (processoId: number, arquivo: File, tipo: string, perguntaId?: number, departamentoId?: number, meta?: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[] }) => {
+  uploadDocumento: async (processoId: number, arquivo: File, tipo: string, perguntaId?: number, departamentoId?: number, meta?: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[]; allowedDepartamentos?: number[] }) => {
     try {
       const formData = new FormData();
       formData.append('arquivo', arquivo);
@@ -721,6 +807,7 @@ export const api = {
       if (meta?.visibility) formData.append('visibility', String(meta.visibility));
       if (Array.isArray(meta?.allowedRoles) && meta!.allowedRoles!.length > 0) formData.append('allowedRoles', meta!.allowedRoles!.join(','));
       if (Array.isArray(meta?.allowedUserIds) && meta!.allowedUserIds!.length > 0) formData.append('allowedUserIds', meta!.allowedUserIds!.map(String).join(','));
+      if (Array.isArray(meta?.allowedDepartamentos) && meta!.allowedDepartamentos!.length > 0) formData.append('allowedDepartamentos', meta!.allowedDepartamentos!.map(String).join(','));
 
       const response = await fetchAutenticado(`${API_URL}/documentos`, {
         method: 'POST',
@@ -776,6 +863,22 @@ export const api = {
       return await response.json();
     } catch (error) {
       console.error('Erro ao excluir documento:', error);
+      throw error;
+    }
+  },
+
+  atualizarDocumento: async (id: number, dados: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[]; allowedDepartamentos?: number[] }) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/documentos/${id}`, {
+        method: 'PATCH',
+        body: stringifyJsonSafe(dados),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao atualizar documento:', error);
       throw error;
     }
   },
@@ -1056,6 +1159,24 @@ export const api = {
       return await response.json();
     } catch (error) {
       console.error('Erro ao excluir documento da empresa:', error);
+      throw error;
+    }
+  },
+
+  atualizarEmpresaDocumento: async (
+    empresaId: number,
+    documentoId: number,
+    dados: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[]; allowedDepartamentos?: number[] }
+  ) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/empresas/${empresaId}/documentos/${documentoId}`, {
+        method: 'PATCH',
+        body: stringifyJsonSafe(dados),
+      });
+      if (!response.ok) throw new Error(await parseError(response));
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao atualizar documento da empresa:', error);
       throw error;
     }
   },
@@ -1601,6 +1722,67 @@ export const api = {
       return await response.json();
     } catch (error) {
       console.error('Erro ao importar empresas:', error);
+      throw error;
+    }
+  },
+
+  // ========== FLUXOS DE INTERLIGACAO ==========
+  getFluxosInterligacao: async () => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/fluxos-interligacao`);
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao buscar fluxos de interligacao:', error);
+      throw error;
+    }
+  },
+
+  criarFluxoInterligacao: async (dados: { nome: string; descricao?: string; templateIds: number[] }) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/fluxos-interligacao`, {
+        method: 'POST',
+        body: JSON.stringify(dados),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao criar fluxo de interligacao:', error);
+      throw error;
+    }
+  },
+
+  atualizarFluxoInterligacao: async (id: number, dados: { nome?: string; descricao?: string; templateIds?: number[] }) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/fluxos-interligacao/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(dados),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao atualizar fluxo de interligacao:', error);
+      throw error;
+    }
+  },
+
+  excluirFluxoInterligacao: async (id: number) => {
+    try {
+      const response = await fetchAutenticado(`${API_URL}/fluxos-interligacao/${id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response));
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Erro ao excluir fluxo de interligacao:', error);
       throw error;
     }
   },

@@ -18,12 +18,13 @@ export async function POST(
 
     const roleUpper = String((user as any).role || '').toUpperCase();
     if (roleUpper === 'USUARIO') {
-      return NextResponse.json({ error: 'Sem permissão para avançar processo' }, { status: 403 });
+      return NextResponse.json({ error: 'Sem permissÃ£o para avanÃ§ar processo' }, { status: 403 });
     }
     
+    const bypassValidacoesObrigatorias = roleUpper === 'ADMIN' || roleUpper === 'ADMIN_DEPARTAMENTO';
     const processoId = parseInt(params.id);
     
-    // Buscar processo completo com todas as informações para validação
+    // Buscar processo completo com todas as informaÃ§Ãµes para validaÃ§Ã£o
     const processo = await prisma.processo.findUnique({
       where: { id: processoId },
       include: {
@@ -42,7 +43,7 @@ export async function POST(
     
     if (!processo) {
       return NextResponse.json(
-        { error: 'Processo não encontrado' },
+        { error: 'Processo nÃ£o encontrado' },
         { status: 404 }
       );
     }
@@ -51,18 +52,18 @@ export async function POST(
       const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
       const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw)) ? Number(departamentoUsuarioRaw) : undefined;
       if (typeof departamentoUsuario !== 'number') {
-        return NextResponse.json({ error: 'Usuário sem departamento definido' }, { status: 403 });
+        return NextResponse.json({ error: 'UsuÃ¡rio sem departamento definido' }, { status: 403 });
       }
       if (processo.departamentoAtual !== departamentoUsuario) {
-        return NextResponse.json({ error: 'Sem permissão para mover processo de outro departamento' }, { status: 403 });
+        return NextResponse.json({ error: 'Sem permissÃ£o para mover processo de outro departamento' }, { status: 403 });
       }
     }
     
-    // Verificar se há próximo departamento
+    // Verificar se hÃ¡ prÃ³ximo departamento
     const proximoIndex = processo.departamentoAtualIndex + 1;
     if (!processo.fluxoDepartamentos || proximoIndex >= processo.fluxoDepartamentos.length) {
       return NextResponse.json(
-        { error: 'Processo já está no último departamento' },
+        { error: 'Processo jÃ¡ estÃ¡ no Ãºltimo departamento' },
         { status: 400 }
       );
     }
@@ -80,17 +81,18 @@ export async function POST(
     
     if (!proximoDepartamento || !departamentoAtual) {
       return NextResponse.json(
-        { error: 'Departamento não encontrado' },
+        { error: 'Departamento nÃ£o encontrado' },
         { status: 404 }
       );
     }
     
     // ============================================
-    // VALIDAR REQUISITOS ANTES DE AVANÇAR
+    // VALIDAR REQUISITOS ANTES DE AVANÃ‡AR
     // ============================================
     
-    try {
-      const questionarios = await prisma.questionarioDepartamento.findMany({
+    if (!bypassValidacoesObrigatorias) {
+      try {
+        const questionarios = await prisma.questionarioDepartamento.findMany({
         where: {
           processoId: processoId,
           departamentoId: departamentoAtual.id,
@@ -115,15 +117,15 @@ export async function POST(
       
       for (const respQuest of respostasQuestionario) {
         if (respQuest.resposta !== null && respQuest.resposta !== undefined) {
-          // Sempre usar questionarioId como chave para manter consistência
-          // O valor é armazenado como string (JSON ou texto plano)
+          // Sempre usar questionarioId como chave para manter consistÃªncia
+          // O valor Ã© armazenado como string (JSON ou texto plano)
           let valor: any = respQuest.resposta;
           try {
             const parsed = JSON.parse(respQuest.resposta);
             // Se for um primitivo (string, number, boolean) ou array, usar o valor parseado
-            // Se for um objeto com chaves numéricas (batch de respostas antigo), extrair cada uma
+            // Se for um objeto com chaves numÃ©ricas (batch de respostas antigo), extrair cada uma
             if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-              // Verificar se é um batch de respostas (chaves são IDs de perguntas)
+              // Verificar se Ã© um batch de respostas (chaves sÃ£o IDs de perguntas)
               const keys = Object.keys(parsed);
               const allNumericKeys = keys.length > 0 && keys.every(k => /^\d+$/.test(k));
               if (allNumericKeys) {
@@ -131,20 +133,20 @@ export async function POST(
                 for (const [k, v] of Object.entries(parsed)) {
                   respostasMap[Number(k)] = v;
                 }
-                continue; // Já mapeamos, pular a atribuição abaixo
+                continue; // JÃ¡ mapeamos, pular a atribuiÃ§Ã£o abaixo
               }
               valor = parsed;
             } else {
               valor = parsed;
             }
           } catch {
-            // Não é JSON, manter como string
+            // NÃ£o Ã© JSON, manter como string
           }
           respostasMap[respQuest.questionarioId] = valor;
         }
       }
 
-      // Validar se todos os requisitos estão completos (somente se houver questionários ou documentos obrigatórios)
+      // Validar se todos os requisitos estÃ£o completos (somente se houver questionÃ¡rios ou documentos obrigatÃ³rios)
       if (questionarios.some(q => q.obrigatorio) || (departamentoAtual.documentosObrigatorios && departamentoAtual.documentosObrigatorios.length > 0)) {
         const validacao = validarAvancoDepartamento({
           processo,
@@ -166,11 +168,11 @@ export async function POST(
         });
 
         if (!validacao.valido) {
-          // Retornar erros de validação
+          // Retornar erros de validaÃ§Ã£o
           const errosCriticos = validacao.erros.filter(e => e.tipo === 'erro');
           return NextResponse.json(
             {
-              error: 'Requisitos obrigatórios não preenchidos',
+              error: 'Requisitos obrigatÃ³rios nÃ£o preenchidos',
               detalhes: errosCriticos.map(e => e.mensagem),
               validacao: validacao.erros,
             },
@@ -178,13 +180,14 @@ export async function POST(
           );
         }
       }
-    } catch (validacaoError) {
-      // Se a validação falhar, apenas logar e continuar (não bloquear o avanço)
-      console.error('Erro na validação (não bloqueante):', validacaoError);
+      } catch (validacaoError) {
+        // Se a validação falhar, apenas logar e continuar (não bloquear o avanço)
+        console.error('Erro na validação (não bloqueante):', validacaoError);
+      }
     }
     
     // ============================================
-    // VALIDAÇÃO PASSOU - AVANÇAR PROCESSO
+    // VALIDAÃ‡ÃƒO PASSOU - AVANÃ‡AR PROCESSO
     // ============================================
     
     // Atualizar processo
@@ -202,7 +205,7 @@ export async function POST(
       },
     });
     
-    // Marcar histórico de fluxo anterior como concluído
+    // Marcar histÃ³rico de fluxo anterior como concluÃ­do
     const ultimoFluxo = processo.historicoFluxos[0];
     if (ultimoFluxo) {
       await prisma.historicoFluxo.update({
@@ -214,7 +217,7 @@ export async function POST(
       });
     }
     
-    // Criar novo histórico de fluxo
+    // Criar novo histÃ³rico de fluxo
     await prisma.historicoFluxo.create({
       data: {
         processoId: processoId,
@@ -225,7 +228,7 @@ export async function POST(
       },
     });
     
-    // Criar evento de movimentação
+    // Criar evento de movimentaÃ§Ã£o
     await prisma.historicoEvento.create({
       data: {
         processoId: processoId,
@@ -237,7 +240,7 @@ export async function POST(
       },
     });
 
-    // Auto-atribuir responsável ao responsável do departamento destino
+    // Auto-atribuir responsÃ¡vel ao responsÃ¡vel do departamento destino
     try {
       // 1. Buscar gerente do departamento destino
       let novoResponsavel = await prisma.usuario.findFirst({
@@ -249,7 +252,7 @@ export async function POST(
         select: { id: true, nome: true },
       });
 
-      // 2. Se não há gerente, buscar pelo nome do responsável cadastrado no departamento
+      // 2. Se nÃ£o hÃ¡ gerente, buscar pelo nome do responsÃ¡vel cadastrado no departamento
       if (!novoResponsavel && proximoDepartamento.responsavel) {
         novoResponsavel = await prisma.usuario.findFirst({
           where: {
@@ -260,7 +263,7 @@ export async function POST(
         });
       }
 
-      // 3. Fallback: qualquer usuário ativo vinculado ao departamento
+      // 3. Fallback: qualquer usuÃ¡rio ativo vinculado ao departamento
       if (!novoResponsavel) {
         novoResponsavel = await prisma.usuario.findFirst({
           where: {
@@ -279,10 +282,10 @@ export async function POST(
         });
       }
     } catch {
-      // Não bloquear avanço se falhar
+      // NÃ£o bloquear avanÃ§o se falhar
     }
 
-    // Criar notificações persistidas: somente gerentes do dept destino e responsável do processo (se definido)
+    // Criar notificaÃ§Ãµes persistidas: somente gerentes do dept destino e responsÃ¡vel do processo (se definido)
     try {
       const gerentesDestino = await prisma.usuario.findMany({
         where: {
@@ -295,7 +298,7 @@ export async function POST(
 
       const ids = new Set<number>(gerentesDestino.map((u) => u.id));
 
-      // responsável do processo (se existir)
+      // responsÃ¡vel do processo (se existir)
       if (typeof (processoAtualizado as any).responsavelId === 'number') {
         ids.add((processoAtualizado as any).responsavelId);
       }
@@ -320,17 +323,18 @@ export async function POST(
         });
       }
     } catch (e) {
-      // Não derruba a movimentação se notificação falhar
-      console.error('Erro ao criar notificações de movimentação:', e);
+      // NÃ£o derruba a movimentaÃ§Ã£o se notificaÃ§Ã£o falhar
+      console.error('Erro ao criar notificaÃ§Ãµes de movimentaÃ§Ã£o:', e);
     }
     
     return NextResponse.json(processoAtualizado);
   } catch (error) {
-    console.error('Erro ao avançar processo:', error);
+    console.error('Erro ao avanÃ§ar processo:', error);
     return NextResponse.json(
-      { error: 'Erro ao avançar processo' },
+      { error: 'Erro ao avanÃ§ar processo' },
       { status: 500 }
     );
   }
 }
+
 

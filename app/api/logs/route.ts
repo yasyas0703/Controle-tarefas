@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { GHOST_USER_EMAIL } from '@/app/utils/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     if (!user) return error;
 
     const roleUpper = String((user as any).role || '').toUpperCase();
-    if (roleUpper !== 'ADMIN') {
+    if (roleUpper !== 'ADMIN' && roleUpper !== 'ADMIN_DEPARTAMENTO') {
       return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
     }
 
@@ -24,7 +25,9 @@ export async function GET(request: NextRequest) {
     const entidade = searchParams.get('entidade');
     const usuarioId = searchParams.get('usuarioId');
 
-    const where: any = {};
+    const where: any = {
+      usuario: { email: { not: GHOST_USER_EMAIL }, isGhost: { not: true } },
+    };
     if (acao) where.acao = acao;
     if (entidade) where.entidade = entidade;
     if (usuarioId) where.usuarioId = parseInt(usuarioId);
@@ -61,6 +64,12 @@ export async function POST(request: NextRequest) {
     if (!user) return error;
 
     const data = await request.json();
+
+    // Ghost user: não registrar logs
+    const ghostCheck = await prisma.usuario.findUnique({ where: { id: user.id as number }, select: { isGhost: true, email: true } });
+    if (ghostCheck?.isGhost || ghostCheck?.email === GHOST_USER_EMAIL) {
+      return NextResponse.json({ ok: true }, { status: 200 });
+    }
 
     try {
       const log = await (prisma as any).logAuditoria.create({
@@ -105,7 +114,7 @@ export async function DELETE(request: NextRequest) {
     if (!user) return error;
 
     const roleUpper = String((user as any).role || '').toUpperCase();
-    if (roleUpper !== 'ADMIN') {
+    if (roleUpper !== 'ADMIN' && roleUpper !== 'ADMIN_DEPARTAMENTO') {
       return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
     }
 

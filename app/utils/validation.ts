@@ -66,7 +66,7 @@ export const departamentoSchema = z.object({
 
 export const questionarioSchema = z.object({
   label: z.string().min(1, 'Texto da pergunta é obrigatório'),
-  tipo: z.enum(['text', 'textarea', 'number', 'date', 'boolean', 'select', 'checkbox', 'file', 'phone', 'email'], {
+  tipo: z.enum(['text', 'textarea', 'number', 'date', 'boolean', 'select', 'checkbox', 'file', 'phone', 'email', 'cpf', 'cnpj', 'cep', 'money', 'grupo_repetivel'], {
     errorMap: () => ({ message: 'Tipo de pergunta inválido' })
   }),
   obrigatorio: z.boolean(),

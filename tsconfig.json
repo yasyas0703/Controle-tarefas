@@ -35,7 +35,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-  ],
+, "COMAND.TXT"  ],
   "exclude": [
     "node_modules"
   ]

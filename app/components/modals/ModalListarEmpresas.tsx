@@ -8,6 +8,49 @@ import ModalCadastrarEmpresa from './ModalCadastrarEmpresa';
 import ModalBase from './ModalBase';
 import { api } from '@/app/utils/api';
 
+// Badge de validade dos documentos da empresa (usado nos cards da listagem)
+function BadgeValidadeDocumentos({ empresaId }: { empresaId: number }) {
+  const [info, setInfo] = useState<{ vencido: number; proximoVencer: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.getEmpresaDocumentos(empresaId)
+      .then((docs: EmpresaDocumento[]) => {
+        if (cancelled) return;
+        let vencido = 0;
+        let proximoVencer = 0;
+        for (const doc of docs || []) {
+          if (doc.validadeStatus === 'vencido') vencido++;
+          else if (doc.validadeStatus === 'vence_em_breve') proximoVencer++;
+        }
+        if (vencido > 0 || proximoVencer > 0) {
+          setInfo({ vencido, proximoVencer });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [empresaId]);
+
+  if (!info) return null;
+
+  return (
+    <div className="flex gap-1 flex-wrap mt-1">
+      {info.vencido > 0 && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700">
+          <XCircle size={10} />
+          {info.vencido} Vencido{info.vencido > 1 ? 's' : ''}
+        </span>
+      )}
+      {info.proximoVencer > 0 && (
+        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700">
+          <AlertTriangle size={10} />
+          {info.proximoVencer} Prox. vencer
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Componente de Documentos da Empresa
 function DocumentosEmpresa({ empresaId }: { empresaId: number }) {
   const [documentos, setDocumentos] = useState<EmpresaDocumento[]>([]);
@@ -682,6 +725,9 @@ export default function ModalListarEmpresas({
                         </p>
                       )}
                     </div>
+
+                    {/* Badges de validade dos documentos */}
+                    <BadgeValidadeDocumentos empresaId={empresa.id} />
                   </div>
 
                   <div className="mt-3">

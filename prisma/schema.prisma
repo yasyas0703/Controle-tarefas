@@ -15,6 +15,7 @@ datasource db {
 // Usuários do Sistema
 model Usuario {
   id             Int           @id @default(autoincrement())
+  externalId     String?       @unique // UUID externo (para ghost user)
   nome           String
   email          String        @unique
   senha          String // Hash bcrypt
@@ -22,6 +23,8 @@ model Usuario {
   departamentoId Int?
   departamento   Departamento? @relation(fields: [departamentoId], references: [id])
   ativo          Boolean       @default(true)
+  isGhost        Boolean       @default(false) // Se true, ações não são logadas
+  require2FA     Boolean       @default(true) // Se false, pula verificação por email no login
   permissoes     String[]      @default([]) // Array de strings com permissões
   criadoEm       DateTime      @default(now())
   atualizadoEm   DateTime      @updatedAt
@@ -44,8 +47,55 @@ model Usuario {
 
 enum Role {
   ADMIN
+  ADMIN_DEPARTAMENTO
   GERENTE
   USUARIO
+}
+
+// ============================================
+// SESSÕES ATIVAS (para painel de controle)
+// ============================================
+model SessaoAtiva {
+  id          Int      @id @default(autoincrement())
+  usuarioId   Int
+  token       String   @unique
+  ip          String?
+  userAgent   String?
+  criadoEm    DateTime @default(now())
+  ultimoAcesso DateTime @default(now())
+  ativo       Boolean  @default(true)
+
+  @@index([usuarioId])
+  @@index([ativo])
+  @@index([ultimoAcesso])
+}
+
+// ============================================
+// MODO MANUTENÇÃO
+// ============================================
+model ConfiguracaoSistema {
+  id              Int      @id @default(autoincrement())
+  chave           String   @unique
+  valor           String
+  atualizadoEm    DateTime @updatedAt
+  atualizadoPorId Int?
+
+  @@index([chave])
+}
+
+// ============================================
+// FLUXOS DE INTERLIGAÇÃO SALVOS
+// ============================================
+model FluxoInterligacao {
+  id          Int      @id @default(autoincrement())
+  nome        String
+  descricao   String?
+  templateIds Int[]    @default([]) // IDs dos templates na ordem
+  criadoPorId Int
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([criadoPorId])
 }
 
 // Departamentos do Fluxo
@@ -122,9 +172,10 @@ model EmpresaDocumento {
   alertarDiasAntes Int       @default(30)
 
   // Controle de acesso (mesma logica que Documento de processo)
-  visibility     DocumentoVisibility @default(PUBLIC)
-  allowedRoles   String[]            @default([])
-  allowedUserIds Int[]               @default([])
+  visibility           DocumentoVisibility @default(PUBLIC)
+  allowedRoles         String[]            @default([])
+  allowedUserIds       Int[]               @default([])
+  allowedDepartamentos Int[]               @default([])
 
   @@index([empresaId])
   @@index([validadeAte])
@@ -286,9 +337,10 @@ model Documento {
   uploadPorId Int?
 
   // Visibilidade e controle de acesso
-  visibility     DocumentoVisibility @default(PUBLIC)
-  allowedRoles   String[]            @default([]) // lista de roles permitidas (por ex: ['GERENTE','USUARIO'])
-  allowedUserIds Int[]               @default([]) // lista de user IDs permitidos quando visibility = USERS
+  visibility          DocumentoVisibility @default(PUBLIC)
+  allowedRoles        String[]            @default([]) // lista de roles permitidas (por ex: ['GERENTE','USUARIO'])
+  allowedUserIds      Int[]               @default([]) // lista de user IDs permitidos quando visibility = USERS
+  allowedDepartamentos Int[]              @default([]) // lista de departamento IDs permitidos
 
   @@index([processoId])
   @@index([departamentoId])
@@ -296,10 +348,11 @@ model Documento {
 }
 
 enum DocumentoVisibility {
-  PUBLIC // visível para qualquer usuário que tenha acesso ao processo
-  ROLES // visível apenas para users com roles listadas em allowedRoles
-  USERS // visível apenas para users listados em allowedUserIds
-  NONE // visível apenas para quem explicitamente foi concedido (fallback)
+  PUBLIC       // visível para qualquer usuário que tenha acesso ao processo
+  ROLES        // visível apenas para users com roles listadas em allowedRoles
+  USERS        // visível apenas para users listados em allowedUserIds
+  DEPARTAMENTOS // visível apenas para users dos departamentos listados
+  NONE         // visível apenas para quem explicitamente foi concedido (fallback)
 }
 
 // Documentos Obrigatórios por Departamento
@@ -339,6 +392,11 @@ model QuestionarioDepartamento {
   condicaoOperador   String? // igual, diferente, contem
   condicaoValor      String?
 
+  // Para grupo_repetivel
+  controladoPor      Int?     // ID da pergunta que controla as repetições
+  modoRepeticao      String?  // "numero" | "manual"
+  subPerguntas       Json?    // Array de perguntas dentro do grupo
+
   respostas RespostaQuestionario[]
 
   @@index([departamentoId])
@@ -356,6 +414,11 @@ enum TipoCampo {
   FILE
   PHONE
   EMAIL
+  CPF
+  CNPJ
+  CEP
+  MONEY
+  GRUPO_REPETIVEL
 }
 
 // Respostas dos Questionários
@@ -708,6 +771,8 @@ model ChecklistDepartamento {
   concluido      Boolean  @default(false)
   concluidoPorId Int?
   concluidoEm    DateTime?
+  responsavelId  Int?     // Gerente/responsável deste departamento no momento da criação
+  responsavelNome String? // Nome do responsável para exibição rápida
 
   @@unique([processoId, departamentoId])
   @@index([processoId])

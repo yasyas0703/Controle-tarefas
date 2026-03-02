@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { GHOST_USER_EMAIL } from '@/app/utils/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,13 +31,13 @@ export async function GET(request: NextRequest) {
         ? (departamentoIdCandidate as number)
         : undefined;
 
-    if (roleUpper !== 'ADMIN' && roleUpper !== 'GERENTE') {
+    if (roleUpper !== 'ADMIN' && roleUpper !== 'ADMIN_DEPARTAMENTO' && roleUpper !== 'GERENTE') {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    const baseWhere: any = { ativo: true };
+    const baseWhere: any = { ativo: true, isGhost: { not: true }, email: { not: GHOST_USER_EMAIL } };
 
-    if (roleUpper === 'ADMIN') {
+    if (roleUpper === 'ADMIN' || roleUpper === 'ADMIN_DEPARTAMENTO') {
       if (typeof departamentoId === 'number') {
         baseWhere.departamentoId = departamentoId;
       }

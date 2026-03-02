@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Bell, Download, TrendingUp, Plus, FileText, Users, User, X, Upload } from 'lucide-react';
+import { Bell, Download, TrendingUp, Plus, FileText, Users, User, X, Upload, Shield } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
-import { temPermissao as verificarPermissao } from '@/app/utils/permissions';
+import { temPermissao as verificarPermissao, isGhostUsuario } from '@/app/utils/permissions';
 import NotificacoesPanel from './NotificacoesPanel';
 
 interface HeaderProps {
@@ -28,7 +28,7 @@ export default function Header({
   onLogs,
   onImportarPlanilha,
 }: HeaderProps) {
-  const { notificacoes, usuarioLogado, realtimeInfo, setProcessos, setTags, setDepartamentos, setEmpresas, adicionarNotificacao, setGlobalLoading } = useSistema();
+  const { notificacoes, usuarioLogado, realtimeInfo, setProcessos, setTags, setDepartamentos, setEmpresas, adicionarNotificacao, setGlobalLoading, setShowPainelControle, modoManutencao } = useSistema();
   const [showNotifications, setShowNotifications] = useState(false);
   
   // Garantir que notificacoes seja sempre um array
@@ -174,6 +174,21 @@ export default function Header({
               </button>
             )}
 
+            {/* Botão Painel de Controle - apenas ghost user */}
+            {isGhostUsuario(usuarioLogado) && (
+              <button
+                onClick={() => setShowPainelControle(true)}
+                className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white px-4 py-3 rounded-xl font-medium flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 whitespace-nowrap relative"
+                title="Painel de Controle (Ghost)"
+              >
+                <Shield size={20} />
+                <span className="hidden sm:inline">Controle</span>
+                {modoManutencao && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
+                )}
+              </button>
+            )}
+
 
 
             {/* Info Usuário */}
@@ -185,12 +200,14 @@ export default function Header({
                   className={`hidden sm:inline-flex px-2 py-1 rounded-full text-xs ${
                     usuarioLogado.role === 'admin'
                       ? 'bg-purple-100 text-purple-700'
+                      : usuarioLogado.role === 'admin_departamento'
+                      ? 'bg-orange-100 text-orange-700'
                       : usuarioLogado.role === 'gerente'
                       ? 'bg-blue-100 text-blue-700'
                       : 'bg-green-100 text-green-700'
                   }`}
                 >
-                  {usuarioLogado.role === 'admin' ? 'Admin' : usuarioLogado.role === 'gerente' ? 'Gerente' : 'Usuário'}
+                  {usuarioLogado.role === 'admin' ? 'Admin' : usuarioLogado.role === 'admin_departamento' ? 'Admin Dept' : usuarioLogado.role === 'gerente' ? 'Gerente' : 'Usuário'}
                 </span>
                 <button
                   onClick={onLogout}

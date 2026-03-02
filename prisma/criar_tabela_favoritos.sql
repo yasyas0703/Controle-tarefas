@@ -38,10 +38,3 @@ COMMENT ON COLUMN "ProcessoFavorito"."usuarioId" IS 'ID do usuário que favorito
 COMMENT ON COLUMN "ProcessoFavorito"."processoId" IS 'ID do processo favoritado';
 COMMENT ON COLUMN "ProcessoFavorito"."criadoEm" IS 'Data em que o processo foi favoritado';
 
--- ============================================
--- Exemplo de consulta para buscar favoritos de um usuário:
--- SELECT p.* FROM "Processo" p
--- INNER JOIN "ProcessoFavorito" f ON f."processoId" = p.id
--- WHERE f."usuarioId" = <ID_DO_USUARIO>
--- ORDER BY f."criadoEm" DESC;
--- ============================================

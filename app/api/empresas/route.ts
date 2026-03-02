@@ -125,12 +125,16 @@ export async function POST(request: NextRequest) {
     const temCnpjValido = cnpjLimpo.length === 14;
     
     const empresaCadastrada = temCnpjValido ? true : Boolean(data.cadastrada);
-    
+    const razaoSocialNormalizada =
+      String(data.razao_social || '').trim() ||
+      String(data.codigo || '').trim() ||
+      'Sem nome';
+
     const empresa = await prisma.empresa.create({
       data: {
         cnpj: data.cnpj || null,
         codigo: data.codigo,
-        razao_social: data.razao_social,
+        razao_social: razaoSocialNormalizada,
         apelido: data.apelido,
         inscricao_estadual: data.inscricao_estadual,
         inscricao_municipal: data.inscricao_municipal,

@@ -140,13 +140,21 @@ export async function PUT(
       ativo: data.ativo !== undefined ? data.ativo : true,
     };
 
+    // require2FA: somente ghost pode alterar
+    if (data.require2FA !== undefined) {
+      const requesterIsGhost = (user as any).isGhost === true || (user as any).email === 'ghost@triar.system';
+      if (requesterIsGhost) {
+        updateData.require2FA = Boolean(data.require2FA);
+      }
+    }
+
     // requester é admin (já validado acima)
-    
+
     // Se tiver senha, atualiza
     if (data.senha) {
       updateData.senha = await hashPassword(data.senha);
     }
-    
+
     const usuario = await prisma.usuario.update({
       where: { id: parseInt(params.id) },
       data: updateData,
@@ -156,6 +164,7 @@ export async function PUT(
         email: true,
         role: true,
         ativo: true,
+        require2FA: true,
         departamento: {
           select: { id: true, nome: true },
         },
@@ -176,7 +185,7 @@ export async function PUT(
       email: usuario.email,
       role: usuario.role,
       ativo: usuario.ativo,
-      departamentoId: usuario.departamento?.id ?? null,
+      departamentoId: (usuario as any).departamento?.id ?? (usuario as any).departamentoId ?? null,
       permissoes: JSON.stringify(updateData.permissoes ?? []),
     };
     const mudancas = detectarMudancas(camposAntes, camposDepois);
@@ -297,24 +306,51 @@ export async function DELETE(
         }
       }
 
-      // Tenta excluir permanentemente
+      // Tenta excluir permanentemente - limpa registros dependentes primeiro
       try {
+        // Remover/desassociar registros que referenciam o usuário
+        await Promise.all([
+          // Desassociar processos criados e responsáveis (não excluir os processos)
+          prisma.processo.updateMany({ where: { criadoPorId: target.id }, data: { criadoPorId: null } }),
+          prisma.processo.updateMany({ where: { responsavelId: target.id }, data: { responsavelId: null } }),
+          // Excluir comentários do usuário
+          prisma.comentario.deleteMany({ where: { autorId: target.id } }),
+          // Desassociar histórico de eventos
+          prisma.historicoEvento.updateMany({ where: { responsavelId: target.id }, data: { responsavelId: null } }),
+          // Excluir respostas de questionários
+          prisma.respostaQuestionario.deleteMany({ where: { respondidoPorId: target.id } }),
+          // Desassociar templates
+          prisma.template.updateMany({ where: { criadoPorId: target.id }, data: { criadoPorId: null } }),
+          // Excluir notificações
+          prisma.notificacao.deleteMany({ where: { usuarioId: target.id } }),
+          // Excluir favoritos
+          prisma.processoFavorito.deleteMany({ where: { usuarioId: target.id } }),
+          // Excluir códigos de verificação
+          prisma.emailVerificationCode.deleteMany({ where: { usuarioId: target.id } }),
+          // Desassociar itens da lixeira
+          prisma.itemLixeira.deleteMany({ where: { deletadoPorId: target.id } }),
+          // Desassociar logs de auditoria
+          prisma.logAuditoria.deleteMany({ where: { usuarioId: target.id } }),
+        ]);
+
         await prisma.usuario.delete({ where: { id: target.id } });
-        // Audit log: exclusão permanente
-        await registrarLog({
-          usuarioId: user.id as number,
-          acao: 'EXCLUIR',
-          entidade: 'USUARIO',
-          entidadeId: targetData.id,
-          entidadeNome: targetData.nome,
-          detalhes: 'Exclusão permanente',
-          ip: getIp(request),
-        });
+        // Audit log: exclusão permanente (registrado com o ID do admin que excluiu)
+        try {
+          await registrarLog({
+            usuarioId: user.id as number,
+            acao: 'EXCLUIR',
+            entidade: 'USUARIO',
+            entidadeId: targetData.id,
+            entidadeNome: targetData.nome,
+            detalhes: 'Exclusão permanente',
+            ip: getIp(request),
+          });
+        } catch { /* log pode falhar se foi o mesmo usuario */ }
         console.timeEnd('DELETE /api/usuarios/:id');
         return NextResponse.json({ message: 'Usuário excluído permanentemente' });
       } catch (err: any) {
         console.error('Erro ao excluir usuário permanentemente:', err);
-        return NextResponse.json({ error: 'Erro ao excluir permanentemente (ver logs)' }, { status: 500 });
+        return NextResponse.json({ error: `Erro ao excluir permanentemente: ${err.message || 'ver logs'}` }, { status: 500 });
       }
     }
 

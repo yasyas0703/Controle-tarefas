@@ -78,7 +78,9 @@ export default function ProcessoDetalhado({
       ? (processo as any).documentosCount
       : Array.isArray((processo as any)?.documentos)
         ? (processo as any).documentos.length
-        : 0;
+        : typeof (processo as any)?._count?.documentos === 'number'
+          ? (processo as any)._count.documentos
+          : 0;
   const tagsMetadata = Array.isArray((processo as any)?.tagsMetadata) ? (processo as any).tagsMetadata : [];
 
   const nomeEmpresa = React.useMemo(() => {

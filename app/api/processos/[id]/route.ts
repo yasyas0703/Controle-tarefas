@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -84,41 +85,33 @@ export async function GET(
       return jsonBigInt({ error: 'Processo não encontrado' }, { status: 404 });
     }
 
-    // Filtrar documentos pelo nível de visibilidade para o usuário autenticado
+    // Filtrar documentos pelo nível de visibilidade usando utilitário centralizado
     const userId = Number((user as any).id);
     const userRole = String((user as any).role || '').toUpperCase();
-    const documentoPodeSerVisto = (doc: any) => {
-      try {
-        const vis = String(doc.visibility || 'PUBLIC').toUpperCase();
-        const allowedRoles: string[] = Array.isArray(doc.allowedRoles) ? doc.allowedRoles.map(r => String(r).toUpperCase()) : [];
-        const allowedUserIds: number[] = Array.isArray(doc.allowedUserIds) ? doc.allowedUserIds.map((n: any) => Number(n)) : [];
-
-        if (vis === 'PUBLIC') return true;
-        if (vis === 'ROLES') {
-          if (allowedRoles.length === 0) return false;
-          return allowedRoles.includes(userRole);
-        }
-        if (vis === 'USERS') {
-          if (allowedUserIds.length === 0) return false;
-          return allowedUserIds.includes(userId);
-        }
-        // NONE or unknown: strict deny unless explicitly listed in allowedUserIds
-        return Array.isArray(allowedUserIds) && allowedUserIds.includes(userId);
-      } catch (e) {
-        return false;
-      }
-    };
+    const userDeptId = Number((user as any).departamentoId) || null;
+    const usuarioPermissao = { id: userId, role: userRole, departamentoId: userDeptId };
 
     // Montar mapa de contagem de anexos por perguntaId e por departamento (inclui total por pergunta)
+    // IMPORTANTE: filtra por permissão do usuário para não expor contagens de documentos restritos
     try {
       const allDocs = await prisma.documento.findMany({
         where: { processoId: processo.id },
-        select: { id: true, perguntaId: true, departamentoId: true },
+        select: { id: true, perguntaId: true, departamentoId: true, visibility: true, allowedRoles: true, allowedUserIds: true, allowedDepartamentos: true, uploadPorId: true },
       });
+      const docsVisiveis = allDocs.filter((d: any) =>
+        verificarPermissaoDocumento(
+          {
+            visibility: d.visibility,
+            allowedRoles: d.allowedRoles,
+            allowedUserIds: d.allowedUserIds,
+            uploadPorId: d.uploadPorId,
+            allowedDepartamentos: d.allowedDepartamentos || null,
+          },
+          usuarioPermissao
+        )
+      );
       const documentosCounts: Record<string, number> = {};
-      for (const d of allDocs) {
-        // `allDocs` select retorna `perguntaId`/`departamentoId` (camelCase).
-        // Em alguns contextos os campos podem vir em snake_case; usamos cast a `any` para ser permissivo.
+      for (const d of docsVisiveis) {
         const pid = Number((d as any)?.perguntaId ?? (d as any)?.pergunta_id ?? 0) || 0;
         const dept = Number((d as any)?.departamentoId ?? (d as any)?.departamento_id ?? 0) || 0;
         const keySpecific = `${pid}:${dept}`;
@@ -132,7 +125,18 @@ export async function GET(
       (processo as any).documentosCounts = {};
     }
     if (Array.isArray((processo as any).documentos)) {
-      (processo as any).documentos = (processo as any).documentos.filter((d: any) => documentoPodeSerVisto(d));
+      (processo as any).documentos = (processo as any).documentos.filter((d: any) =>
+        verificarPermissaoDocumento(
+          {
+            visibility: d.visibility,
+            allowedRoles: d.allowedRoles,
+            allowedUserIds: d.allowedUserIds,
+            uploadPorId: d.uploadPorId,
+            allowedDepartamentos: d.allowedDepartamentos || null,
+          },
+          usuarioPermissao
+        )
+      );
     }
 
     // Buscar todos os questionários por departamento vinculados a este processo
@@ -343,9 +347,9 @@ export async function PUT(
     }
 
     // Gerente/admin seguem validações abaixo
-    if (roleUpper === 'GERENTE' || roleUpper === 'ADMIN') {
+    if (roleUpper === 'GERENTE' || roleUpper === 'ADMIN' || roleUpper === 'ADMIN_DEPARTAMENTO') {
       // gerente validations continue below
-    } else if (roleUpper !== 'GERENTE' && roleUpper !== 'ADMIN' && roleUpper !== 'USUARIO') {
+    } else if (roleUpper !== 'GERENTE' && roleUpper !== 'ADMIN' && roleUpper !== 'ADMIN_DEPARTAMENTO' && roleUpper !== 'USUARIO') {
       // any other role not handled above is forbidden
       return NextResponse.json({ error: 'Sem permissão para editar processo' }, { status: 403 });
     }
@@ -555,7 +559,7 @@ export async function DELETE(
       if (processo.departamentoAtual !== departamentoUsuario) {
         return NextResponse.json({ error: 'Sem permissão para excluir processo de outro departamento' }, { status: 403 });
       }
-    } else if (!requireRole(user, ['ADMIN'])) {
+    } else if (!requireRole(user, ['ADMIN', 'ADMIN_DEPARTAMENTO'])) {
       return NextResponse.json({ error: 'Sem permissão para excluir' }, { status: 403 });
     }
 

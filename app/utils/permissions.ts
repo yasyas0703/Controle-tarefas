@@ -1,4 +1,71 @@
 import { Usuario } from '@/app/types';
+import { GHOST_USER_EMAIL, MASTER_USER_EMAIL } from './constants';
+
+/**
+ * Verifica se um usuário é o ghost user ou o master user (yasmin)
+ */
+export function isSuperUsuario(usuario: Usuario | null): boolean {
+  if (!usuario) return false;
+  if ((usuario as any).isGhost) return true;
+  if (usuario.email === GHOST_USER_EMAIL) return true;
+  if (usuario.email === MASTER_USER_EMAIL) return true;
+  return false;
+}
+
+/**
+ * Verifica se um usuário é ghost (sem logs)
+ */
+export function isGhostUsuario(usuario: Usuario | null): boolean {
+  if (!usuario) return false;
+  if ((usuario as any).isGhost) return true;
+  if (usuario.email === GHOST_USER_EMAIL) return true;
+  return false;
+}
+
+/**
+ * Verifica se o admin pode editar/excluir outro admin
+ * Apenas ghost e master podem editar outros admins
+ */
+export function podeEditarUsuario(editor: Usuario | null, alvo: Usuario | null): boolean {
+  if (!editor || !alvo) return false;
+
+  // Super users podem editar qualquer um
+  if (isSuperUsuario(editor)) return true;
+
+  // Se o alvo é admin, apenas super users podem editar
+  if (alvo.role === 'admin' || alvo.role === 'admin_departamento') {
+    return false; // Já tratado acima - admins normais NÃO podem editar outros admins
+  }
+
+  // Admins podem editar gerentes e usuários
+  if (editor.role === 'admin' || editor.role === 'admin_departamento') return true;
+
+  return false;
+}
+
+/**
+ * Verifica se o admin pode alterar a senha de outro usuário
+ * Admins NÃO podem alterar senha de outros admins (exceto ghost e master)
+ */
+export function podeAlterarSenha(editor: Usuario | null, alvo: Usuario | null): boolean {
+  if (!editor || !alvo) return false;
+
+  // Super users podem tudo
+  if (isSuperUsuario(editor)) return true;
+
+  // Editando a si mesmo - sempre pode
+  if (editor.id === alvo.id) return true;
+
+  // Se o alvo é admin, somente super users
+  if (alvo.role === 'admin' || alvo.role === 'admin_departamento') {
+    return false;
+  }
+
+  // Admins podem mudar senha de gerentes e usuários
+  if (editor.role === 'admin' || editor.role === 'admin_departamento') return true;
+
+  return false;
+}
 
 /**
  * Verifica se um usuário tem permissão para executar uma ação
@@ -19,8 +86,13 @@ export function temPermissao(
         ? (usuario as any).departamentoId
         : undefined;
 
-  // Admin tem acesso total
-  if (usuario.role === 'admin') {
+  // Ghost user e super users têm acesso total absoluto
+  if (isSuperUsuario(usuario)) {
+    return true;
+  }
+
+  // Admin e Admin_departamento têm acesso total
+  if (usuario.role === 'admin' || usuario.role === 'admin_departamento') {
     return true;
   }
 
@@ -156,4 +228,3 @@ export function temPermissao(
 
   return false;
 }
-

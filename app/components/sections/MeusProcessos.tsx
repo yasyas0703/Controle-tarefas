@@ -53,7 +53,9 @@ export default function MeusProcessos({
         : null;
   }, [usuarioLogado]);
 
-  const isAdmin = (usuarioLogado as any)?.role === 'admin';
+  const isAdmin =
+    (usuarioLogado as any)?.role === 'admin' ||
+    (usuarioLogado as any)?.role === 'admin_departamento';
 
   // Departamento do usuário
   const meuDepartamento = useMemo(() => {

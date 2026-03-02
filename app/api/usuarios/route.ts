@@ -4,6 +4,7 @@ import { hashPassword } from '@/app/utils/auth';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 import { Role } from '@prisma/client';
 import { registrarLog, getIp } from '@/app/utils/logAuditoria';
+import { GHOST_USER_EMAIL } from '@/app/utils/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -21,12 +22,17 @@ export async function GET(request: NextRequest) {
     }
 
     const usuarios = await prisma.usuario.findMany({
+      where: {
+        isGhost: { not: true },
+        email: { not: GHOST_USER_EMAIL },
+      },
       select: {
         id: true,
         nome: true,
         email: true,
         role: true,
         ativo: true,
+        require2FA: true,
         departamento: {
           select: { id: true, nome: true },
         },
@@ -119,6 +125,7 @@ export async function POST(request: NextRequest) {
             departamentoId: typeof departamentoId === 'number' ? departamentoId : null,
             permissoes: data.permissoes || [],
             ativo: true,
+            ...(data.require2FA !== undefined && { require2FA: Boolean(data.require2FA) }),
           },
           select: {
             id: true,
@@ -126,6 +133,7 @@ export async function POST(request: NextRequest) {
             email: true,
             role: true,
             ativo: true,
+            require2FA: true,
             departamento: {
               select: { id: true, nome: true },
             },
@@ -171,6 +179,7 @@ export async function POST(request: NextRequest) {
         departamentoId: typeof departamentoId === 'number' ? departamentoId : null,
         permissoes: data.permissoes || [],
         ativo: data.ativo !== undefined ? data.ativo : true,
+        ...(data.require2FA !== undefined && { require2FA: Boolean(data.require2FA) }),
       },
       select: {
         id: true,
@@ -178,6 +187,7 @@ export async function POST(request: NextRequest) {
         email: true,
         role: true,
         ativo: true,
+        require2FA: true,
         departamento: {
           select: { id: true, nome: true },
         },

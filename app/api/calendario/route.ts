@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { getAuthUser } from '@/app/utils/routeAuth';
 import { registrarLog, getIp } from '@/app/utils/logAuditoria';
+import { getEmpresaDocumentoQueryConfig, normalizeEmpresaDocumento } from '@/app/utils/empresaDocumentoCompat';
 
 // Função para converter data corretamente (evita problema de timezone)
 function parseDate(value: string): Date {
@@ -214,17 +215,19 @@ export async function GET(request: NextRequest) {
     // Se solicitado, incluir documentos de empresas vencendo como eventos
     if (incluirDocumentos && inicio && fim) {
       try {
-        const documentos = await prisma.empresaDocumento.findMany({
+        const { select, acl } = await getEmpresaDocumentoQueryConfig({
+          empresa: { select: { id: true, razao_social: true, codigo: true } },
+        });
+        const documentosRaw = await prisma.empresaDocumento.findMany({
           where: {
             validadeAte: {
               gte: new Date(inicio),
               lte: new Date(fim),
             },
           },
-          include: {
-            empresa: { select: { id: true, razao_social: true, codigo: true } },
-          },
+          select,
         });
+        const documentos = documentosRaw.map((doc) => normalizeEmpresaDocumento(doc as any, acl));
         
         const eventosDocumentos = documentos.map((d: any) => {
           const hoje = new Date();

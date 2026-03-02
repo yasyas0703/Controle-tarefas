@@ -32,7 +32,7 @@ function usuarioPodeVerItem(item: any, userId: number, userRole: string): boolea
     : [];
 
   if (item.deletadoPorId === userId) return true;
-  if (userRole === 'ADMIN') return true;
+  if (userRole === 'ADMIN' || userRole === 'ADMIN_DEPARTAMENTO') return true;
   if (vis === 'PUBLIC') return true;
   if (vis === 'ROLES') {
     if (allowedRoles.length === 0) return false;
@@ -524,7 +524,7 @@ export async function DELETE(
     }
 
     // Apenas admin ou quem deletou pode excluir permanentemente
-    if (userRole !== 'ADMIN' && item.deletadoPorId !== userId) {
+    if (userRole !== 'ADMIN' && userRole !== 'ADMIN_DEPARTAMENTO' && item.deletadoPorId !== userId) {
       return jsonBigInt({ 
         error: 'Apenas administradores ou quem excluiu o item pode deletar permanentemente' 
       }, { status: 403 });

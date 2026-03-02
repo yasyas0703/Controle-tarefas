@@ -1,9 +1,31 @@
 import { prisma } from '@/app/utils/prisma';
+import { GHOST_USER_EMAIL } from './constants';
+
+// Cache de IDs de ghost users para evitar queries repetidas
+let ghostUserIdsCache: Set<number> | null = null;
+let ghostCacheTime = 0;
+
+async function getGhostUserIds(): Promise<Set<number>> {
+  // Cache por 5 minutos
+  if (ghostUserIdsCache && Date.now() - ghostCacheTime < 300_000) return ghostUserIdsCache;
+  try {
+    const ghosts = await prisma.usuario.findMany({
+      where: { OR: [{ isGhost: true }, { email: GHOST_USER_EMAIL }] },
+      select: { id: true },
+    });
+    ghostUserIdsCache = new Set(ghosts.map(g => g.id));
+    ghostCacheTime = Date.now();
+  } catch {
+    ghostUserIdsCache = new Set();
+  }
+  return ghostUserIdsCache;
+}
 
 /**
  * Registra um log de auditoria global no banco de dados.
  * Chamado direto nos API routes (server-side) – não depende de fetch/HTTP.
  * Falha silenciosamente se a tabela ainda não existir.
+ * NÃO registra ações do ghost user.
  */
 export async function registrarLog(opts: {
   usuarioId: number;
@@ -21,6 +43,10 @@ export async function registrarLog(opts: {
   ip?: string | null;
 }) {
   try {
+    // Ghost user: não registrar logs
+    const ghosts = await getGhostUserIds();
+    if (ghosts.has(opts.usuarioId)) return;
+
     await (prisma as any).logAuditoria.create({
       data: {
         usuarioId: opts.usuarioId,

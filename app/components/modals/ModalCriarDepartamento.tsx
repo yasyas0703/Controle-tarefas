@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import { X, Plus, Trash2, Edit, FileText, Users, Calculator, FileCheck, Briefcase, Headphones, Scale, CheckCircle, Building2, Landmark, ShieldCheck, Truck, Package, Heart, Wallet, CreditCard, BarChart3, PieChart, Settings, Wrench, Globe, Mail, Phone, MessageSquare, Clipboard, FolderOpen, Archive, BookOpen, GraduationCap, Award, Target, Flag, Zap, Star } from 'lucide-react';
@@ -16,17 +16,17 @@ export default function ModalCriarDepartamento({
   onSave,
   departamento,
 }: ModalCriarDepartamentoProps) {
-  const { mostrarAlerta } = useSistema();
+  const { mostrarAlerta, usuarios } = useSistema();
   const [formData, setFormData] = useState({
     nome: departamento?.nome || '',
     responsavel: departamento?.responsavel || '',
     descricao: departamento?.descricao || '',
     cor: departamento?.cor || 'from-cyan-500 to-blue-600',
     icone: (() => {
-      // Normalizar ícone - garantir que seja sempre uma string com o nome do ícone
+      // Normalizar Ã­cone - garantir que seja sempre uma string com o nome do Ã­cone
       if (!departamento?.icone) return 'FileText';
       if (typeof departamento.icone === 'string') {
-        // Verificar se é um dos nomes válidos
+        // Verificar se Ã© um dos nomes vÃ¡lidos
         const nomesValidos = ['FileText', 'Users', 'Calculator', 'FileCheck', 'Briefcase', 'Edit', 'Headphones', 'Scale', 'CheckCircle'];
         return nomesValidos.includes(departamento.icone) ? departamento.icone : 'FileText';
       }
@@ -37,7 +37,7 @@ export default function ModalCriarDepartamento({
   const coresDisponiveis = [
     { nome: 'Azul', gradient: 'from-blue-500 to-blue-700', solida: 'bg-blue-600' },
     { nome: 'Ciano', gradient: 'from-cyan-500 to-cyan-700', solida: 'bg-cyan-600' },
-    { nome: 'Índigo', gradient: 'from-indigo-500 to-indigo-700', solida: 'bg-indigo-600' },
+    { nome: 'Ãndigo', gradient: 'from-indigo-500 to-indigo-700', solida: 'bg-indigo-600' },
     { nome: 'Roxo', gradient: 'from-purple-500 to-purple-700', solida: 'bg-purple-600' },
     { nome: 'Rosa', gradient: 'from-pink-500 to-pink-700', solida: 'bg-pink-600' },
     { nome: 'Vermelho', gradient: 'from-red-500 to-red-700', solida: 'bg-red-600' },
@@ -55,26 +55,26 @@ export default function ModalCriarDepartamento({
 
   const iconesDisponiveis = [
     { nome: 'FileText', componente: FileText, label: 'Documento' },
-    { nome: 'Users', componente: Users, label: 'Usuários' },
+    { nome: 'Users', componente: Users, label: 'UsuÃ¡rios' },
     { nome: 'Calculator', componente: Calculator, label: 'Calculadora' },
-    { nome: 'FileCheck', componente: FileCheck, label: 'Verificação' },
+    { nome: 'FileCheck', componente: FileCheck, label: 'VerificaÃ§Ã£o' },
     { nome: 'Briefcase', componente: Briefcase, label: 'Maleta' },
     { nome: 'Edit', componente: Edit, label: 'Editar' },
     { nome: 'Headphones', componente: Headphones, label: 'Atendimento' },
-    { nome: 'Scale', componente: Scale, label: 'Jurídico' },
-    { nome: 'CheckCircle', componente: CheckCircle, label: 'Conclusão' },
+    { nome: 'Scale', componente: Scale, label: 'JurÃ­dico' },
+    { nome: 'CheckCircle', componente: CheckCircle, label: 'ConclusÃ£o' },
     { nome: 'Building2', componente: Building2, label: 'Empresa' },
     { nome: 'Landmark', componente: Landmark, label: 'Banco' },
-    { nome: 'ShieldCheck', componente: ShieldCheck, label: 'Segurança' },
-    { nome: 'Truck', componente: Truck, label: 'Logística' },
+    { nome: 'ShieldCheck', componente: ShieldCheck, label: 'SeguranÃ§a' },
+    { nome: 'Truck', componente: Truck, label: 'LogÃ­stica' },
     { nome: 'Package', componente: Package, label: 'Estoque' },
-    { nome: 'Heart', componente: Heart, label: 'Saúde' },
+    { nome: 'Heart', componente: Heart, label: 'SaÃºde' },
     { nome: 'Wallet', componente: Wallet, label: 'Carteira' },
     { nome: 'CreditCard', componente: CreditCard, label: 'Pagamentos' },
-    { nome: 'BarChart3', componente: BarChart3, label: 'Gráficos' },
-    { nome: 'PieChart', componente: PieChart, label: 'Análise' },
-    { nome: 'Settings', componente: Settings, label: 'Configurações' },
-    { nome: 'Wrench', componente: Wrench, label: 'Manutenção' },
+    { nome: 'BarChart3', componente: BarChart3, label: 'GrÃ¡ficos' },
+    { nome: 'PieChart', componente: PieChart, label: 'AnÃ¡lise' },
+    { nome: 'Settings', componente: Settings, label: 'ConfiguraÃ§Ãµes' },
+    { nome: 'Wrench', componente: Wrench, label: 'ManutenÃ§Ã£o' },
     { nome: 'Globe', componente: Globe, label: 'Global' },
     { nome: 'Mail', componente: Mail, label: 'E-mail' },
     { nome: 'Phone', componente: Phone, label: 'Telefone' },
@@ -84,7 +84,7 @@ export default function ModalCriarDepartamento({
     { nome: 'Archive', componente: Archive, label: 'Arquivo' },
     { nome: 'BookOpen', componente: BookOpen, label: 'Manual' },
     { nome: 'GraduationCap', componente: GraduationCap, label: 'Treinamento' },
-    { nome: 'Award', componente: Award, label: 'Prêmio' },
+    { nome: 'Award', componente: Award, label: 'PrÃªmio' },
     { nome: 'Target', componente: Target, label: 'Meta' },
     { nome: 'Flag', componente: Flag, label: 'Marco' },
     { nome: 'Zap', componente: Zap, label: 'Energia' },
@@ -95,12 +95,12 @@ export default function ModalCriarDepartamento({
     e.preventDefault();
     
     if (!formData.nome.trim()) {
-      void mostrarAlerta('Atenção', 'Digite o nome do departamento!', 'aviso');
+      void mostrarAlerta('AtenÃ§Ã£o', 'Digite o nome do departamento!', 'aviso');
       return;
     }
 
     if (!formData.responsavel.trim()) {
-      void mostrarAlerta('Atenção', 'Digite o nome do responsável!', 'aviso');
+      void mostrarAlerta('AtenÃ§Ã£o', 'Digite o nome do responsÃ¡vel!', 'aviso');
       return;
     }
 
@@ -114,7 +114,7 @@ export default function ModalCriarDepartamento({
       descricao: formData.descricao,
       cor: formData.cor,
       corSolida: corSelecionada?.solida,
-      icone: iconeSelecionado?.nome || 'FileText', // Sempre salvar o nome do ícone como string
+      icone: iconeSelecionado?.nome || 'FileText', // Sempre salvar o nome do Ã­cone como string
       criadoEm: departamento?.criadoEm || new Date(),
     });
 
@@ -164,6 +164,22 @@ export default function ModalCriarDepartamento({
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Responsável <span className="text-red-500">*</span>
             </label>
+            <select
+              value={formData.responsavel}
+              onChange={(e) => setFormData({ ...formData, responsavel: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-500 mb-2"
+            >
+              <option value="">Selecione um usuário...</option>
+              {(Array.isArray(usuarios) ? usuarios : [])
+                .filter((u: any) => u?.ativo !== false)
+                .sort((a: any, b: any) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR'))
+                .map((u: any) => (
+                  <option key={u.id} value={u.nome}>
+                    {u.nome}{u.email ? ` (${u.email})` : ''}
+                  </option>
+                ))}
+            </select>
+            <p className="text-xs text-gray-500 mb-2">Ou digite manualmente abaixo.</p>
             <input
               type="text"
               value={formData.responsavel}
@@ -175,7 +191,7 @@ export default function ModalCriarDepartamento({
             />
           </div>
 
-          {/* Descrição */}
+          {/* DescriÃ§Ã£o */}
         
 
           {/* Cor do Departamento */}
@@ -201,10 +217,10 @@ export default function ModalCriarDepartamento({
             </div>
           </div>
 
-          {/* Ícone do Departamento */}
+          {/* Ãcone do Departamento */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Ícone do Departamento
+              Ãcone do Departamento
             </label>
             <div className="grid grid-cols-6 sm:grid-cols-9 gap-2 max-h-48 overflow-y-auto p-1">
               {iconesDisponiveis.map((icone) => {
@@ -248,7 +264,7 @@ export default function ModalCriarDepartamento({
                     {formData.nome || 'Nome do Departamento'}
                   </h5>
                   <p className="text-sm opacity-90">
-                    {formData.responsavel || 'Responsável'}
+                    {formData.responsavel || 'ResponsÃ¡vel'}
                   </p>
                 </div>
               </div>
@@ -260,7 +276,7 @@ export default function ModalCriarDepartamento({
             </div>
           </div>
 
-          {/* Botões de Ação */}
+          {/* BotÃµes de AÃ§Ã£o */}
           <div className="flex gap-4 pt-6 border-t border-gray-200">
             <button
               type="button"

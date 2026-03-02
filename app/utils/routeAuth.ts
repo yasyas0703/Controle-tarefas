@@ -30,5 +30,9 @@ export async function requireAuth(request: NextRequest) {
 export function requireRole(user: AuthUser, allowedRoles: string[]) {
   if (!user) return false;
   const role = String((user as any).role || '').toUpperCase();
-  return allowedRoles.map(r => r.toUpperCase()).includes(role);
+  const allowed = allowedRoles.map(r => r.toUpperCase());
+  if (role === 'ADMIN_DEPARTAMENTO' && allowed.includes('ADMIN')) {
+    return true;
+  }
+  return allowed.includes(role);
 }

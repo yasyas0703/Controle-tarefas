@@ -27,9 +27,17 @@ function getInitialTheme(): Theme {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const [theme, setThemeState] = useState<Theme>("light");
+  const [mounted, setMounted] = useState(false);
+
+  // Aplica o tema salvo somente após montar no cliente (evita hydration mismatch)
+  useEffect(() => {
+    setThemeState(getInitialTheme());
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
+    if (!mounted) return;
     const root = document.documentElement;
     if (theme === "dark") {
       root.classList.add("dark");
@@ -37,7 +45,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       root.classList.remove("dark");
     }
     window.localStorage.setItem("theme", theme);
-  }, [theme]);
+  }, [theme, mounted]);
 
   const setTheme = (t: Theme) => setThemeState(t);
   const toggleTheme = () => setThemeState((prev) => (prev === "dark" ? "light" : "dark"));

@@ -1,4 +1,4 @@
-﻿// Types essenciais do sistema
+// Types essenciais do sistema
 
 export interface Processo {
   id: number;
@@ -78,13 +78,15 @@ export interface Tag {
 
 export interface Usuario {
   id: number;
+  externalId?: string;
   nome: string;
   email: string;
-  role: 'admin' | 'gerente' | 'usuario';
+  role: 'admin' | 'admin_departamento' | 'gerente' | 'usuario';
   departamentoId?: number;
   departamento_id?: number;
   permissoes?: string[];
   ativo?: boolean;
+  isGhost?: boolean;
   criadoEm?: Date | string;
 }
 
@@ -126,6 +128,11 @@ export interface Documento {
   departamentoId?: number;
   perguntaId?: number;
   dataUpload: Date | string;
+  uploadPorId?: number;
+  visibility?: 'PUBLIC' | 'ROLES' | 'USERS' | 'DEPARTAMENTOS' | 'NONE';
+  allowedRoles?: string[];
+  allowedUserIds?: number[];
+  allowedDepartamentos?: number[];
 }
 
 export interface DocumentoObrigatorio {
@@ -138,7 +145,7 @@ export interface DocumentoObrigatorio {
 export interface Questionario {
   id: number;
   label: string;
-  tipo: 'text' | 'textarea' | 'number' | 'date' | 'boolean' | 'select' | 'checkbox' | 'file' | 'phone' | 'email';
+  tipo: 'text' | 'textarea' | 'number' | 'date' | 'boolean' | 'select' | 'checkbox' | 'file' | 'phone' | 'email' | 'cpf' | 'cnpj' | 'cep' | 'money' | 'grupo_repetivel';
   obrigatorio: boolean;
   opcoes?: string[];
   ordem?: number;
@@ -147,6 +154,10 @@ export interface Questionario {
     operador: 'igual' | 'diferente' | 'contem';
     valor: string;
   };
+  // Para grupo_repetivel
+  controladoPor?: number;
+  modoRepeticao?: 'numero' | 'manual';
+  subPerguntas?: Questionario[];
 }
 
 export interface RespostaQuestionario {
@@ -219,6 +230,11 @@ export interface EmpresaDocumento {
   uploadPorId?: number | null;
   validadeAte?: Date | string | null;
   alertarDiasAntes?: number;
+  // Controle de acesso
+  visibility?: 'PUBLIC' | 'ROLES' | 'USERS' | 'DEPARTAMENTOS' | 'NONE';
+  allowedRoles?: string[];
+  allowedUserIds?: number[];
+  allowedDepartamentos?: number[];
   // Computados pela API
   validadeStatus?: EmpresaDocumentoValidadeStatus;
   validadeDias?: number | null;
@@ -408,6 +424,32 @@ export interface InterligacaoProcesso {
   criadoPorId: number;
   automatica: boolean;
   criadoEm: Date | string;
+}
+
+// ==================== SESSÃO ATIVA ====================
+
+export interface SessaoAtiva {
+  id: number;
+  usuarioId: number;
+  usuario?: Pick<Usuario, 'id' | 'nome' | 'email' | 'role'>;
+  token: string;
+  ip?: string | null;
+  userAgent?: string | null;
+  criadoEm: Date | string;
+  ultimoAcesso: Date | string;
+  ativo: boolean;
+}
+
+// ==================== FLUXO DE INTERLIGAÇÃO ====================
+
+export interface FluxoInterligacao {
+  id: number;
+  nome: string;
+  descricao?: string | null;
+  templateIds: number[];
+  criadoPorId: number;
+  criadoEm: Date | string;
+  atualizadoEm: Date | string;
 }
 
 // ==================== MOTIVOS DE EXCLUSÃO PADRÃO ====================

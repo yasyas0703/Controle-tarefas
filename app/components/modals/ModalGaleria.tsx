@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, File, Download, Eye, Trash2 } from 'lucide-react';
+import { X, File, Download, Eye, Trash2, Edit, Shield } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { Documento } from '@/app/types';
 import { formatarTamanhoParcela, formatarDataHora, formatarNomeArquivo } from '@/app/utils/helpers';
@@ -15,12 +15,19 @@ interface GaleriaDocumentosProps {
 }
 
 export default function GaleriaDocumentos({ onClose, departamentoId, processoId, titulo }: GaleriaDocumentosProps) {
-  const { processos, departamentos, setProcessos, adicionarNotificacao, mostrarAlerta, setShowPreviewDocumento } = useSistema();
+  const { processos, departamentos, setProcessos, adicionarNotificacao, mostrarAlerta, setShowPreviewDocumento, usuarios } = useSistema();
   const { mostrarConfirmacao } = useSistema();
 
   const [docsCarregados, setDocsCarregados] = React.useState<Documento[]>([]);
   const [carregando, setCarregando] = React.useState(false);
   const [processingId, setProcessingId] = React.useState<number | null>(null);
+
+  // Estado para edição inline de permissões
+  const [editandoPermissoes, setEditandoPermissoes] = React.useState<number | null>(null);
+  const [editVisibility, setEditVisibility] = React.useState<'PUBLIC' | 'ROLES' | 'USERS' | 'DEPARTAMENTOS'>('PUBLIC');
+  const [editRoles, setEditRoles] = React.useState<string[]>([]);
+  const [editUserIds, setEditUserIds] = React.useState<number[]>([]);
+  const [editDeptIds, setEditDeptIds] = React.useState<number[]>([]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -51,8 +58,17 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
       try {
         setCarregando(true);
         // Collect processoIds that may have documents
+        // Check both _count.documentos (from Prisma include) and documentosCount (legacy)
         const possiveisProcessos: number[] = (processos || [])
-          .filter((p: any) => Number(p.documentosCount || 0) > 0)
+          .filter((p: any) => {
+            const count = Number((p as any)?._count?.documentos || (p as any)?.documentosCount || 0);
+            if (count > 0) return true;
+            // Also include processes whose embedded documentos array has entries
+            if (Array.isArray(p.documentos) && p.documentos.length > 0) return true;
+            // Include processes currently in this department (may have recently uploaded docs)
+            if (typeof departamentoId === 'number' && Number(p.departamentoAtual) === departamentoId) return true;
+            return false;
+          })
           .map((p: any) => Number(p.id))
           .filter((id: number) => Number.isFinite(id));
 
@@ -87,29 +103,10 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
   }, [processoId, departamentoId, processos]);
 
   const documentos: Documento[] = React.useMemo(() => {
-    // Se temos processoId, preferimos a fonte do backend (lista completa)
-    if (typeof processoId === 'number') return docsCarregados;
-
-    // If opened per-department and we fetched docsCarregados by querying each processo,
-    // prefer that list when available to ensure newest files are shown.
-    if (Array.isArray(docsCarregados) && docsCarregados.length > 0) return docsCarregados;
-
-    const all = (processos || []).flatMap((p) => (p.documentos || []) as Documento[]);
-
-    let filtrados = all;
-    if (typeof processoId === 'number') {
-      filtrados = filtrados.filter((d) => Number(d.processoId) === Number(processoId));
-    }
-    if (typeof departamentoId === 'number') {
-      filtrados = filtrados.filter((d) => Number(d.departamentoId) === Number(departamentoId));
-    }
-
-    return filtrados.sort((a, b) => {
-      const da = new Date(a.dataUpload as any).getTime();
-      const db = new Date(b.dataUpload as any).getTime();
-      return db - da;
-    });
-  }, [processos, departamentoId, processoId, docsCarregados]);
+    // Sempre usar os documentos carregados do backend (já filtrados por permissão)
+    // Nunca usar o fallback de processos locais pois não tem filtro de visibilidade
+    return docsCarregados;
+  }, [docsCarregados]);
 
   const getIconeByTipo = (tipo: string) => {
     return <File size={24} className="text-gray-400" />;
@@ -121,7 +118,8 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
   };
 
   const handleVer = (doc: Documento) => {
-    if (!doc.url) return;
+    // The ModalPreviewDocumento fetches a signed URL by document ID, so we
+    // do NOT require doc.url to be populated (the backend stores it as '').
     setShowPreviewDocumento(doc);
   };
 
@@ -135,6 +133,51 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
       document.body.removeChild(a);
     } catch {
       // noop
+    }
+  };
+
+  const iniciarEdicaoPermissoes = (doc: Documento) => {
+    setEditandoPermissoes(doc.id);
+    setEditVisibility((doc.visibility as any) || 'PUBLIC');
+    setEditRoles(doc.allowedRoles || []);
+    setEditUserIds(doc.allowedUserIds || []);
+    setEditDeptIds(doc.allowedDepartamentos || []);
+  };
+
+  const handleSalvarPermissoes = async (docId: number) => {
+    try {
+      setProcessingId(docId);
+      await api.atualizarDocumento(docId, {
+        visibility: editVisibility,
+        allowedRoles: editRoles,
+        allowedUserIds: editUserIds,
+        allowedDepartamentos: editDeptIds,
+      });
+
+      // Atualizar documento na lista local
+      setDocsCarregados(prev =>
+        prev.map(d =>
+          d.id === docId
+            ? { ...d, visibility: editVisibility, allowedRoles: editRoles, allowedUserIds: editUserIds, allowedDepartamentos: editDeptIds }
+            : d
+        )
+      );
+
+      // Atualizar estado global
+      if (typeof processoId === 'number') {
+        try {
+          const processoAtualizado = await api.getProcesso(processoId);
+          setProcessos((prev: any) => prev.map((p: any) => (p.id === processoId ? processoAtualizado : p)));
+        } catch { /* silent */ }
+      }
+
+      setEditandoPermissoes(null);
+      adicionarNotificacao('Permissoes atualizadas com sucesso', 'sucesso');
+    } catch (err: any) {
+      const msg = err instanceof Error ? err.message : 'Erro ao atualizar permissoes';
+      await mostrarAlerta('Erro', msg, 'erro');
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -163,21 +206,28 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
         // Também atualiza o estado global para manter tudo em sincronia
         setProcessos(prev => prev.map((p: any) => {
           if (Number(p.id) !== Number(processoId)) return p;
+          const newDocumentos = Array.isArray(p.documentos)
+            ? p.documentos.filter((d: any) => Number(d.id) !== id)
+            : p.documentos;
           return {
             ...p,
-            documentos: Array.isArray(p.documentos)
-              ? p.documentos.filter((d: any) => Number(d.id) !== id)
-              : p.documentos,
+            documentos: newDocumentos,
+            // Also decrement documentosCount so count badges update immediately
+            documentosCount: Math.max(0, (Number(p.documentosCount) || 0) - 1),
+            _count: p._count ? { ...p._count, documentos: Math.max(0, (Number(p._count.documentos) || 0) - 1) } : p._count,
           };
         }));
       } else {
         setProcessos(prev => prev.map((p: any) => {
           if (Number(p.id) !== Number(doc.processoId)) return p;
+          const newDocumentos = Array.isArray(p.documentos)
+            ? p.documentos.filter((d: any) => Number(d.id) !== id)
+            : p.documentos;
           return {
             ...p,
-            documentos: Array.isArray(p.documentos)
-              ? p.documentos.filter((d: any) => Number(d.id) !== id)
-              : p.documentos,
+            documentos: newDocumentos,
+            documentosCount: Math.max(0, (Number(p.documentosCount) || 0) - 1),
+            _count: p._count ? { ...p._count, documentos: Math.max(0, (Number(p._count.documentos) || 0) - 1) } : p._count,
           };
         }));
       }
@@ -187,6 +237,19 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
       // API may return { alreadyDeleted: true } for 404, treat as success
       if (res && (res.alreadyDeleted === true || res.message || res.message === 'Documento excluído com sucesso')) {
         // nothing more to do
+      }
+
+      // Re-fetch the process from the server so that _count.documentos (and any
+      // other derived data) is updated in the global state.  This ensures the
+      // document count badge on the ProcessoCard refreshes after deletion.
+      const targetProcessoId = typeof processoId === 'number' ? processoId : Number(doc.processoId);
+      if (Number.isFinite(targetProcessoId)) {
+        try {
+          const processoAtualizado = await api.getProcesso(targetProcessoId);
+          setProcessos((prev: any) => prev.map((p: any) => (Number(p.id) === targetProcessoId ? processoAtualizado : p)));
+        } catch {
+          // If re-fetch fails, the optimistic removal is still in place
+        }
       }
 
       adicionarNotificacao('Documento excluído com sucesso', 'sucesso');
@@ -237,11 +300,20 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
                     {formatarNomeArquivo(doc.nome)}
                   </p>
                   <p className="text-xs text-gray-600 text-center mt-1">
-                    {formatarTamanhoParcela(Number(doc.tamanho || 0))} • {doc.tipo}
+                    {formatarTamanhoParcela(Number(doc.tamanho || 0))} &bull; {doc.tipo}
                   </p>
                   <p className="text-xs text-gray-500 text-center mt-1">
-                    {getNomeDepartamento(doc.departamentoId)} • {formatarDataHora(doc.dataUpload)}
+                    {getNomeDepartamento(doc.departamentoId)} &bull; {formatarDataHora(doc.dataUpload)}
                   </p>
+                  {/* Indicador de visibilidade */}
+                  {doc.visibility && doc.visibility !== 'PUBLIC' && (
+                    <p className="text-xs text-center mt-1">
+                      <span className="inline-flex items-center gap-1 text-amber-600">
+                        <Shield size={10} />
+                        {doc.visibility === 'ROLES' ? 'Por Funcoes' : doc.visibility === 'USERS' ? 'Usuarios' : doc.visibility === 'DEPARTAMENTOS' ? 'Departamentos' : doc.visibility}
+                      </span>
+                    </p>
+                  )}
                   <div className="flex gap-2 mt-4">
                     <button
                       onClick={() => handleVer(doc)}
@@ -249,6 +321,14 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
                     >
                       <Eye size={14} />
                       <span className="text-xs">Ver</span>
+                    </button>
+                    <button
+                      onClick={() => iniciarEdicaoPermissoes(doc)}
+                      className="flex-1 p-2 text-indigo-600 hover:bg-indigo-50 rounded transition-colors flex items-center justify-center gap-1"
+                      title="Editar permissoes"
+                    >
+                      <Edit size={14} />
+                      <span className="text-xs">Permissoes</span>
                     </button>
                     <button
                       onClick={() => handleDownload(doc)}
@@ -267,6 +347,66 @@ export default function GaleriaDocumentos({ onClose, departamentoId, processoId,
                       <span className="text-xs">Apagar</span>
                     </button>
                   </div>
+
+                  {/* Formulario inline de edicao de permissoes */}
+                  {editandoPermissoes === doc.id && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                      <p className="text-xs font-semibold text-gray-700">Visibilidade do documento:</p>
+                      <div className="flex gap-1 flex-wrap">
+                        {(['PUBLIC', 'ROLES', 'USERS', 'DEPARTAMENTOS'] as const).map(v => (
+                          <label key={v} className={`px-2 py-1 rounded text-[10px] cursor-pointer ${editVisibility === v ? 'bg-indigo-600 text-white' : 'bg-gray-100 border border-gray-200'}`}>
+                            <input type="radio" className="hidden" checked={editVisibility === v} onChange={() => setEditVisibility(v)} />
+                            {v === 'PUBLIC' ? 'Publico' : v === 'ROLES' ? 'Funcoes' : v === 'USERS' ? 'Usuarios' : 'Departamentos'}
+                          </label>
+                        ))}
+                      </div>
+                      {editVisibility === 'ROLES' && (
+                        <div className="flex gap-1 flex-wrap">
+                          {['ADMIN', 'GERENTE', 'USUARIO'].map(r => (
+                            <label key={r} className={`px-2 py-1 rounded text-[10px] cursor-pointer border ${editRoles.includes(r) ? 'bg-indigo-600 text-white' : 'bg-white border-gray-200'}`}>
+                              <input type="checkbox" className="hidden" checked={editRoles.includes(r)} onChange={() => setEditRoles(p => p.includes(r) ? p.filter(x => x !== r) : [...p, r])} />
+                              {r}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {editVisibility === 'USERS' && (
+                        <div className="max-h-24 overflow-auto border rounded p-1">
+                          {Array.isArray(usuarios) && usuarios.map((u: any) => (
+                            <label key={u.id} className="flex items-center gap-1 p-0.5 text-[10px]">
+                              <input type="checkbox" checked={editUserIds.includes(u.id)} onChange={() => setEditUserIds(p => p.includes(u.id) ? p.filter(x => x !== u.id) : [...p, u.id])} />
+                              {u.nome}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {editVisibility === 'DEPARTAMENTOS' && (
+                        <div className="max-h-24 overflow-auto border rounded p-1">
+                          {Array.isArray(departamentos) && departamentos.map((d: any) => (
+                            <label key={d.id} className="flex items-center gap-1 p-0.5 text-[10px]">
+                              <input type="checkbox" checked={editDeptIds.includes(d.id)} onChange={() => setEditDeptIds(p => p.includes(d.id) ? p.filter(x => x !== d.id) : [...p, d.id])} />
+                              {d.nome}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleSalvarPermissoes(doc.id)}
+                          disabled={processingId === doc.id}
+                          className="px-3 py-1.5 bg-indigo-600 text-white text-xs rounded-lg disabled:opacity-50"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => setEditandoPermissoes(null)}
+                          className="px-3 py-1.5 text-gray-600 text-xs border rounded-lg"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
