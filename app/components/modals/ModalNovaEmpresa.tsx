@@ -29,6 +29,8 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
   const [fluxoDepartamentos, setFluxoDepartamentos] = useState<number[]>([]);
   const [salvarComoTemplateChecked, setSalvarComoTemplateChecked] = useState(false);
   const [loading, setLoading] = useState(false);
+  const role = String(usuarioLogado?.role ?? '').toLowerCase();
+  const podeSalvarComoTemplate = ['admin', 'admin_departamento', 'gerente'].includes(role);
 
   useEffect(() => {
     let ativo = true;
@@ -277,7 +279,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
         dataEntrega: prazoEntrega ? new Date(prazoEntrega) : undefined, // Prazo de entrega
       });
 
-      if (salvarComoTemplateChecked && ['admin', 'gerente'].includes(String(usuarioLogado?.role ?? '').toLowerCase())) {
+      if (salvarComoTemplateChecked && podeSalvarComoTemplate) {
         await criarTemplate({
           nome: nomeServico,
           descricao: `Template criado a partir da solicitação: ${nomeServico}`,
@@ -295,7 +297,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
   };
 
   return (
-    <ModalBase isOpen onClose={onClose} labelledBy="nova-solic-title" dialogClassName="w-full max-w-6xl bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none max-h-[90vh] overflow-y-auto" zIndex={1050}>
+    <ModalBase isOpen onClose={onClose} labelledBy="nova-solic-title" dialogClassName="w-full max-w-6xl max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-2xl bg-white shadow-2xl outline-none dark:bg-[var(--card)] sm:max-h-[90vh]" zIndex={1050}>
       <div className="rounded-2xl relative">
         <LoadingOverlay show={loading} text="Criando solicitação..." />
         {/* Header */}
@@ -311,7 +313,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); (e.currentTarget as HTMLFormElement).requestSubmit(); } }}>
+        <form onSubmit={handleSubmit} className="space-y-6 p-4 sm:p-6" onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); (e.currentTarget as HTMLFormElement).requestSubmit(); } }}>
           {/* Seção 1: Informações da Solicitação */}
           <div className="bg-cyan-50 dark:bg-[#0f2b34] rounded-xl p-4 border border-cyan-200 dark:border-[#155e75]">
             <h4 className="font-semibold text-cyan-800 mb-4">Informações da Solicitação</h4>
@@ -525,7 +527,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
                           <h6 className="text-sm font-medium text-gray-700 mb-2">
                             Adicionar Pergunta:
                           </h6>
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                             {tiposCampo.map((tipo) => (
                               <button
                                 key={tipo.valor}
@@ -808,7 +810,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
             )}
 
             {/* Checkbox Salvar como Template */}
-            {['admin', 'gerente'].includes(String(usuarioLogado?.role ?? '').toLowerCase()) && (
+            {podeSalvarComoTemplate && (
               <div className="bg-yellow-50 rounded-xl p-4 border border-yellow-200 mt-6">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <input
@@ -831,7 +833,7 @@ export default function ModalNovaEmpresa({ onClose }: ModalNovaEmpresaProps) {
           </div>
 
           {/* Botões */}
-          <div className="flex gap-4 pt-6 border-t border-gray-200">
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:gap-4">
             <button
               type="button"
               onClick={onClose}

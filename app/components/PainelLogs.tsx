@@ -296,7 +296,7 @@ export default function PainelLogs() {
 
       {/* Barra de seleção em lote */}
       {modoSelecao && logsFiltrados.length > 0 && (
-        <div className="flex items-center gap-3 mb-4 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl">
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 dark:border-indigo-800 dark:bg-indigo-900/20 sm:flex-row sm:items-center sm:gap-3">
           <button
             onClick={selecionarTodosPagina}
             className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
@@ -403,7 +403,7 @@ export default function PainelLogs() {
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500'
                 }`}
               >
-                <div className="flex items-center gap-1">
+                <div className="flex items-stretch gap-1">
                   {/* Checkbox */}
                   {modoSelecao && (
                     <button
@@ -419,63 +419,67 @@ export default function PainelLogs() {
                   )}
                   <button
                     onClick={() => setExpandido(isExpanded ? null : log.id)}
-                    className={`flex-1 flex items-center gap-3 p-3 text-left ${!modoSelecao ? '' : 'pl-1'}`}
+                    className={`flex-1 p-3 text-left ${!modoSelecao ? '' : 'pl-1'}`}
                   >
-                    <div className={`p-2 rounded-lg shrink-0 ${config.cor}`}>
-                      <Icone size={16} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
-                          {log.usuario?.nome || 'Sistema'}
-                        </span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.cor}`}>
-                          {config.label}
-                        </span>
-                        <span className="text-sm text-gray-600 dark:text-gray-300">
-                          {log.entidade?.toLowerCase()} {log.entidadeNome && <span className="font-medium">&ldquo;{log.entidadeNome}&rdquo;</span>}
-                        </span>
-                        {log.campo && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
-                            {log.campo}
-                          </span>
-                        )}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className={`shrink-0 rounded-lg p-2 ${config.cor}`}>
+                        <Icone size={16} />
                       </div>
-                      {/* Mostrar resumo da alteração inline (antes → depois) */}
-                      {(log.valorAnterior || log.valorNovo) && (
-                        <div className="flex items-center gap-1.5 mt-1 text-xs flex-wrap">
-                          {log.valorAnterior && (
-                            <span className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded line-through max-w-[200px] truncate" title={log.valorAnterior}>
-                              {log.valorAnterior}
-                            </span>
-                          )}
-                          {log.valorAnterior && log.valorNovo && (
-                            <ArrowRight size={10} className="text-gray-400 shrink-0" />
-                          )}
-                          {log.valorNovo && (
-                            <span className="text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded font-medium max-w-[200px] truncate" title={log.valorNovo}>
-                              {log.valorNovo}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                            {log.usuario?.nome || 'Sistema'}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${config.cor}`}>
+                            {config.label}
+                          </span>
+                          <span className="text-sm text-gray-600 dark:text-gray-300">
+                            {log.entidade?.toLowerCase()} {log.entidadeNome && <span className="font-medium">&ldquo;{log.entidadeNome}&rdquo;</span>}
+                          </span>
+                          {log.campo && (
+                            <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                              {log.campo}
                             </span>
                           )}
                         </div>
-                      )}
-                      {!log.valorAnterior && !log.valorNovo && log.detalhes && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate max-w-[600px]">
-                          {log.detalhes}
-                        </p>
-                      )}
+                        {/* Mostrar resumo da alteração inline (antes → depois) */}
+                        {(log.valorAnterior || log.valorNovo) && (
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                            {log.valorAnterior && (
+                              <span className="max-w-[200px] truncate rounded bg-red-50 px-1.5 py-0.5 text-red-600 line-through dark:bg-red-900/30 dark:text-red-400" title={log.valorAnterior}>
+                                {log.valorAnterior}
+                              </span>
+                            )}
+                            {log.valorAnterior && log.valorNovo && (
+                              <ArrowRight size={10} className="shrink-0 text-gray-400" />
+                            )}
+                            {log.valorNovo && (
+                              <span className="max-w-[200px] truncate rounded bg-green-50 px-1.5 py-0.5 font-medium text-green-600 dark:bg-green-900/30 dark:text-green-400" title={log.valorNovo}>
+                                {log.valorNovo}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {!log.valorAnterior && !log.valorNovo && log.detalhes && (
+                          <p className="mt-0.5 max-w-[600px] truncate text-xs text-gray-500 dark:text-gray-400">
+                            {log.detalhes}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+                        <div className="flex items-center gap-1 whitespace-nowrap text-xs text-gray-400">
+                          <Clock size={12} />
+                          {formatarData(log.criadoEm)}
+                        </div>
+                        {isExpanded ? <ChevronUp size={16} className="shrink-0 text-gray-400 sm:ml-auto" /> : <ChevronDown size={16} className="shrink-0 text-gray-400 sm:ml-auto" />}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-1 shrink-0">
-                      <Clock size={12} />
-                      {formatarData(log.criadoEm)}
-                    </div>
-                    {isExpanded ? <ChevronUp size={16} className="text-gray-400 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />}
                   </button>
                 </div>
 
                 {isExpanded && (
                   <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-700 mt-1 pt-3 space-y-3">
-                    <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                       <div>
                         <span className="text-gray-500 dark:text-gray-400">Usuário:</span>{' '}
                         <span className="font-medium text-gray-900 dark:text-gray-100">{log.usuario?.nome} ({log.usuario?.email})</span>
@@ -538,7 +542,7 @@ export default function PainelLogs() {
 
       {/* Paginação */}
       {totalPaginas > 1 && (
-        <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="mt-6 flex flex-col gap-3 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
           <span className="text-sm text-gray-600 dark:text-gray-400">
             Página {pagina} de {totalPaginas} ({logsFiltrados.length} registros)
           </span>

@@ -201,7 +201,7 @@ export default function DepartamentosGrid({
       const concluidos = checklistCache.get(processoId);
       if (!concluidos || !concluidos.has(deptAnterior)) {
         const nomeAnterior = departamentos.find((d: any) => d.id === deptAnterior)?.nome || `Dept #${deptAnterior}`;
-        void mostrarAlerta?.('Ordem sequencial', `O departamento "${nomeAnterior}" precisa concluir primeiro antes que este possa avanÃ§ar.`, 'aviso');
+        void mostrarAlerta?.('Ordem sequencial', `O departamento "${nomeAnterior}" precisa concluir primeiro antes que este possa avançar.`, 'aviso');
         return;
       }
     }
@@ -265,7 +265,7 @@ export default function DepartamentosGrid({
       if (faltando.length > 0) {
         const nomes = faltando.map((p: any) => p.label).join(', ');
         const nomeDept = departamentos.find((d: any) => d.id === deptId)?.nome || `Dept #${deptId}`;
-        void mostrarAlerta?.('Campos obrigatÃ³rios', `Preencha os campos obrigatÃ³rios do departamento "${nomeDept}" antes de concluir:\n\n${nomes}`, 'aviso');
+        void mostrarAlerta?.('Campos obrigatórios', `Preencha os campos obrigatórios do departamento "${nomeDept}" antes de concluir:\n\n${nomes}`, 'aviso');
         return;
       }
       } catch (err) {
@@ -311,7 +311,7 @@ export default function DepartamentosGrid({
       concluidosAtualizado.add(Number(deptId));
       const todosConcluiram = fluxo.every((id: number) => concluidosAtualizado.has(id));
       if (todosConcluiram) {
-        adicionarNotificacao('Todos os departamentos concluÃ­ram! Processo finalizado.', 'sucesso');
+        adicionarNotificacao('Todos os departamentos concluíram! Processo finalizado.', 'sucesso');
         // Usar onFinalizarProcesso (que trata interligaÃ§Ã£o) se disponÃ­vel
         if (onFinalizarProcesso) {
           await onFinalizarProcesso(processoId);
@@ -320,7 +320,7 @@ export default function DepartamentosGrid({
         }
       }
     } catch (err: any) {
-      void mostrarAlerta?.('Erro', err.message || 'Erro ao avanÃ§ar', 'erro');
+      void mostrarAlerta?.('Erro', err.message || 'Erro ao avançar', 'erro');
     }
   };
 
@@ -397,7 +397,7 @@ export default function DepartamentosGrid({
           Nenhum departamento criado
         </h3>
         <p className="text-gray-600 mb-6">
-          Crie seu primeiro departamento para comeÃ§ar a gerenciar processos
+          Crie seu primeiro departamento para começar a gerenciar processos
         </p>
         <button
           onClick={onCriarDepartamento}
@@ -441,7 +441,7 @@ export default function DepartamentosGrid({
     <>
       {/* BotÃ£o de reordenar departamentos (apenas admin) */}
       {isAdmin && departamentosOrdenados.length > 1 && (
-        <div className="w-full flex justify-end mb-2 col-span-full">
+        <div className="col-span-full mb-2 flex w-full justify-start sm:justify-end">
           <button
             type="button"
             onClick={() => setModoReordenar((prev) => !prev)}
@@ -452,7 +452,7 @@ export default function DepartamentosGrid({
             }`}
           >
             <ArrowLeftRight size={16} />
-            {modoReordenar ? 'Concluir ReordenaÃ§Ã£o' : 'Reordenar Departamentos'}
+            {modoReordenar ? 'Concluir Reordenação' : 'Reordenar Departamentos'}
           </button>
         </div>
       )}
@@ -511,7 +511,7 @@ export default function DepartamentosGrid({
                   <ChevronLeft size={18} />
                 </button>
                 <span className="text-xs font-semibold text-gray-400 select-none">
-                  {posicao + 1}Âº
+                  {posicao + 1}º
                 </span>
                 <button
                   type="button"
@@ -529,14 +529,14 @@ export default function DepartamentosGrid({
               </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-lg border-2 transition-all duration-300 min-h-[600px] ${
+            <div className={`bg-white rounded-2xl shadow-lg border-2 transition-all duration-300 min-h-[460px] sm:min-h-[600px] ${
               modoReordenar ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100 hover:border-gray-200'
             }`}>
               {/* Header do Departamento */}
               <div
-                className={`bg-gradient-to-br ${corFundo} p-6 ${corTexto} relative overflow-visible rounded-t-2xl`}
+                className={`relative overflow-visible rounded-t-2xl bg-gradient-to-br ${corFundo} p-4 ${corTexto} sm:p-6`}
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-3">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-white bg-opacity-20`}>
@@ -565,7 +565,7 @@ export default function DepartamentosGrid({
                     <div className="flex items-center gap-2 text-sm opacity-95">
                       <User size={14} />
                       <span className="break-words line-clamp-1" title={dept.responsavel}>
-                        {dept.responsavel || 'Sem responsÃ¡vel'}
+                        {dept.responsavel || 'Sem responsável'}
                       </span>
                     </div>
                   </div>
@@ -643,7 +643,7 @@ export default function DepartamentosGrid({
 
               {/* Corpo do Departamento com Processos */}
               <div 
-                className={`bg-white rounded-xl p-6 min-h-[400px] transition-all duration-200 ${
+                className={`min-h-[320px] rounded-xl bg-white p-4 transition-all duration-200 sm:min-h-[400px] sm:p-6 ${
                   dragOverDept === dept.id && dragState.draggedItem
                     ? 'bg-blue-50 border-2 border-blue-300'
                     : ''
@@ -730,7 +730,7 @@ export default function DepartamentosGrid({
                             } else {
                               const ok = await mostrarConfirmacao({
                                 titulo: 'Excluir Processo',
-                                mensagem: 'Tem certeza que deseja excluir este processo?\n\nEssa aÃ§Ã£o nÃ£o poderÃ¡ ser desfeita.',
+                                mensagem: 'Tem certeza que deseja excluir este processo?\n\nEssa ação não poderá ser desfeita.',
                                 tipo: 'perigo',
                                 textoConfirmar: 'Sim, Excluir',
                                 textoCancelar: 'Cancelar',

@@ -534,12 +534,12 @@ export default function Home() {
 
       {/* Navegação por Abas */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6">
-          <nav className="flex gap-1" aria-label="Tabs">
+        <div className="max-w-7xl mx-auto overflow-x-auto px-3 sm:px-6">
+          <nav className="flex min-w-max gap-1 py-1" aria-label="Tabs">
             <button
               onClick={() => setAbaAtiva('dashboard')}
               className={`
-                flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                shrink-0 whitespace-nowrap flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
                 ${abaAtiva === 'dashboard'
                   ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
@@ -552,7 +552,7 @@ export default function Home() {
             <button
               onClick={() => setAbaAtiva('meus-processos')}
               className={`
-                flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                shrink-0 whitespace-nowrap flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
                 ${abaAtiva === 'meus-processos'
                   ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
@@ -560,12 +560,12 @@ export default function Home() {
             >
               <Briefcase size={18} />
               <span className="hidden sm:inline">Meus Processos</span>
-              <span className="sm:hidden">📋</span>
+              <span className="sm:hidden">Meus</span>
             </button>
             <button
               onClick={() => setAbaAtiva('calendario')}
               className={`
-                flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                shrink-0 whitespace-nowrap flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
                 ${abaAtiva === 'calendario'
                   ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
@@ -577,7 +577,7 @@ export default function Home() {
             <button
               onClick={() => setAbaAtiva('graficos')}
               className={`
-                flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                shrink-0 whitespace-nowrap flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
                 ${abaAtiva === 'graficos'
                   ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
@@ -585,12 +585,12 @@ export default function Home() {
             >
               <BarChart3 size={18} />
               <span className="hidden sm:inline">Gráficos</span>
-              <span className="sm:hidden">📈</span>
+              <span className="sm:hidden">Gráficos</span>
             </button>
             <button
               onClick={() => setAbaAtiva('departamentos')}
               className={`
-                flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                shrink-0 whitespace-nowrap flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
                 ${abaAtiva === 'departamentos'
                   ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
@@ -598,14 +598,14 @@ export default function Home() {
             >
               <Layers size={18} />
               <span className="hidden sm:inline">Departamentos</span>
-              <span className="sm:hidden">🏢</span>
+              <span className="sm:hidden">Deptos</span>
             </button>
             {/* Aba Logs - apenas admin/admin_departamento */}
             {isAdminLike && (
               <button
                 onClick={() => setAbaAtiva('logs')}
                 className={`
-                  flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                  shrink-0 whitespace-nowrap flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
                   ${abaAtiva === 'logs'
                     ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
@@ -613,7 +613,7 @@ export default function Home() {
               >
                 <ScrollText size={18} />
                 <span className="hidden sm:inline">Histórico de Logs</span>
-                <span className="sm:hidden">📋</span>
+                <span className="sm:hidden">Logs</span>
               </button>
             )}
             {/* Aba Backup - apenas admin/admin_departamento */}
@@ -621,7 +621,7 @@ export default function Home() {
               <button
                 onClick={() => setAbaAtiva('backup')}
                 className={`
-                  flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
+                  shrink-0 whitespace-nowrap flex items-center gap-2 px-4 sm:px-6 py-3 sm:py-4 text-sm font-medium border-b-2 transition-all
                   ${abaAtiva === 'backup'
                     ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'}
@@ -629,7 +629,7 @@ export default function Home() {
               >
                 <HardDrive size={18} />
                 <span className="hidden sm:inline">Backup</span>
-                <span className="sm:hidden">💾</span>
+                <span className="sm:hidden">Backup</span>
               </button>
             )}
           </nav>

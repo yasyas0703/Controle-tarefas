@@ -16,10 +16,10 @@ interface ModalEditarQuestionarioSolicitacaoProps {
 const TIPOS_CAMPO: Array<{ valor: Questionario['tipo']; label: string }> = [
   { valor: 'text', label: 'Texto Simples' },
   { valor: 'textarea', label: 'Texto Longo' },
-  { valor: 'number', label: 'Numero' },
+  { valor: 'number', label: 'Número' },
   { valor: 'date', label: 'Data' },
-  { valor: 'boolean', label: 'Sim/Nao' },
-  { valor: 'select', label: 'Selecao Unica' },
+  { valor: 'boolean', label: 'Sim/Não' },
+  { valor: 'select', label: 'Seleção Única' },
   { valor: 'checkbox', label: 'Checklist' },
   { valor: 'file', label: 'Arquivo/Anexo' },
   { valor: 'phone', label: 'Telefone' },
@@ -28,16 +28,16 @@ const TIPOS_CAMPO: Array<{ valor: Questionario['tipo']; label: string }> = [
   { valor: 'cnpj', label: 'CNPJ' },
   { valor: 'cep', label: 'CEP' },
   { valor: 'money', label: 'Valor (R$)' },
-  { valor: 'grupo_repetivel', label: 'Grupo Repetivel' },
+  { valor: 'grupo_repetivel', label: 'Grupo Repetível' },
 ];
 
 const TIPOS_SUB_CAMPO: Array<{ valor: Questionario['tipo']; label: string }> = [
   { valor: 'text', label: 'Texto' },
   { valor: 'textarea', label: 'Texto Longo' },
-  { valor: 'number', label: 'Numero' },
+  { valor: 'number', label: 'Número' },
   { valor: 'date', label: 'Data' },
-  { valor: 'boolean', label: 'Sim/Nao' },
-  { valor: 'select', label: 'Selecao' },
+  { valor: 'boolean', label: 'Sim/Não' },
+  { valor: 'select', label: 'Seleção' },
   { valor: 'phone', label: 'Telefone' },
   { valor: 'email', label: 'Email' },
   { valor: 'cpf', label: 'CPF' },
@@ -97,7 +97,7 @@ export default function ModalEditarQuestionarioSolicitacao({
   const salvarPergunta = () => {
     if (!editando) return;
     if (!String(editando.label || '').trim()) {
-      void mostrarAlerta('AtenÃ§Ã£o', 'Digite o texto da pergunta!', 'aviso');
+      void mostrarAlerta('Atenção', 'Digite o texto da pergunta!', 'aviso');
       return;
     }
 
@@ -147,7 +147,7 @@ export default function ModalEditarQuestionarioSolicitacao({
 
   const salvarAlteracoes = () => {
     if (!processo) {
-      void mostrarAlerta('Erro', 'Processo nÃ£o encontrado.', 'erro');
+      void mostrarAlerta('Erro', 'Processo não encontrado.', 'erro');
       return;
     }
 
@@ -162,10 +162,10 @@ export default function ModalEditarQuestionarioSolicitacao({
         // Recarrega o processo completo para refletir em todos os lugares (cards, ver completo, etc.)
         const atualizado = await api.getProcesso(processoId);
         setProcessos((prev: any) => (Array.isArray(prev) ? prev.map((x: any) => (x?.id === processoId ? atualizado : x)) : prev));
-        adicionarNotificacao('QuestionÃ¡rio atualizado com sucesso', 'sucesso');
+        adicionarNotificacao('Questionário atualizado com sucesso', 'sucesso');
         onClose();
       } catch (e: any) {
-        void mostrarAlerta('Erro', e?.message || 'Erro ao salvar questionÃ¡rio', 'erro');
+        void mostrarAlerta('Erro', e?.message || 'Erro ao salvar questionário', 'erro');
       } finally {
         setSaving(false);
       }
@@ -173,9 +173,9 @@ export default function ModalEditarQuestionarioSolicitacao({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-[10025] p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
-        <LoadingOverlay show={saving} text="Salvando questionÃ¡rio..." />
+    <div className="fixed inset-0 z-[10025] flex items-end justify-center overflow-y-auto bg-black bg-opacity-60 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="relative max-h-[calc(100dvh-0.75rem)] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:max-h-[90vh]">
+        <LoadingOverlay show={saving} text="Salvando questionário..." />
         <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-6 rounded-t-2xl sticky top-0 z-10">
           <div className="flex justify-between items-center">
             <div>
@@ -193,7 +193,7 @@ export default function ModalEditarQuestionarioSolicitacao({
 
                   return 'Processo';
                 })()}
-                {departamento?.nome ? ` â€¢ ${departamento.nome}` : ''}
+                {departamento?.nome ? ` • ${departamento.nome}` : ''}
               </p>
             </div>
             <button onClick={onClose} className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-lg">
@@ -202,8 +202,8 @@ export default function ModalEditarQuestionarioSolicitacao({
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* AÃ§Ãµes: adicionar pergunta */}
+        <div className="space-y-6 p-4 sm:p-6">
+          {/* Ações: adicionar pergunta */}
           <div className="bg-orange-50 rounded-xl p-4 border border-orange-200">
             <h4 className="font-semibold text-orange-800 mb-3">Adicionar Pergunta</h4>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -272,7 +272,7 @@ export default function ModalEditarQuestionarioSolicitacao({
                       onChange={(e) => setEditando({ ...editando, obrigatorio: e.target.checked })}
                       className="w-4 h-4"
                     />
-                    <span className="text-sm text-gray-700">ObrigatÃ³ria</span>
+                    <span className="text-sm text-gray-700">Obrigatória</span>
                   </label>
                 </div>
 
@@ -299,7 +299,7 @@ export default function ModalEditarQuestionarioSolicitacao({
                         }}
                         className="w-4 h-4"
                       />
-                      <span className="text-sm font-medium text-gray-700">Exibir somente com condiÃ§Ã£o</span>
+                      <span className="text-sm font-medium text-gray-700">Exibir somente com condição</span>
                     </label>
 
                     {Boolean(editando.condicao) && (
@@ -347,7 +347,7 @@ export default function ModalEditarQuestionarioSolicitacao({
                           >
                             <option value="igual">Igual</option>
                             <option value="diferente">Diferente</option>
-                            <option value="contem">ContÃ©m</option>
+                            <option value="contem">Contém</option>
                           </select>
                         </div>
 
@@ -383,7 +383,7 @@ export default function ModalEditarQuestionarioSolicitacao({
 
                 {(editando.tipo === 'select' || editando.tipo === 'checkbox') && (
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-2">Opcoes</label>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">Opções</label>
                     <div className="space-y-2">
                       {(editando.opcoes || ['']).map((op, idx) => (
                         <div key={idx} className="flex gap-2">
@@ -396,7 +396,7 @@ export default function ModalEditarQuestionarioSolicitacao({
                               setEditando({ ...editando, opcoes: next });
                             }}
                             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500"
-                            placeholder={`Opcao ${idx + 1}`}
+                            placeholder={`Opção ${idx + 1}`}
                           />
                           <button
                             type="button"
@@ -417,7 +417,7 @@ export default function ModalEditarQuestionarioSolicitacao({
                         onClick={() => setEditando({ ...editando, opcoes: [...(editando.opcoes || []), ''] })}
                         className="w-full px-4 py-2 border-2 border-dashed border-orange-300 rounded-lg hover:border-orange-500 hover:bg-orange-50 text-orange-700 font-medium"
                       >
-                        + Adicionar Opcao
+                        + Adicionar Opção
                       </button>
                     </div>
                   </div>
@@ -425,7 +425,7 @@ export default function ModalEditarQuestionarioSolicitacao({
 
                 {editando.tipo === 'grupo_repetivel' && (
                   <div className="md:col-span-2 space-y-4">
-                    {/* Modo de repeticao */}
+                    {/* Modo de repetição */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-2">Modo de Repeticao</label>
@@ -434,8 +434,8 @@ export default function ModalEditarQuestionarioSolicitacao({
                           onChange={(e) => setEditando({ ...editando, modoRepeticao: e.target.value as 'numero' | 'manual' })}
                           className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500"
                         >
-                          <option value="manual">Manual (botao adicionar)</option>
-                          <option value="numero">Controlado por numero</option>
+                          <option value="manual">Manual (botão adicionar)</option>
+                          <option value="numero">Controlado por número</option>
                         </select>
                       </div>
 
@@ -519,10 +519,10 @@ export default function ModalEditarQuestionarioSolicitacao({
                                 </button>
                               </div>
                             </div>
-                            {/* Opcoes para sub-perguntas do tipo select */}
+                            {/* Opções para sub-perguntas do tipo select */}
                             {sub.tipo === 'select' && (
                               <div className="mt-2 pl-2">
-                                <label className="block text-xs font-medium text-gray-600 mb-1">Opcoes da sub-pergunta</label>
+                                <label className="block text-xs font-medium text-gray-600 mb-1">Opções da sub-pergunta</label>
                                 {(sub.opcoes || ['']).map((op, oIdx) => (
                                   <div key={oIdx} className="flex gap-1 mb-1">
                                     <input
@@ -536,7 +536,7 @@ export default function ModalEditarQuestionarioSolicitacao({
                                         setEditando({ ...editando, subPerguntas: nextSubs });
                                       }}
                                       className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-orange-400"
-                                      placeholder={`Opcao ${oIdx + 1}`}
+                                      placeholder={`Opção ${oIdx + 1}`}
                                     />
                                     <button
                                       type="button"
@@ -561,7 +561,7 @@ export default function ModalEditarQuestionarioSolicitacao({
                                   }}
                                   className="text-xs text-orange-600 hover:text-orange-800 font-medium mt-1"
                                 >
-                                  + Opcao
+                                  + Opção
                                 </button>
                               </div>
                             )}
@@ -590,7 +590,7 @@ export default function ModalEditarQuestionarioSolicitacao({
                 )}
               </div>
 
-              <div className="flex gap-3 mt-4 pt-4 border-t border-gray-200">
+              <div className="mt-4 flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 sm:flex-row">
                 <button
                   type="button"
                   onClick={() => setEditando(null)}
@@ -621,22 +621,22 @@ export default function ModalEditarQuestionarioSolicitacao({
                   .slice()
                   .sort((a, b) => (a.ordem || 0) - (b.ordem || 0))
                   .map((p, idx) => (
-                    <div key={p.id} className="bg-white rounded-lg p-3 border border-gray-200 flex items-start justify-between gap-3">
+                    <div key={p.id} className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold text-gray-900 truncate" title={p.label}>
                           {idx + 1}. {p.label}
                         </div>
                         <div className="text-xs text-gray-600 mt-1">
-                          Tipo: {p.tipo} {p.obrigatorio ? 'â€¢ ObrigatÃ³ria' : ''}
+                          Tipo: {p.tipo} {p.obrigatorio ? '• Obrigatória' : ''}
                         </div>
                         {(p.tipo === 'select' || p.tipo === 'checkbox') && p.opcoes && p.opcoes.length > 0 && (
                           <div className="text-xs text-gray-600 mt-1 truncate" title={p.opcoes.join(', ')}>
-                            Opcoes: {p.opcoes.join(', ')}
+                            Opções: {p.opcoes.join(', ')}
                           </div>
                         )}
                         {p.condicao && (
                           <div className="text-xs text-orange-700 mt-1">
-                            CondiÃ§Ã£o: exibir quando &quot;
+                            Condição: exibir quando &quot;
                             {perguntas.find((x) => Number(x.id) === Number(p.condicao?.perguntaId))?.label || `Pergunta #${p.condicao.perguntaId}`}&quot;
                             {' '}
                             {p.condicao.operador}
@@ -646,12 +646,12 @@ export default function ModalEditarQuestionarioSolicitacao({
                         )}
                         {p.tipo === 'grupo_repetivel' && (
                           <div className="text-xs text-gray-600 mt-1">
-                            Modo: {p.modoRepeticao === 'numero' ? 'Controlado por numero' : 'Manual'}
+                            Modo: {p.modoRepeticao === 'numero' ? 'Controlado por número' : 'Manual'}
                             {p.subPerguntas && p.subPerguntas.length > 0 && ` | ${p.subPerguntas.length} sub-pergunta(s)`}
                           </div>
                         )}
                       </div>
-                      <div className="flex gap-2 flex-shrink-0">
+                      <div className="flex gap-2 self-end sm:self-auto">
                         <button
                           type="button"
                           onClick={() => setEditando({
@@ -683,7 +683,7 @@ export default function ModalEditarQuestionarioSolicitacao({
           </div>
 
           {/* Footer */}
-          <div className="flex gap-3 pt-4 border-t border-gray-200">
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-4 sm:flex-row">
             <button
               type="button"
               onClick={onClose}

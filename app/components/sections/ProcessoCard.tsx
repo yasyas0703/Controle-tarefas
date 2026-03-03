@@ -231,7 +231,7 @@ export default function ProcessoCard({
 
   return (
     <div
-      className="bg-gray-50 rounded-xl p-5 cursor-move hover:bg-gray-100 transition-all duration-200 hover:shadow-md border border-gray-200 relative"
+      className="relative cursor-move rounded-xl border border-gray-200 bg-gray-50 p-4 transition-all duration-200 hover:bg-gray-100 hover:shadow-md sm:p-5"
       onClick={() => !editando && onVerDetalhes(processo)}
     >
       {/* Indicador de Fixado - canto superior esquerdo */}
@@ -269,7 +269,7 @@ export default function ProcessoCard({
         })()
       )}
 
-      <div className="flex items-start justify-between mb-3">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex-1 min-w-0 mr-2">
           {processo.nomeServico && (
             <div
@@ -348,7 +348,7 @@ export default function ProcessoCard({
 
         </div>
 
-        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+        <div className="ml-0 flex flex-wrap items-center justify-end gap-1 sm:ml-2 sm:flex-shrink-0">
           {/* Botão Editar */}
           {podeEditarProcesso && processo.status === 'em_andamento' && (
             <button
@@ -450,7 +450,7 @@ export default function ProcessoCard({
               })}
             </select>
           </div>
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row">
             <button
               onClick={handleSaveEdit}
               disabled={salvandoEdit}
@@ -534,7 +534,7 @@ export default function ProcessoCard({
 
       <p className="text-xs text-gray-500">Desde: {formatarData((processo.dataInicio || processo.criadoEm) as any)}</p>
 
-      <div className="grid grid-cols-2 gap-1 mt-3">
+      <div className="mt-3 grid grid-cols-2 gap-1.5">
         {processo.status === 'em_andamento' && (
           <>
             {podeExibirAcoesNoCard && (

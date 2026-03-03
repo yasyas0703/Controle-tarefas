@@ -576,8 +576,8 @@ export default function BackupRestore() {
       </div>
 
       {/* Exportar Backup */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 p-6">
-        <div className="flex items-start gap-4">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl">
             <Download size={24} className="text-blue-600 dark:text-blue-400" />
           </div>
@@ -592,7 +592,7 @@ export default function BackupRestore() {
             <button
               onClick={() => executarExportacao('manual')}
               disabled={exportando}
-              className="mt-4 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-3 font-medium text-white shadow-lg transition-all duration-200 hover:from-blue-600 hover:to-blue-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               {exportando ? (
                 <>
@@ -611,8 +611,8 @@ export default function BackupRestore() {
       </div>
 
       {/* Pasta de Destino */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 p-6">
-        <div className="flex items-start gap-4">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl">
             <FolderCheck size={24} className="text-green-600 dark:text-green-400" />
           </div>
@@ -681,21 +681,21 @@ export default function BackupRestore() {
                       <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-2">
                         <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                         <p className="text-sm text-amber-800 dark:text-amber-300">
-                          O navegador perdeu a permissao de acesso a esta pasta. Clique em <strong>&ldquo;Alterar pasta&rdquo;</strong> para seleciona-la novamente, ou ao exportar o sistema pedira permissao automaticamente.
+                          O navegador perdeu a permissão de acesso a esta pasta. Clique em <strong>&ldquo;Alterar pasta&rdquo;</strong> para selecioná-la novamente, ou ao exportar o sistema pedirá permissão automaticamente.
                         </p>
                       </div>
                     )}
                     {statusPasta === 'acessivel' && (
                       <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
                         <Check size={12} />
-                        Pasta acessivel - backups serao salvos diretamente aqui
+                        Pasta acessível - backups serão salvos diretamente aqui
                       </p>
                     )}
                   </div>
                 ) : (
                   <button
                     onClick={escolherPasta}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl transition-colors text-sm font-medium text-gray-700 dark:text-gray-300"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 sm:w-auto"
                   >
                     <FolderOpen size={18} />
                     Escolher pasta (ex: sua pasta &ldquo;backups&rdquo; no Drive)
@@ -708,8 +708,8 @@ export default function BackupRestore() {
       </div>
 
       {/* Backup Automático */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 p-6">
-        <div className="flex items-start gap-4">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
             <Clock size={24} className="text-purple-600 dark:text-purple-400" />
           </div>
@@ -720,7 +720,7 @@ export default function BackupRestore() {
             </p>
 
             {/* Toggle */}
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
               <button
                 onClick={toggleAutoBackup}
                 className="flex items-center gap-2 text-sm font-medium"
@@ -799,8 +799,8 @@ export default function BackupRestore() {
       </div>
 
       {/* Restaurar Backup */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-red-200 dark:border-red-900/40 p-6">
-        <div className="flex items-start gap-4">
+      <div className="rounded-2xl border border-red-200 bg-white p-4 shadow-lg dark:border-red-900/40 dark:bg-gray-800 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-xl">
             <Upload size={24} className="text-red-600 dark:text-red-400" />
           </div>
@@ -818,7 +818,7 @@ export default function BackupRestore() {
             </div>
 
             <div className="mt-4 flex flex-col sm:flex-row gap-3">
-              <label className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-xl cursor-pointer transition-colors text-sm font-medium text-gray-700 dark:text-gray-300">
+              <label className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 sm:w-auto">
                 <FolderOpen size={18} />
                 Selecionar arquivo de backup
                 <input
@@ -829,17 +829,17 @@ export default function BackupRestore() {
                   onChange={handleArquivoSelecionado}
                 />
               </label>
-              <span className="text-sm text-gray-500 dark:text-gray-400 self-center">
+              <span className="self-center break-all text-sm text-gray-500 dark:text-gray-400">
                 {arquivoSelecionado ? arquivoSelecionado.name : 'Nenhum arquivo escolhido'}
               </span>
             </div>
 
             {arquivoSelecionado && (
-              <div className="mt-4 flex gap-2">
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                 <button
                   onClick={executarRestauracao}
                   disabled={restaurando}
-                  className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-6 py-3 rounded-xl font-medium transition-all duration-200 shadow-lg hover:shadow-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-red-600 px-6 py-3 font-medium text-white shadow-lg transition-all duration-200 hover:from-red-600 hover:to-red-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   {restaurando ? (
                     <>
@@ -869,7 +869,7 @@ export default function BackupRestore() {
       </div>
 
       {/* Histórico de Backups */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 p-6">
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-800 sm:p-6">
         <div className="flex items-center gap-3 mb-4">
           <History size={20} className="text-gray-600 dark:text-gray-400" />
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Histórico de Backups</h3>
@@ -884,7 +884,7 @@ export default function BackupRestore() {
             {historico.map((item, idx) => (
               <div
                 key={idx}
-                className="flex items-center justify-between px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-600"
+                className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 dark:border-gray-600 dark:bg-gray-700/50 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="flex items-center gap-3">
                   <div className={`p-1.5 rounded-lg ${

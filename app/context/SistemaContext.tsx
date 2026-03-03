@@ -149,8 +149,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   const [tags, setTags] = useState<Tag[]>([
     { id: 1, nome: 'Urgente', cor: 'bg-red-500', texto: 'text-white' },
     { id: 2, nome: 'Aguardando Cliente', cor: 'bg-yellow-500', texto: 'text-white' },
-    { id: 3, nome: 'RevisÃ£o', cor: 'bg-purple-500', texto: 'text-white' },
-    { id: 4, nome: 'DocumentaÃ§Ã£o Pendente', cor: 'bg-orange-500', texto: 'text-white' },
+    { id: 3, nome: 'Revisão', cor: 'bg-purple-500', texto: 'text-white' },
+    { id: 4, nome: 'Documentação Pendente', cor: 'bg-orange-500', texto: 'text-white' },
   ]);
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
@@ -270,7 +270,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
   const ativarNotificacoesNavegador = useCallback(async () => {
     if (typeof window === 'undefined' || typeof Notification === 'undefined') {
-      adicionarNotificacao('Seu navegador nÃ£o suporta notificaÃ§Ãµes', 'erro');
+      adicionarNotificacao('Seu navegador não suporta notificações', 'erro');
       return false;
     }
 
@@ -285,7 +285,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (Notification.permission === 'denied') {
-      adicionarNotificacao('NotificaÃ§Ãµes bloqueadas no navegador. Libere nas permissÃµes do site.', 'erro');
+      adicionarNotificacao('Notificações bloqueadas no navegador. Libere nas permissões do site.', 'erro');
       return false;
     }
 
@@ -298,7 +298,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     }
     setNotificacoesNavegadorAtivas(ok);
     if (!ok) {
-      adicionarNotificacao('PermissÃ£o de notificaÃ§Ã£o nÃ£o concedida', 'info');
+      adicionarNotificacao('Permissão de notificação não concedida', 'info');
     }
     return ok;
   }, [adicionarNotificacao]);
@@ -1082,8 +1082,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
       // Log detalhado campo a campo
       const LABELS_EMPRESA: Record<string, string> = {
-        razao_social: 'RazÃ£o Social', apelido: 'Nome Fantasia', cnpj: 'CNPJ', codigo: 'CÃ³digo',
-        inscricao_estadual: 'InscriÃ§Ã£o Estadual', inscricao_municipal: 'InscriÃ§Ã£o Municipal',
+        razao_social: 'Razão Social', apelido: 'Nome Fantasia', cnpj: 'CNPJ', codigo: 'Código',
+        inscricao_estadual: 'Inscrição Estadual', inscricao_municipal: 'Inscrição Municipal',
         regime_federal: 'Regime Federal', regime_estadual: 'Regime Estadual', regime_municipal: 'Regime Municipal',
         estado: 'Estado', cidade: 'Cidade', bairro: 'Bairro', logradouro: 'Logradouro',
         numero: 'NÃºmero', cep: 'CEP', email: 'Email', telefone: 'Telefone', data_abertura: 'Data Abertura',
@@ -1118,13 +1118,13 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     try {
       await api.excluirEmpresa(empresaId);
       setEmpresas(prev => prev.filter(e => e.id !== empresaId));
-      adicionarNotificacao('Empresa excluÃ­da com sucesso', 'sucesso');
+      adicionarNotificacao('Empresa excluída com sucesso', 'sucesso');
       const empresaExcluida = empresas.find(e => e.id === empresaId);
       api.registrarLog?.({
         acao: 'EXCLUIR', entidade: 'EMPRESA', entidadeId: empresaId,
         entidadeNome: empresaExcluida?.razao_social,
         empresaId: empresaId,
-        detalhes: `Empresa excluÃ­da: "${empresaExcluida?.razao_social || '#' + empresaId}"${empresaExcluida?.cnpj ? ' | CNPJ: ' + empresaExcluida.cnpj : ''}`,
+        detalhes: `Empresa excluída: "${empresaExcluida?.razao_social || '#' + empresaId}"${empresaExcluida?.cnpj ? ' | CNPJ: ' + empresaExcluida.cnpj : ''}`,
       });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao excluir empresa', 'erro');
@@ -1171,12 +1171,12 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     try {
       await api.excluirTemplate(templateId);
       setTemplates(prev => prev.filter(t => t.id !== templateId));
-      adicionarNotificacao('Template excluÃ­do com sucesso', 'sucesso');
+      adicionarNotificacao('Template excluído com sucesso', 'sucesso');
       const templateExcluido = templates.find(t => t.id === templateId);
       api.registrarLog?.({
         acao: 'EXCLUIR', entidade: 'TEMPLATE', entidadeId: templateId,
         entidadeNome: templateExcluido?.nome,
-        detalhes: `Template excluÃ­do: "${templateExcluido?.nome || '#' + templateId}"`,
+        detalhes: `Template excluído: "${templateExcluido?.nome || '#' + templateId}"`,
       });
     } catch (error: any) {
       adicionarNotificacao(error.message || 'Erro ao excluir template', 'erro');
@@ -1199,7 +1199,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         notasCriador: 'Notas do Criador', responsavelId: 'ResponsÃ¡vel',
         departamentoAtual: 'Departamento Atual', dataEntrega: 'Data de Entrega',
         progresso: 'Progresso', empresaId: 'Empresa',
-        interligadoComId: 'Interligado com', interligadoNome: 'Nome InterligaÃ§Ã£o',
+        interligadoComId: 'Interligado com', interligadoNome: 'Nome Interligação',
         deptIndependente: 'Departamentos Independentes',
       };
       const camposIgnorar = ['questionariosPorDepartamento', 'fluxoDepartamentos', 'dataAtualizacao', 'dataFinalizacao'];
@@ -1410,7 +1410,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
               } catch {}
             }
             try {
-              await mostrarAlerta?.('Campos obrigatÃ³rios', `Preencha os campos obrigatÃ³rios antes de avanÃ§ar: ${nomes}`, 'aviso');
+              await mostrarAlerta?.('Campos obrigatórios', `Preencha os campos obrigatórios antes de avançar: ${nomes}`, 'aviso');
             } catch {
               // noop
             }
@@ -1427,7 +1427,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         // Recarrega o processo completo para manter documentos/anexos e histÃ³rico
         const processoAtualizado = await api.getProcesso(processoId);
         setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
-        adicionarNotificacao('Processo avanÃ§ado para prÃ³ximo departamento', 'sucesso');
+        adicionarNotificacao('Processo avançado para próximo departamento', 'sucesso');
         const deptOrigem = departamentos.find(d => d.id === processoAntes?.departamentoAtual);
         const deptDestino = departamentos.find(d => d.id === processoAtualizado?.departamentoAtual);
         api.registrarLog?.({
@@ -1437,14 +1437,14 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           campo: 'Departamento',
           valorAnterior: deptOrigem?.nome || String(processoAntes?.departamentoAtual ?? ''),
           valorNovo: deptDestino?.nome || String(processoAtualizado?.departamentoAtual ?? ''),
-          detalhes: `Processo avanÃ§ado de "${deptOrigem?.nome || '?'}" para "${deptDestino?.nome || '?'}"`,
+          detalhes: `Processo avançado de "${deptOrigem?.nome || '?'}" para "${deptDestino?.nome || '?'}"`,
         });
       } catch (error: any) {
-        const msg = error.message || 'Erro ao avanÃ§ar processo';
+        const msg = error.message || 'Erro ao avançar processo';
         // Se a mensagem contÃ©m detalhes de validaÃ§Ã£o, mostrar alerta mais detalhado
-        if (msg.includes('Requisitos obrigatÃ³rios') || msg.includes('obrigatÃ³ria') || msg.includes('obrigatÃ³rio')) {
+        if (msg.includes('Requisitos obrigatórios') || msg.includes('obrigatória') || msg.includes('obrigatório')) {
           try {
-            await mostrarAlerta?.('Campos obrigatÃ³rios', msg, 'aviso');
+            await mostrarAlerta?.('Campos obrigatórios', msg, 'aviso');
           } catch {
             // noop
           }
@@ -1515,7 +1515,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
             if (!validacao.valido) {
               const criticos = validacao.erros.filter(e => e.tipo === 'erro');
               if (criticos.length > 0) {
-                errosGlobais.push(`ðŸ“Œ ${dept.nome}:\n${criticos.map(e => `  â€¢ ${e.mensagem}`).join('\n')}`);
+                errosGlobais.push(`- ${dept.nome}:\n${criticos.map(e => `  • ${e.mensagem}`).join('\n')}`);
               }
             }
           }
@@ -1524,7 +1524,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         if (errosGlobais.length > 0) {
           setGlobalLoading(false);
           await mostrarAlerta(
-            'Requisitos ObrigatÃ³rios Pendentes',
+            'Requisitos Obrigatórios Pendentes',
             `Complete os seguintes itens antes de finalizar:\n\n${errosGlobais.join('\n\n')}`,
             'erro'
           );
@@ -1569,7 +1569,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
               setGlobalLoading(false);
               await mostrarAlerta(
-                'Requisitos ObrigatÃ³rios Pendentes',
+                'Requisitos Obrigatórios Pendentes',
                 `Complete os seguintes itens antes de finalizar:\n\n${mensagem}`,
                 'erro'
               );
@@ -1615,8 +1615,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error('Erro ao finalizar:', error);
       const msg = error.message || 'Erro ao finalizar processo';
-      if (msg.includes('Requisitos obrigatÃ³rios') || msg.includes('obrigatÃ³ria') || msg.includes('obrigatÃ³rio')) {
-        await mostrarAlerta?.('Campos obrigatÃ³rios', msg, 'aviso');
+      if (msg.includes('Requisitos obrigatórios') || msg.includes('obrigatória') || msg.includes('obrigatório')) {
+        await mostrarAlerta?.('Campos obrigatórios', msg, 'aviso');
       } else {
         adicionarNotificacao(msg, 'erro');
       }
@@ -1684,7 +1684,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         const processoAtualizado = await api.getProcesso(processoId);
         setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
         
-        adicionarNotificacao('ComentÃ¡rio adicionado com sucesso', 'sucesso');
+        adicionarNotificacao('Comentário adicionado com sucesso', 'sucesso');
 
         // Log detalhado de comentÃ¡rio
         const preview = texto.length > 100 ? texto.substring(0, 100) + '...' : texto;
@@ -1693,12 +1693,12 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           acao: 'COMENTAR', entidade: 'PROCESSO', entidadeId: processoId,
           entidadeNome: processo?.nomeEmpresa || processo?.nome,
           processoId: processoId,
-          campo: 'ComentÃ¡rio',
+          campo: 'Comentário',
           valorNovo: preview,
-          detalhes: `ComentÃ¡rio adicionado no departamento "${deptComentario?.nome || '?'}": "${preview}"${mencoes && mencoes.length > 0 ? ` | MenÃ§Ãµes: ${mencoes.join(', ')}` : ''}`,
+          detalhes: `Comentário adicionado no departamento "${deptComentario?.nome || '?'}": "${preview}"${mencoes && mencoes.length > 0 ? ` | Menções: ${mencoes.join(', ')}` : ''}`,
         });
       } catch (error: any) {
-        adicionarNotificacao(error.message || 'Erro ao adicionar comentÃ¡rio', 'erro');
+        adicionarNotificacao(error.message || 'Erro ao adicionar comentário', 'erro');
         throw error;
       }
     },

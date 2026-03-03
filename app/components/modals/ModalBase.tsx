@@ -137,7 +137,7 @@ export default function ModalBase({
 
   return ReactDOM.createPortal(
     <div
-      className={backdropClassName || 'fixed inset-0 bg-black/50 flex items-center justify-center p-4'}
+      className={backdropClassName || 'fixed inset-0 bg-black/50 flex items-end justify-center overflow-y-auto p-2 sm:items-center sm:p-4'}
       style={backdropStyle}
       onMouseDown={handleBackdropClick}
       aria-hidden={false}
@@ -148,7 +148,7 @@ export default function ModalBase({
         aria-modal="true"
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
-        className={dialogClassName || 'w-full max-w-2xl bg-white dark:bg-[var(--card)] rounded-2xl shadow-2xl outline-none'}
+        className={dialogClassName || 'w-full max-w-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-2xl bg-white shadow-2xl outline-none dark:bg-[var(--card)] sm:max-h-[calc(100dvh-2rem)]'}
         style={dialogStyle}
       >
         {children}

@@ -38,6 +38,9 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
   const [interligarCom, setInterligarCom] = useState<number | null>(null);
   const [interligarParalelo, setInterligarParalelo] = useState(false);
   const [deptIndependente, setDeptIndependente] = useState(false);
+  const role = String(usuarioLogado?.role ?? '').toLowerCase();
+  const isAdminLike = role === 'admin' || role === 'admin_departamento';
+  const podeSelecionarResponsavel = isAdminLike || role === 'gerente';
 
   const templatesDisponiveis: Template[] = templates || [];
 
@@ -45,8 +48,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
 
   useEffect(() => {
     let ativo = true;
-    if (!usuarioLogado) return;
-    if (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'admin_departamento' && usuarioLogado.role !== 'gerente') return;
+    if (!usuarioLogado || !podeSelecionarResponsavel) return;
 
     setErroUsuariosResponsaveis(null);
 
@@ -65,7 +67,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
     return () => {
       ativo = false;
     };
-  }, [usuarioLogado]);
+  }, [usuarioLogado, podeSelecionarResponsavel]);
 
   const responsavelSelecionado = useMemo(() => {
     if (typeof responsavelId !== 'number') return null;
@@ -134,7 +136,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
       return typeof responsavelId === 'number' ? responsavelId : null;
     })();
 
-    if (usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente') {
+    if (podeSelecionarResponsavel) {
       if (typeof responsavelIdFinal !== 'number') {
         void mostrarAlerta('Atenção', 'Selecione o responsável (usuário).', 'aviso');
         return;
@@ -191,7 +193,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
   };
 
   const excluirTemplate = (templateId: number, templateNome: string) => {
-    if (!usuarioLogado || (usuarioLogado.role !== 'admin' && usuarioLogado.role !== 'admin_departamento')) {
+    if (!isAdminLike) {
       void mostrarAlerta('Permissão negada', 'Apenas administradores podem excluir templates.', 'aviso');
       return;
     }
@@ -240,8 +242,8 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-black bg-opacity-60 p-2 backdrop-blur-sm sm:items-center sm:p-4">
+      <div className="relative max-h-[calc(100dvh-0.75rem)] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl sm:max-h-[90vh]">
         <LoadingOverlay show={loading} text="Criando solicitação..." />
         <div className="bg-gradient-to-r from-purple-500 to-purple-600 p-6 rounded-t-2xl sticky top-0 z-10">
           <div className="flex justify-between items-center">
@@ -267,7 +269,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
             e.preventDefault();
             handleCriar();
           }}
-          className="p-6 space-y-6"
+          className="space-y-6 p-4 sm:p-6"
         >
           <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
             <h4 className="font-semibold text-purple-800 mb-4">Dados da Empresa</h4>
@@ -317,7 +319,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
                     setResponsavelId(Number.isFinite(id) ? id : null);
                   }}
                   className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  required={usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente'}
+                  required={podeSelecionarResponsavel}
                   disabled={usuarioLogado?.role === 'usuario'}
                 >
                   <option value="">
@@ -336,7 +338,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
                     {erroUsuariosResponsaveis}
                   </p>
                 )}
-                {(usuarioLogado?.role === 'admin' || usuarioLogado?.role === 'admin_departamento' || usuarioLogado?.role === 'gerente') && usuariosResponsaveis.length === 0 && !erroUsuariosResponsaveis && (
+                {podeSelecionarResponsavel && usuariosResponsaveis.length === 0 && !erroUsuariosResponsaveis && (
                   <p className="text-xs text-gray-600 mt-2">
                     Nenhum usuário encontrado para seleção.
                   </p>
@@ -441,11 +443,11 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
           </div>
 
           <div className="bg-cyan-50 rounded-xl p-4 border border-cyan-200">
-            <div className="flex justify-between items-center mb-4">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h4 className="font-semibold text-cyan-800">
                 Selecione o Template <span className="text-red-500">*</span>
               </h4>
-              {usuarioLogado?.role === "admin" && (
+              {isAdminLike && (
                 <span className="text-xs text-gray-500">
                   Admins: clique nos três pontos para excluir
                 </span>
@@ -563,7 +565,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
                       </div>
                     </label>
 
-                    {usuarioLogado?.role === "admin" && (
+                    {isAdminLike && (
                       <div className="absolute top-3 right-3">
                         <button
                           type="button"
@@ -615,7 +617,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
             )}
           </div>
 
-          <div className="flex gap-4 pt-6 border-t border-gray-200">
+          <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-6 sm:flex-row sm:gap-4">
             <button
               type="button"
               onClick={onClose}
