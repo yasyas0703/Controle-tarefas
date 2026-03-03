@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { assertProcessAccess, canAccessDepartment } from '@/app/utils/processAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -85,6 +86,9 @@ const toTipoCampo = (tipo: any) => {
 // GET /api/questionarios?departamentoId=123&processoId=456
 export async function GET(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const { searchParams } = new URL(request.url);
     const departamentoId = searchParams.get('departamentoId');
     const processoId = searchParams.get('processoId');
@@ -96,9 +100,17 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    const did = parseInt(departamentoId);
+    if (processoId) {
+      const access = await assertProcessAccess(user, parseInt(processoId), 'read', { departamentoId: did });
+      if (access.error) return access.error;
+    } else if (!canAccessDepartment(user, did)) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
     const questionarios = await prisma.questionarioDepartamento.findMany({
       where: {
-        departamentoId: parseInt(departamentoId),
+        departamentoId: did,
         ...(processoId ? { processoId: parseInt(processoId) } : { processoId: null }),
       },
       orderBy: { ordem: 'asc' },
@@ -126,8 +138,23 @@ export async function GET(request: NextRequest) {
 // POST /api/questionarios - Criar pergunta
 export async function POST(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+    if (!requireRole(user, ['ADMIN', 'GERENTE'])) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
     const data = await request.json();
     await ensureTipoCampoEnum();
+
+    if (data?.processoId) {
+      const access = await assertProcessAccess(user, Number(data.processoId), 'manage_questionario', {
+        departamentoId: Number(data.departamentoId),
+      });
+      if (access.error) return access.error;
+    } else if (!canAccessDepartment(user, Number(data?.departamentoId))) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
     
     const questionario = await prisma.questionarioDepartamento.create({
       data: {
@@ -175,6 +202,9 @@ export async function PUT(request: NextRequest) {
     if (!Number.isFinite(pid) || !Number.isFinite(did) || did <= 0 || pid <= 0) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
     }
+
+    const access = await assertProcessAccess(user, pid, 'manage_questionario', { departamentoId: did });
+    if (access.error) return access.error;
 
     const list = Array.isArray(perguntas) ? perguntas : [];
 

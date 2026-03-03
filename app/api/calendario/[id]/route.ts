@@ -16,6 +16,10 @@ function parseDate(value: string): Date {
   return new Date(value);
 }
 
+function isDateOnlyValue(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 // GET - Buscar evento específico
 export async function GET(
   request: NextRequest,
@@ -76,6 +80,9 @@ export async function PUT(
       recorrenciaFim,
       alertaMinutosAntes,
     } = body;
+
+    const diaInteiroNormalizado =
+      diaInteiro !== undefined ? Boolean(diaInteiro || isDateOnlyValue(dataInicio)) : undefined;
     
     const evento = await (prisma as any).eventoCalendario.update({
       where: { id },
@@ -86,7 +93,7 @@ export async function PUT(
         ...(status && { status: status.toUpperCase() }),
         ...(dataInicio && { dataInicio: parseDate(dataInicio) }),
         ...(dataFim !== undefined && { dataFim: dataFim ? parseDate(dataFim) : null }),
-        ...(diaInteiro !== undefined && { diaInteiro }),
+        ...(diaInteiroNormalizado !== undefined && { diaInteiro: diaInteiroNormalizado }),
         ...(cor !== undefined && { cor }),
         ...(processoId !== undefined && { processoId: processoId ? Number(processoId) : null }),
         ...(empresaId !== undefined && { empresaId: empresaId ? Number(empresaId) : null }),

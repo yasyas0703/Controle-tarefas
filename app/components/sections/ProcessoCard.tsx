@@ -73,12 +73,13 @@ export default function ProcessoCard({
     }
   };
 
+  const departamentoUsuarioRaw =
+    (usuarioLogado as any)?.departamentoId ?? (usuarioLogado as any)?.departamento_id;
+  const departamentoUsuarioParsed = Number(departamentoUsuarioRaw);
   const departamentoUsuario =
-    typeof (usuarioLogado as any)?.departamentoId === 'number'
-      ? (usuarioLogado as any).departamentoId
-      : typeof (usuarioLogado as any)?.departamento_id === 'number'
-        ? (usuarioLogado as any).departamento_id
-        : undefined;
+    Number.isFinite(departamentoUsuarioParsed) && departamentoUsuarioParsed > 0
+      ? departamentoUsuarioParsed
+      : undefined;
 
   const isDeptDoUsuario =
     typeof departamentoUsuario === 'number' &&
@@ -320,7 +321,10 @@ export default function ProcessoCard({
               } else {
                 // 2. Fallback: busca gerente do departamento na lista de usuários
                 const gerenteDept = (usuarios || []).find(
-                  (u: any) => u.departamentoId === departamento.id && String(u.role).toLowerCase() === 'gerente' && u.ativo !== false
+                  (u: any) =>
+                    Number((u as any)?.departamentoId ?? (u as any)?.departamento_id) === Number(departamento.id) &&
+                    String(u.role).toLowerCase() === 'gerente' &&
+                    u.ativo !== false
                 );
                 if (gerenteDept) {
                   respNome = gerenteDept.nome;
@@ -431,9 +435,19 @@ export default function ProcessoCard({
               className="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-500 rounded bg-gray-50 dark:bg-gray-600 text-gray-800 dark:text-gray-200 focus:ring-1 focus:ring-blue-400"
             >
               <option value="">Sem responsável</option>
-              {(usuarios || []).filter(u => u.ativo !== false).map(u => (
-                <option key={u.id} value={u.id}>{u.nome}{u.departamentoId ? ` (${departamentos.find(d => d.id === u.departamentoId)?.nome || ''})` : ''}</option>
-              ))}
+              {(usuarios || []).filter(u => u.ativo !== false).map(u => {
+                const departamentoId = Number((u as any).departamentoId ?? (u as any).departamento_id);
+                const departamentoNome =
+                  Number.isFinite(departamentoId) && departamentoId > 0
+                    ? departamentos.find(d => d.id === departamentoId)?.nome || ''
+                    : '';
+
+                return (
+                  <option key={u.id} value={u.id}>
+                    {u.nome}{departamentoNome ? ` (${departamentoNome})` : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
           <div className="flex gap-2 pt-1">

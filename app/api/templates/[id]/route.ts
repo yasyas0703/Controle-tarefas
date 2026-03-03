@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
-import { requireAuth } from '@/app/utils/routeAuth';
+import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +13,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const template = await prisma.template.findUnique({
       where: { id: parseInt(params.id) },
       include: {
@@ -47,6 +50,9 @@ export async function DELETE(
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    if (!requireRole(user, ['ADMIN'])) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
 
     const template = await prisma.template.findUnique({ where: { id: parseInt(params.id) } });
     if (!template) return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 });

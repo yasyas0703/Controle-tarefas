@@ -89,9 +89,11 @@ export async function POST(request: NextRequest) {
     const departamentoId = formData.get('departamentoId')
       ? parseInt(formData.get('departamentoId') as string)
       : null;
-    const perguntaId = formData.get('perguntaId')
-      ? parseInt(formData.get('perguntaId') as string)
-      : null;
+    const perguntaIdStr = formData.get('perguntaId') as string | null;
+    // IDs de sub-perguntas de grupos repetíveis são gerados como Date.now() + Math.random(),
+    // podendo ser floats grandes (ex: 1740870000000.56). Usamos Math.trunc para obter o inteiro
+    // e BigInt para suportar valores acima do limite Int (2147483647).
+    const perguntaId = perguntaIdStr ? BigInt(Math.trunc(parseFloat(perguntaIdStr))) : null;
     
     if (!file || !processoId || !tipo) {
       return NextResponse.json(

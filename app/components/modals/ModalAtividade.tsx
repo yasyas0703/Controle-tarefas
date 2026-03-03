@@ -616,6 +616,7 @@ export default function ModalAtividade({ onClose, templateToEdit }: ModalAtivida
                                           <option value="email">Email</option>
                                           <option value="cpf">CPF</option>
                                           <option value="cnpj">CNPJ</option>
+                                          <option value="file">Arquivo/Anexo</option>
                                           <option value="cep">CEP</option>
                                           <option value="money">Valor (R$)</option>
                                         </select>

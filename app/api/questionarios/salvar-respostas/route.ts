@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
 import { registrarLog, getIp } from '@/app/utils/logAuditoria';
+import { assertProcessAccess } from '@/app/utils/processAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,11 +15,36 @@ export async function POST(request: NextRequest) {
     if (!user) return error;
     
     const { processoId, departamentoId, respostas } = await request.json();
+    const pid = Number(processoId);
+    const did = Number(departamentoId);
     
-    if (!processoId || !departamentoId || !respostas) {
+    if (!pid || !did || !respostas || typeof respostas !== 'object') {
       return NextResponse.json(
         { error: 'Dados incompletos' },
         { status: 400 }
+      );
+    }
+
+    const access = await assertProcessAccess(user, pid, 'answer_questionario', { departamentoId: did });
+    if (access.error) return access.error;
+
+    const questionarioIds = Object.keys(respostas)
+      .map((questionarioId) => Number(questionarioId))
+      .filter((questionarioId) => Number.isFinite(questionarioId) && questionarioId > 0);
+
+    const questionariosValidos = await prisma.questionarioDepartamento.findMany({
+      where: {
+        id: { in: questionarioIds },
+        processoId: pid,
+        departamentoId: did,
+      },
+      select: { id: true },
+    });
+
+    if (questionariosValidos.length !== questionarioIds.length) {
+      return NextResponse.json(
+        { error: 'Há perguntas inválidas para este processo/departamento' },
+        { status: 403 }
       );
     }
     
@@ -32,7 +58,7 @@ export async function POST(request: NextRequest) {
         return prisma.respostaQuestionario.upsert({
           where: {
             processoId_questionarioId: {
-              processoId: parseInt(processoId),
+              processoId: pid,
               questionarioId: parseInt(questionarioId),
             },
           },
@@ -41,7 +67,7 @@ export async function POST(request: NextRequest) {
             respondidoPorId: user.id,
           },
           create: {
-            processoId: parseInt(processoId),
+            processoId: pid,
             questionarioId: parseInt(questionarioId),
             resposta: respostaString,
             respondidoPorId: user.id,
@@ -54,10 +80,10 @@ export async function POST(request: NextRequest) {
       usuarioId: user.id,
       acao: 'PREENCHER',
       entidade: 'QUESTIONARIO',
-      entidadeId: parseInt(processoId),
-      entidadeNome: `Respostas do processo #${processoId}`,
-      processoId: parseInt(processoId),
-      departamentoId: parseInt(departamentoId),
+      entidadeId: pid,
+      entidadeNome: `Respostas do processo #${pid}`,
+      processoId: pid,
+      departamentoId: did,
       ip: getIp(request),
     });
 

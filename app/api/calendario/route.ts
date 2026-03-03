@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
-import { getAuthUser } from '@/app/utils/routeAuth';
+import { getAuthUser, requireAuth } from '@/app/utils/routeAuth';
 import { registrarLog, getIp } from '@/app/utils/logAuditoria';
 import { getEmpresaDocumentoQueryConfig, normalizeEmpresaDocumento } from '@/app/utils/empresaDocumentoCompat';
+import { assertProcessAccess, canAccessDepartment } from '@/app/utils/processAccess';
 
 // Função para converter data corretamente (evita problema de timezone)
 function parseDate(value: string): Date {
@@ -25,12 +26,17 @@ function getErrorMessage(error: unknown): string {
   return '';
 }
 
+function isDateOnlyValue(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 // GET - Buscar eventos do calendário com filtros
 export async function GET(request: NextRequest) {
   try {
     // Verificar usuário logado para filtrar eventos privados
-    const usuario = await getAuthUser(request);
-    const usuarioId = usuario?.id || null;
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+    const usuarioId = user.id;
     
     const { searchParams } = new URL(request.url);
     
@@ -278,9 +284,9 @@ export async function GET(request: NextRequest) {
 // POST - Criar novo evento
 export async function POST(request: NextRequest) {
   try {
-    // Pegar usuário logado
-    const usuario = await getAuthUser(request);
-    const usuarioId = usuario?.id || null;
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+    const usuarioId = user.id;
     
     const body = await request.json();
     
@@ -308,6 +314,17 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    if (processoId) {
+      const access = await assertProcessAccess(user, Number(processoId), 'create_event', {
+        departamentoId: departamentoId ? Number(departamentoId) : undefined,
+      });
+      if (access.error) return access.error;
+    } else if (departamentoId && !canAccessDepartment(user, Number(departamentoId))) {
+      return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
+    }
+
+    const diaInteiroNormalizado = Boolean(diaInteiro ?? isDateOnlyValue(dataInicio));
+
     const evento = await (prisma as any).eventoCalendario.create({
       data: {
         titulo,
@@ -315,12 +332,12 @@ export async function POST(request: NextRequest) {
         tipo: (tipo || 'LEMBRETE').toUpperCase(),
         dataInicio: parseDate(dataInicio),
         dataFim: dataFim ? parseDate(dataFim) : null,
-        diaInteiro: diaInteiro ?? false,
+        diaInteiro: diaInteiroNormalizado,
         cor,
         processoId: processoId ? Number(processoId) : null,
         empresaId: empresaId ? Number(empresaId) : null,
         departamentoId: departamentoId ? Number(departamentoId) : null,
-        criadoPorId: usuarioId || null, // Sempre usar o usuário logado
+        criadoPorId: usuarioId,
         privado: privado ?? true, // Por padrão é privado
         recorrencia: (recorrencia || 'UNICO').toUpperCase(),
         recorrenciaFim: recorrenciaFim ? parseDate(recorrenciaFim) : null,
@@ -328,17 +345,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (usuarioId) {
-      await registrarLog({
-        usuarioId,
-        acao: 'CRIAR',
-        entidade: 'CALENDARIO',
-        entidadeId: evento.id,
-        entidadeNome: evento.titulo,
-        processoId: processoId ? Number(processoId) : null,
-        ip: getIp(request),
-      });
-    }
+    await registrarLog({
+      usuarioId,
+      acao: 'CRIAR',
+      entidade: 'CALENDARIO',
+      entidadeId: evento.id,
+      entidadeNome: evento.titulo,
+      processoId: processoId ? Number(processoId) : null,
+      ip: getIp(request),
+    });
 
     return NextResponse.json({
       ...evento,

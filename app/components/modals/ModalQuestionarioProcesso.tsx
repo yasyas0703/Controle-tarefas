@@ -104,18 +104,9 @@ export default function ModalQuestionarioProcesso({
   React.useEffect(() => {
     let cancelled = false;
 
-    const needsFetch = (() => {
-      if (!processoId || !departamentoId) return false;
-      // Se não temos o processo no estado, sempre busca.
-      if (!processo) return true;
-      // Se o processo veio do GET /processos (lista), ele normalmente não inclui questionários.
-      // Busca o detalhe para carregar as perguntas.
-      const hasAnyQuestionario =
-        Array.isArray((processo as any)?.questionarios) && (processo as any).questionarios.length > 0;
-      return !hasAnyQuestionario;
-    })();
-
-    if (!needsFetch) return;
+    // Sempre busca dados frescos ao abrir o modal para garantir que documentos
+    // sejam filtrados corretamente por permissão/visibilidade (evita cache desatualizado).
+    if (!processoId || !departamentoId) return;
 
     void (async () => {
       try {
@@ -160,15 +151,47 @@ export default function ModalQuestionarioProcesso({
 
   const respostasSalvas =
     ((processo?.respostasHistorico as any)?.[departamentoId]?.respostas as Record<string, any>) || {};
+  const clonarRespostas = (valor: Record<string, any>) => {
+    try {
+      return JSON.parse(JSON.stringify(valor || {}));
+    } catch {
+      return { ...(valor || {}) };
+    }
+  };
+  const serializarRespostas = (valor: Record<string, any>) => {
+    try {
+      return JSON.stringify(valor || {});
+    } catch {
+      return '{}';
+    }
+  };
+  const respostasSalvasSerializadas = serializarRespostas(respostasSalvas);
 
   const [respostas, setRespostas] = React.useState<Record<string, any>>(respostasSalvas);
   const respostasBackupRef = React.useRef<Record<string, any>>(respostasSalvas);
+  const respostasRef = React.useRef<Record<string, any>>(respostasSalvas);
 
   React.useEffect(() => {
-    setRespostas(respostasSalvas);
-    respostasBackupRef.current = JSON.parse(JSON.stringify(respostasSalvas || {}));
+    respostasRef.current = respostas;
+  }, [respostas]);
+
+  React.useEffect(() => {
+    const respostasServidor = clonarRespostas(respostasSalvas);
+    const backupAtual = serializarRespostas(respostasBackupRef.current);
+    const respostasAtuais = serializarRespostas(respostasRef.current);
+    const houveEdicaoLocal = respostasAtuais !== backupAtual;
+
+    // Hidrata as respostas quando o processo completo chega depois da abertura,
+    // mas preserva qualquer edição que o usuário já tenha iniciado no modal.
+    if (houveEdicaoLocal && respostasAtuais !== respostasSalvasSerializadas) {
+      return;
+    }
+
+    setRespostas(respostasServidor);
+    respostasBackupRef.current = respostasServidor;
+    respostasRef.current = respostasServidor;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [processoId, departamentoId]);
+  }, [processoId, departamentoId, respostasSalvasSerializadas]);
 
   const keyOf = (pergunta: Questionario) => String(pergunta.id);
   const safeValue = (val: any) => (val === undefined || val === null ? '' : val);
@@ -214,10 +237,13 @@ export default function ModalQuestionarioProcesso({
 
   const docsAnexadosPergunta = (perguntaId: number) => {
     const docs = processo?.documentos || [];
+    // IDs de sub-perguntas podem ser floats (Date.now() + Math.random()), enquanto o banco
+    // armazena o valor truncado (Math.trunc). Comparamos ambos truncados para garantir match.
+    const perguntaIdTrunc = Math.trunc(Number(perguntaId));
     const filtered = docs.filter((d: any) => {
-      const dPerg = Number(d?.perguntaId ?? d?.pergunta_id);
-      if (!Number.isFinite(dPerg)) return false;
-      if (dPerg !== Number(perguntaId)) return false;
+      const dPerg = Math.trunc(Number(d?.perguntaId ?? d?.pergunta_id));
+      if (!Number.isFinite(dPerg) || dPerg === 0) return false;
+      if (dPerg !== perguntaIdTrunc) return false;
 
       const dDeptRaw = d?.departamentoId ?? d?.departamento_id;
       const dDept = Number(dDeptRaw);
@@ -235,9 +261,10 @@ export default function ModalQuestionarioProcesso({
 
   const docsAnexadosPerguntaNoDepartamento = (deptId: number, perguntaId: number) => {
     const docs = processo?.documentos || [];
+    const perguntaIdTrunc = Math.trunc(Number(perguntaId));
     const filtered = docs.filter((d: any) => {
-      const dPerg = Number(d?.perguntaId ?? d?.pergunta_id);
-      if (dPerg !== Number(perguntaId)) return false;
+      const dPerg = Math.trunc(Number(d?.perguntaId ?? d?.pergunta_id));
+      if (dPerg !== perguntaIdTrunc) return false;
 
       const dDeptRaw = d?.departamentoId ?? d?.departamento_id;
       const dDept = Number(dDeptRaw);
@@ -1045,9 +1072,35 @@ export default function ModalQuestionarioProcesso({
                     {subPerguntas.map((sub) => (
                       <div key={sub.id}>
                         <label className="block text-xs font-medium text-gray-600 dark:text-slate-300 mb-1">{sub.label}</label>
-                        <div className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-950/70 text-gray-700 dark:text-slate-200 text-sm">
-                          {grupo[String(sub.id)] || '—'}
-                        </div>
+                        {sub.tipo === 'file' ? (
+                          (() => {
+                            const subDocs = docsAnexadosPergunta(sub.id);
+                            return subDocs.length === 0 ? (
+                              <div className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-950/70 text-gray-500 dark:text-slate-400 text-sm">—</div>
+                            ) : (
+                              <div className="space-y-1">
+                                {subDocs.map((doc: any) => (
+                                  <div key={doc.id} className="relative flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm pr-20">
+                                    <FileText size={14} className="text-blue-500 flex-shrink-0" />
+                                    <span className="flex-1 truncate text-gray-800 min-w-0" title={doc.nome}>{formatarNomeArquivo(doc.nome)}</span>
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                                      <button type="button" onClick={() => visualizarDocumento(doc)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors" title="Visualizar">
+                                        <Eye size={14} />
+                                      </button>
+                                      <button type="button" onClick={() => baixarDocumento(doc)} className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors" title="Baixar">
+                                        <Download size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <div className="px-3 py-2 border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-950/70 text-gray-700 dark:text-slate-200 text-sm">
+                            {grupo[String(sub.id)] || '—'}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1101,6 +1154,61 @@ export default function ModalQuestionarioProcesso({
               return <input type="tel" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, maskTelefone(e.target.value))} maxLength={15} className={baseSubCampoClass} placeholder="(00) 00000-0000" />;
             case 'email':
               return <input type="email" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value)} className={baseSubCampoClass} placeholder="exemplo@email.com" />;
+            case 'file': {
+              const subDocs = docsAnexadosPergunta(sub.id);
+              return (
+                <div className="space-y-2">
+                  {subDocs.length > 0 && (
+                    <div className="space-y-1">
+                      {subDocs.map((doc: any) => (
+                        <div key={doc.id} className="relative flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm pr-24">
+                          <FileText size={14} className="text-blue-500 flex-shrink-0" />
+                          <span className="flex-1 truncate text-gray-800 min-w-0" title={doc.nome}>{formatarNomeArquivo(doc.nome)}</span>
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => visualizarDocumento(doc)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                              title="Visualizar documento"
+                            >
+                              <Eye size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => baixarDocumento(doc)}
+                              className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                              title="Baixar documento"
+                            >
+                              <Download size={14} />
+                            </button>
+                            {!bloqueado && (
+                              <button
+                                type="button"
+                                onClick={() => removerDocumento(doc.id)}
+                                className="p-1.5 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                                title="Excluir documento"
+                              >
+                                <X size={14} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!bloqueado && (
+                    <button
+                      type="button"
+                      onClick={() => setShowUploadDocumento({ id: processoId, perguntaId: sub.id, perguntaLabel: sub.label, departamentoId })}
+                      className="w-full px-3 py-2 border-2 border-dashed border-blue-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all flex items-center justify-center gap-2 text-blue-600 text-sm font-medium"
+                    >
+                      <Upload size={15} />
+                      {subDocs.length > 0 ? 'Adicionar Mais Arquivos' : 'Anexar Arquivo'}
+                    </button>
+                  )}
+                </div>
+              );
+            }
             default:
               return <input type="text" value={subValor} onChange={(e) => atualizarGrupo(gIdx, sub.id, e.target.value.slice(0, 200))} maxLength={200} className={baseSubCampoClass} placeholder="Digite sua resposta..." />;
           }

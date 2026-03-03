@@ -135,12 +135,13 @@ export default function DepartamentosGrid({
   const podeEditarDepartamento = temPermissao(usuarioLogado, 'editar_departamento');
   const podeExcluirDepartamento = temPermissao(usuarioLogado, 'excluir_departamento');
 
+  const departamentoUsuarioRaw =
+    (usuarioLogado as any)?.departamentoId ?? (usuarioLogado as any)?.departamento_id;
+  const departamentoUsuarioParsed = Number(departamentoUsuarioRaw);
   const departamentoUsuario =
-    typeof (usuarioLogado as any)?.departamentoId === 'number'
-      ? (usuarioLogado as any).departamentoId
-      : typeof (usuarioLogado as any)?.departamento_id === 'number'
-        ? (usuarioLogado as any).departamento_id
-        : undefined;
+    Number.isFinite(departamentoUsuarioParsed) && departamentoUsuarioParsed > 0
+      ? departamentoUsuarioParsed
+      : undefined;
 
   const handleQuestionario = (processo: any, deptIdOverride?: number) => {
     // Para processos paralelos (deptIndependente), usar o dept da coluna onde o card estÃ¡,
@@ -283,7 +284,13 @@ export default function DepartamentosGrid({
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Erro ao concluir' }));
-        void mostrarAlerta?.('Erro', err.error || 'Erro ao concluir departamento', 'erro');
+        const detalhes = Array.isArray(err?.detalhes) && err.detalhes.length > 0
+          ? `\n\n${err.detalhes.join('\n')}`
+          : '';
+        const titulo = String(err?.error || '').toLowerCase().includes('obrigat')
+          ? 'Campos obrigatórios'
+          : 'Erro';
+        void mostrarAlerta?.(titulo, `${err.error || 'Erro ao concluir departamento'}${detalhes}`, titulo === 'Erro' ? 'erro' : 'aviso');
         return;
       }
 

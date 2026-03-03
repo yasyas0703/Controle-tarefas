@@ -100,7 +100,7 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
     descricao: '',
     tipo: 'solicitacao' as TipoEventoCalendario,
     dataInicio: '',
-    horaInicio: '09:00',
+    horaInicio: '',
     dataFim: '',
     horaFim: '',
     diaInteiro: true, // Solicitação é dia inteiro por padrão
@@ -298,14 +298,18 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
     try {
       setSalvando(true);
       
+      const horaInicio = String(novoEvento.horaInicio || '').trim();
+      const horaFim = String(novoEvento.horaFim || '').trim();
+      const diaInteiro = Boolean(novoEvento.diaInteiro || !horaInicio);
+
       let dataInicio = novoEvento.dataInicio;
-      if (!novoEvento.diaInteiro && novoEvento.horaInicio) {
-        dataInicio = `${novoEvento.dataInicio}T${novoEvento.horaInicio}:00`;
+      if (!diaInteiro && horaInicio) {
+        dataInicio = `${novoEvento.dataInicio}T${horaInicio}:00`;
       }
-      
+
       let dataFim = novoEvento.dataFim || undefined;
-      if (dataFim && !novoEvento.diaInteiro && novoEvento.horaFim) {
-        dataFim = `${novoEvento.dataFim}T${novoEvento.horaFim}:00`;
+      if (dataFim && !diaInteiro && horaFim) {
+        dataFim = `${novoEvento.dataFim}T${horaFim}:00`;
       }
 
       await api.criarEventoCalendario({
@@ -314,7 +318,7 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
         tipo: novoEvento.tipo,
         dataInicio,
         dataFim,
-        diaInteiro: novoEvento.diaInteiro,
+        diaInteiro,
         cor: novoEvento.cor || undefined,
         empresaId: novoEvento.empresaId || undefined,
         departamentoId: novoEvento.departamentoId || undefined,
@@ -330,7 +334,7 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
         descricao: '',
         tipo: 'solicitacao',
         dataInicio: '',
-        horaInicio: '09:00',
+        horaInicio: '',
         dataFim: '',
         horaFim: '',
         diaInteiro: true,
@@ -488,10 +492,22 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
             </button>
             <button
               onClick={() => {
-                setNovoEvento(prev => ({
-                  ...prev,
+                setNovoEvento({
+                  titulo: '',
+                  descricao: '',
+                  tipo: 'solicitacao',
                   dataInicio: new Date().toISOString().split('T')[0],
-                }));
+                  horaInicio: '',
+                  dataFim: '',
+                  horaFim: '',
+                  diaInteiro: true,
+                  cor: '',
+                  empresaId: null,
+                  departamentoId: null,
+                  recorrencia: 'unico',
+                  alertaMinutosAntes: 60,
+                  privado: true,
+                });
                 setShowNovoEvento(true);
               }}
               className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 rounded-lg font-medium hover:bg-indigo-50 transition"
@@ -636,10 +652,22 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
                     key={index}
                     onClick={() => {
                       setDiaSelecionado(dia);
-                      setNovoEvento(prev => ({
-                        ...prev,
+                      setNovoEvento({
+                        titulo: '',
+                        descricao: '',
+                        tipo: 'solicitacao',
                         dataInicio: dia.toISOString().split('T')[0],
-                      }));
+                        horaInicio: '',
+                        dataFim: '',
+                        horaFim: '',
+                        diaInteiro: true,
+                        cor: '',
+                        empresaId: null,
+                        departamentoId: null,
+                        recorrencia: 'unico',
+                        alertaMinutosAntes: 60,
+                        privado: true,
+                      });
                     }}
                     className={`
                       min-h-[100px] p-1 border rounded-lg cursor-pointer transition-all
@@ -733,7 +761,16 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
                   </label>
                   <select
                     value={novoEvento.tipo}
-                    onChange={(e) => setNovoEvento(prev => ({ ...prev, tipo: e.target.value as TipoEventoCalendario }))}
+                    onChange={(e) => {
+                      const tipo = e.target.value as TipoEventoCalendario;
+                      setNovoEvento(prev => ({
+                        ...prev,
+                        tipo,
+                        diaInteiro: tipo === 'solicitacao' ? true : prev.diaInteiro,
+                        horaInicio: tipo === 'solicitacao' ? '' : prev.horaInicio,
+                        horaFim: tipo === 'solicitacao' ? '' : prev.horaFim,
+                      }));
+                    }}
                     className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
                   >
                     <option value="solicitacao">📋 Solicitação</option>
@@ -813,7 +850,14 @@ export default function Calendario({ onEventoClick }: CalendarioProps) {
                   <input
                     type="checkbox"
                     checked={novoEvento.diaInteiro}
-                    onChange={(e) => setNovoEvento(prev => ({ ...prev, diaInteiro: e.target.checked }))}
+                    onChange={(e) =>
+                      setNovoEvento(prev => ({
+                        ...prev,
+                        diaInteiro: e.target.checked,
+                        horaInicio: e.target.checked ? '' : prev.horaInicio,
+                        horaFim: e.target.checked ? '' : prev.horaFim,
+                      }))
+                    }
                     className="rounded"
                   />
                   <span className="text-gray-700 dark:text-gray-300">Dia inteiro</span>

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
+import { requireAuth } from '@/app/utils/routeAuth';
+import { assertProcessAccess } from '@/app/utils/processAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,11 +12,19 @@ export async function GET(
   { params }: { params: { processoId: string; departamentoId: string } }
 ) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
+    const processoId = parseInt(params.processoId);
+    const departamentoId = parseInt(params.departamentoId);
+    const access = await assertProcessAccess(user, processoId, 'read', { departamentoId });
+    if (access.error) return access.error;
+
     const respostas = await prisma.respostaQuestionario.findMany({
       where: {
-        processoId: parseInt(params.processoId),
+        processoId,
         questionario: {
-          departamentoId: parseInt(params.departamentoId),
+          departamentoId,
         },
       },
       include: {

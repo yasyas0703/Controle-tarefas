@@ -38,8 +38,21 @@ export default function ModalUploadDocumento({
   const [editRoles, setEditRoles] = React.useState<string[]>([]);
   const [editUserIds, setEditUserIds] = React.useState<number[]>([]);
   const [editDeptIds, setEditDeptIds] = React.useState<number[]>([]);
+  const processoDocumentos = React.useMemo(
+    () => (Array.isArray(processo?.documentos) ? processo.documentos : []),
+    [processo?.documentos]
+  );
+  const processoDepartamentoAtual = processo?.departamentoAtual;
+  const documentosIniciaisRef = React.useRef<any[]>(processoDocumentos);
+  const [documentosLocal, setDocumentosLocal] = React.useState<any[]>(() => documentosIniciaisRef.current);
 
-  const [documentosLocal, setDocumentosLocal] = React.useState<any[]>(processo?.documentos || []);
+  React.useEffect(() => {
+    documentosIniciaisRef.current = processoDocumentos;
+  }, [processoDocumentos]);
+
+  React.useEffect(() => {
+    setDocumentosLocal(documentosIniciaisRef.current);
+  }, [processo?.id]);
 
   // Carregar documentos do backend ao abrir o modal (dados filtrados por permissão)
   React.useEffect(() => {
@@ -49,10 +62,7 @@ export default function ModalUploadDocumento({
       try {
         const docs = await api.getDocumentos(processo.id);
         if (!cancelled) setDocumentosLocal(Array.isArray(docs) ? docs : []);
-      } catch {
-        // fallback: usar dados embutidos no processo
-        if (!cancelled) setDocumentosLocal(processo?.documentos || []);
-      }
+      } catch {}
     })();
     return () => { cancelled = true; };
   }, [processo?.id]);
@@ -69,9 +79,10 @@ export default function ModalUploadDocumento({
 
   // Auto-include current user in selectedUserIds when visibility is USERS
   React.useEffect(() => {
-    if (visibility === 'USERS' && usuarioLogado?.id && !selectedUserIds.includes(usuarioLogado.id)) {
-      setSelectedUserIds(prev => prev.includes(usuarioLogado!.id) ? prev : [...prev, usuarioLogado!.id]);
-    }
+    if (visibility !== 'USERS' || !usuarioLogado?.id) return;
+    setSelectedUserIds(prev => (
+      prev.includes(usuarioLogado.id) ? prev : [...prev, usuarioLogado.id]
+    ));
   }, [visibility, usuarioLogado?.id]);
 
   const documentos = documentosLocal;
@@ -89,12 +100,12 @@ export default function ModalUploadDocumento({
     // Quando aberto para um processo, mostrar apenas os documentos do departamento atual
     // do processo (comportamento solicitado pelo usuário). Isso evita que documentos
     // de departamentos anteriores apareçam no modal de upload após avançar o processo.
-    if (processo && typeof processo.departamentoAtual === 'number') {
-      return documentos.filter((d: any) => Number(d.departamentoId) === Number(processo.departamentoAtual));
+    if (typeof processoDepartamentoAtual === 'number') {
+      return documentos.filter((d: any) => Number(d.departamentoId) === Number(processoDepartamentoAtual));
     }
 
     return documentos;
-  }, [documentos, perguntaId, departamentoId, processo]);
+  }, [documentos, perguntaId, departamentoId, processoDepartamentoAtual]);
 
   const handleArquivosSelecionados = (fileList: FileList | null) => {
     if (!fileList) return;

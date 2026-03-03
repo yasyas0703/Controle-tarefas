@@ -11,6 +11,15 @@ interface ModalLoginProps {
   onLogin: (usuario: any) => void;
 }
 
+function getDepartamentoId(usuario: any) {
+  const departamentoRaw =
+    usuario?.departamentoId ??
+    usuario?.departamento_id ??
+    usuario?.departamento?.id;
+  const departamentoId = Number(departamentoRaw);
+  return Number.isFinite(departamentoId) && departamentoId > 0 ? departamentoId : undefined;
+}
+
 export default function ModalLogin({ onLogin }: ModalLoginProps) {
   const [formData, setFormData] = useState({
     email: '',
@@ -140,12 +149,7 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
       }
 
       if (response.usuario) {
-        const deptId =
-          typeof (response.usuario as any).departamentoId === 'number'
-            ? (response.usuario as any).departamentoId
-            : typeof (response.usuario as any).departamento?.id === 'number'
-              ? (response.usuario as any).departamento.id
-              : undefined;
+        const deptId = getDepartamentoId(response.usuario);
         const usuario = {
           id: response.usuario.id,
           nome: response.usuario.nome,
@@ -175,12 +179,7 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
     try {
       const response = await api.verifyEmailCode(formData.email, code);
       if (response.usuario) {
-        const deptId =
-          typeof (response.usuario as any).departamentoId === 'number'
-            ? (response.usuario as any).departamentoId
-            : typeof (response.usuario as any).departamento?.id === 'number'
-              ? (response.usuario as any).departamento.id
-              : undefined;
+        const deptId = getDepartamentoId(response.usuario);
         const usuario = {
           id: response.usuario.id,
           nome: response.usuario.nome,

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
+import { assertProcessAccess, getUserDepartmentId } from '@/app/utils/processAccess';
+import { validarProcessoParaFinalizacao } from '@/app/utils/processValidation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,9 +44,13 @@ export async function GET(
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    const processoId = parseInt(params.id);
+    const access = await assertProcessAccess(user, processoId, 'read');
+    if (access.error) return access.error;
+    const visibleDepartmentIds = access.visibleDepartmentIds;
 
     const processo = await prisma.processo.findUnique({
-      where: { id: parseInt(params.id) },
+      where: { id: processoId },
       include: {
         empresa: true,
         tags: { include: { tag: true } },
@@ -88,8 +94,9 @@ export async function GET(
     // Filtrar documentos pelo nível de visibilidade usando utilitário centralizado
     const userId = Number((user as any).id);
     const userRole = String((user as any).role || '').toUpperCase();
-    const userDeptId = Number((user as any).departamentoId) || null;
+    const userDeptId = getUserDepartmentId(user);
     const usuarioPermissao = { id: userId, role: userRole, departamentoId: userDeptId };
+    const visibleDepartmentSet = visibleDepartmentIds ? new Set(visibleDepartmentIds) : null;
 
     // Montar mapa de contagem de anexos por perguntaId e por departamento (inclui total por pergunta)
     // IMPORTANTE: filtra por permissão do usuário para não expor contagens de documentos restritos
@@ -108,6 +115,10 @@ export async function GET(
             allowedDepartamentos: d.allowedDepartamentos || null,
           },
           usuarioPermissao
+        ) && (
+          !visibleDepartmentSet ||
+          !Number.isFinite(Number((d as any)?.departamentoId ?? (d as any)?.departamento_id)) ||
+          visibleDepartmentSet.has(Number((d as any)?.departamentoId ?? (d as any)?.departamento_id))
         )
       );
       const documentosCounts: Record<string, number> = {};
@@ -135,14 +146,35 @@ export async function GET(
             allowedDepartamentos: d.allowedDepartamentos || null,
           },
           usuarioPermissao
+        ) && (
+          !visibleDepartmentSet ||
+          !Number.isFinite(Number(d?.departamentoId ?? d?.departamento_id)) ||
+          visibleDepartmentSet.has(Number(d?.departamentoId ?? d?.departamento_id))
         )
       );
     }
 
     // Buscar todos os questionários por departamento vinculados a este processo
+    if (visibleDepartmentSet) {
+      (processo as any).comentarios = ((processo as any).comentarios || []).filter((comentario: any) => {
+        const departamentoComentario = Number(comentario?.departamentoId ?? comentario?.departamento_id);
+        if (!Number.isFinite(departamentoComentario)) return true;
+        return visibleDepartmentSet.has(departamentoComentario);
+      });
+
+      (processo as any).historicoFluxos = ((processo as any).historicoFluxos || []).filter((fluxo: any) =>
+        visibleDepartmentSet.has(Number(fluxo?.departamentoId))
+      );
+
+      (processo as any).questionarios = ((processo as any).questionarios || []).filter((questionario: any) =>
+        visibleDepartmentSet.has(Number(questionario?.departamentoId))
+      );
+    }
+
     const questionariosPorDepartamento = await prisma.questionarioDepartamento.findMany({
       where: {
         processoId: processo.id,
+        ...(visibleDepartmentIds ? { departamentoId: { in: visibleDepartmentIds } } : {}),
       },
       orderBy: { ordem: 'asc' },
     });
@@ -234,7 +266,10 @@ export async function GET(
 
         // Buscar questionários com respostas dos processos interligados
         const questionariosInterligados = await prisma.questionarioDepartamento.findMany({
-          where: { processoId: { in: processosInterligadosIds } },
+          where: {
+            processoId: { in: processosInterligadosIds },
+            ...(visibleDepartmentIds ? { departamentoId: { in: visibleDepartmentIds } } : {}),
+          },
           include: {
             respostas: {
               include: { respondidoPor: { select: { id: true, nome: true } } },
@@ -315,12 +350,15 @@ export async function PUT(
     const { user, error } = await requireAuth(request);
     if (!user) return error;
 
+    const processoId = parseInt(params.id);
     const roleUpper = String((user as any).role || '').toUpperCase();
     const data = await request.json();
+    const access = await assertProcessAccess(user, processoId, 'update');
+    if (access.error) return access.error;
 
     // Buscar processo atual para comparar mudanças
     const processoAntigo = await prisma.processo.findUnique({
-      where: { id: parseInt(params.id) },
+      where: { id: processoId },
     });
 
     if (!processoAntigo) {
@@ -354,6 +392,8 @@ export async function PUT(
       return NextResponse.json({ error: 'Sem permissão para editar processo' }, { status: 403 });
     }
 
+    const statusNovo = typeof data?.status === 'string' ? data.status.toUpperCase() : undefined;
+
     if (roleUpper === 'GERENTE') {
       const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
       const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw)) ? Number(departamentoUsuarioRaw) : undefined;
@@ -376,7 +416,6 @@ export async function PUT(
       }
 
       // gerente só finaliza no último departamento
-      const statusNovo = typeof data?.status === 'string' ? data.status.toUpperCase() : undefined;
       if (statusNovo === 'FINALIZADO' || statusNovo === 'FINALIZACAO') {
         const idx = Number(processoAntigo.departamentoAtualIndex ?? 0);
         const len = Array.isArray(processoAntigo.fluxoDepartamentos) ? processoAntigo.fluxoDepartamentos.length : 0;
@@ -397,9 +436,36 @@ export async function PUT(
       novoInicio ?? processoAntigo.dataInicio ?? processoAntigo.criadoEm ?? new Date();
 
     const entregaCalculada = entregaVaziaOuNula ? addDays(inicioBaseParaPrazo, 15) : undefined;
+    const oldStatus = String(processoAntigo.status || '').toUpperCase();
+    const isFinalizando =
+      !!statusNovo &&
+      statusNovo !== oldStatus &&
+      (statusNovo === 'FINALIZADO' || statusNovo === 'FINALIZACAO');
+
+    if (isFinalizando) {
+      const validacaoFinalizacao = await validarProcessoParaFinalizacao(processoId);
+
+      if (!validacaoFinalizacao.encontrado) {
+        return NextResponse.json(
+          { error: validacaoFinalizacao.detalhes[0] || 'Processo nÃ£o encontrado' },
+          { status: validacaoFinalizacao.status }
+        );
+      }
+
+      if (!validacaoFinalizacao.valido) {
+        return NextResponse.json(
+          {
+            error: 'Requisitos obrigatÃ³rios nÃ£o preenchidos',
+            detalhes: validacaoFinalizacao.detalhes,
+            validacao: validacaoFinalizacao.erros,
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     const processo = await prisma.processo.update({
-      where: { id: parseInt(params.id) },
+      where: { id: processoId },
       data: {
         ...(data.nome !== undefined && { nome: data.nome }),
         ...(data.nomeServico !== undefined && { nomeServico: data.nomeServico }),
@@ -446,30 +512,37 @@ export async function PUT(
       }
       
       if (mudancas.length > 0) {
-        await prisma.historicoEvento.create({
-          data: {
-            processoId: processo.id,
-            tipo: 'ALTERACAO',
-            acao: mudancas.join(', '),
-            responsavelId: user.id,
-            dataTimestamp: BigInt(Date.now()),
-          },
-        });
+        try {
+          await prisma.historicoEvento.create({
+            data: {
+              processoId: processo.id,
+              tipo: 'ALTERACAO',
+              acao: mudancas.join(', '),
+              responsavelId: user.id,
+              dataTimestamp: BigInt(Date.now()),
+            },
+          });
+        } catch (e) {
+          console.warn('Falha ao criar histórico de alteração (processo pode ter sido excluído em paralelo):', e);
+        }
       }
 
-      const oldStatus = String(processoAntigo.status || '').toUpperCase();
       const newStatus = String(processo.status || '').toUpperCase();
       if (oldStatus !== newStatus && (newStatus === 'FINALIZADO' || newStatus === 'FINALIZACAO')) {
-        await prisma.historicoEvento.create({
-          data: {
-            processoId: processo.id,
-            tipo: 'FINALIZACAO',
-            acao: 'Processo finalizado',
-            responsavelId: user.id,
-            departamento: 'Sistema',
-            dataTimestamp: BigInt(Date.now()),
-          },
-        });
+        try {
+          await prisma.historicoEvento.create({
+            data: {
+              processoId: processo.id,
+              tipo: 'FINALIZACAO',
+              acao: 'Processo finalizado',
+              responsavelId: user.id,
+              departamento: 'Sistema',
+              dataTimestamp: BigInt(Date.now()),
+            },
+          });
+        } catch (e) {
+          console.warn('Falha ao criar histórico de finalização:', e);
+        }
 
         // Notificação persistida para o criador
         try {
@@ -514,6 +587,8 @@ export async function DELETE(
     const roleUpper = String((user as any).role || '').toUpperCase();
     const processoId = parseInt(params.id);
     const userId = Number(user.id);
+    const access = await assertProcessAccess(user, processoId, 'delete');
+    if (access.error) return access.error;
 
     if (roleUpper === 'USUARIO') {
       return NextResponse.json({ error: 'Sem permissão para excluir' }, { status: 403 });

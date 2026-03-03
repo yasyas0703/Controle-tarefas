@@ -331,7 +331,7 @@ model Documento {
   departamentoId Int?
   departamento   Departamento? @relation(fields: [departamentoId], references: [id])
 
-  perguntaId Int? // Se foi anexado em uma pergunta específica
+  perguntaId BigInt? // Se foi anexado em uma pergunta específica (BigInt pois IDs de sub-perguntas podem exceder o limite Int)
 
   dataUpload  DateTime @default(now())
   uploadPorId Int?

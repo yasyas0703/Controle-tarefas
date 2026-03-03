@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
-import { validarAvancoDepartamento } from '@/app/utils/validation';
+import { assertProcessAccess } from '@/app/utils/processAccess';
+import { validarDepartamentoProcesso } from '@/app/utils/processValidation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,13 +19,13 @@ export async function POST(
 
     const roleUpper = String((user as any).role || '').toUpperCase();
     if (roleUpper === 'USUARIO') {
-      return NextResponse.json({ error: 'Sem permissÃ£o para avanÃ§ar processo' }, { status: 403 });
+      return NextResponse.json({ error: 'Sem permissao para avancar processo' }, { status: 403 });
     }
-    
-    const bypassValidacoesObrigatorias = roleUpper === 'ADMIN' || roleUpper === 'ADMIN_DEPARTAMENTO';
+
     const processoId = parseInt(params.id);
-    
-    // Buscar processo completo com todas as informaÃ§Ãµes para validaÃ§Ã£o
+    const access = await assertProcessAccess(user, processoId, 'advance');
+    if (access.error) return access.error;
+
     const processo = await prisma.processo.findUnique({
       where: { id: processoId },
       include: {
@@ -40,34 +41,34 @@ export async function POST(
         },
       },
     });
-    
+
     if (!processo) {
-      return NextResponse.json(
-        { error: 'Processo nÃ£o encontrado' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Processo nao encontrado' }, { status: 404 });
     }
 
     if (roleUpper === 'GERENTE') {
       const departamentoUsuarioRaw = (user as any).departamentoId ?? (user as any).departamento_id;
-      const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw)) ? Number(departamentoUsuarioRaw) : undefined;
+      const departamentoUsuario = Number.isFinite(Number(departamentoUsuarioRaw))
+        ? Number(departamentoUsuarioRaw)
+        : undefined;
+
       if (typeof departamentoUsuario !== 'number') {
-        return NextResponse.json({ error: 'UsuÃ¡rio sem departamento definido' }, { status: 403 });
+        return NextResponse.json({ error: 'Usuario sem departamento definido' }, { status: 403 });
       }
+
       if (processo.departamentoAtual !== departamentoUsuario) {
-        return NextResponse.json({ error: 'Sem permissÃ£o para mover processo de outro departamento' }, { status: 403 });
+        return NextResponse.json(
+          { error: 'Sem permissao para mover processo de outro departamento' },
+          { status: 403 }
+        );
       }
     }
-    
-    // Verificar se hÃ¡ prÃ³ximo departamento
+
     const proximoIndex = processo.departamentoAtualIndex + 1;
     if (!processo.fluxoDepartamentos || proximoIndex >= processo.fluxoDepartamentos.length) {
-      return NextResponse.json(
-        { error: 'Processo jÃ¡ estÃ¡ no Ãºltimo departamento' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Processo ja esta no ultimo departamento' }, { status: 400 });
     }
-    
+
     const proximoDepartamentoId = processo.fluxoDepartamentos[proximoIndex];
     const departamentoAtual = await prisma.departamento.findUnique({
       where: { id: processo.departamentoAtual },
@@ -78,171 +79,91 @@ export async function POST(
     const proximoDepartamento = await prisma.departamento.findUnique({
       where: { id: proximoDepartamentoId },
     });
-    
+
     if (!proximoDepartamento || !departamentoAtual) {
+      return NextResponse.json({ error: 'Departamento nao encontrado' }, { status: 404 });
+    }
+
+    try {
+      const resultadoValidacao = await validarDepartamentoProcesso(processoId, departamentoAtual.id);
+
+      if (!resultadoValidacao.encontrado) {
+        return NextResponse.json(
+          { error: resultadoValidacao.validacao.erros[0]?.mensagem || 'Departamento nao encontrado' },
+          { status: resultadoValidacao.status }
+        );
+      }
+
+      if (!resultadoValidacao.valido) {
+        const errosCriticos = resultadoValidacao.validacao.erros.filter((erro) => erro.tipo === 'erro');
+        return NextResponse.json(
+          {
+            error: 'Requisitos obrigatorios nao preenchidos',
+            detalhes: errosCriticos.map((erro) => erro.mensagem),
+            validacao: resultadoValidacao.validacao.erros,
+          },
+          { status: 400 }
+        );
+      }
+    } catch (validacaoError) {
+      console.error('Erro na validacao do avanco:', validacaoError);
       return NextResponse.json(
-        { error: 'Departamento nÃ£o encontrado' },
-        { status: 404 }
+        { error: 'Nao foi possivel validar os requisitos obrigatorios com seguranca' },
+        { status: 503 }
       );
     }
-    
-    // ============================================
-    // VALIDAR REQUISITOS ANTES DE AVANÃ‡AR
-    // ============================================
-    
-    if (!bypassValidacoesObrigatorias) {
-      try {
-        const questionarios = await prisma.questionarioDepartamento.findMany({
-        where: {
-          processoId: processoId,
-          departamentoId: departamentoAtual.id,
-        },
-        orderBy: { ordem: 'asc' },
-      });
 
-      // Montar respostas do departamento atual
-      // IMPORTANTE: sempre usar questionarioId como chave
-      const respostasMap: Record<number, any> = {};
-      const respostasQuestionario = await prisma.respostaQuestionario.findMany({
-        where: {
-          processoId: processoId,
-          questionario: {
-            departamentoId: departamentoAtual.id,
-          },
+    const processoAtualizado = await prisma.$transaction(async (tx) => {
+      const proc = await tx.processo.update({
+        where: { id: processoId },
+        data: {
+          departamentoAtual: proximoDepartamentoId,
+          departamentoAtualIndex: proximoIndex,
+          progresso: Math.round(((proximoIndex + 1) / processo.fluxoDepartamentos.length) * 100),
+          dataAtualizacao: new Date(),
         },
         include: {
-          questionario: true,
+          empresa: true,
+          tags: { include: { tag: true } },
         },
       });
-      
-      for (const respQuest of respostasQuestionario) {
-        if (respQuest.resposta !== null && respQuest.resposta !== undefined) {
-          // Sempre usar questionarioId como chave para manter consistÃªncia
-          // O valor Ã© armazenado como string (JSON ou texto plano)
-          let valor: any = respQuest.resposta;
-          try {
-            const parsed = JSON.parse(respQuest.resposta);
-            // Se for um primitivo (string, number, boolean) ou array, usar o valor parseado
-            // Se for um objeto com chaves numÃ©ricas (batch de respostas antigo), extrair cada uma
-            if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-              // Verificar se Ã© um batch de respostas (chaves sÃ£o IDs de perguntas)
-              const keys = Object.keys(parsed);
-              const allNumericKeys = keys.length > 0 && keys.every(k => /^\d+$/.test(k));
-              if (allNumericKeys) {
-                // Batch: mapear cada chave individualmente
-                for (const [k, v] of Object.entries(parsed)) {
-                  respostasMap[Number(k)] = v;
-                }
-                continue; // JÃ¡ mapeamos, pular a atribuiÃ§Ã£o abaixo
-              }
-              valor = parsed;
-            } else {
-              valor = parsed;
-            }
-          } catch {
-            // NÃ£o Ã© JSON, manter como string
-          }
-          respostasMap[respQuest.questionarioId] = valor;
-        }
-      }
 
-      // Validar se todos os requisitos estÃ£o completos (somente se houver questionÃ¡rios ou documentos obrigatÃ³rios)
-      if (questionarios.some(q => q.obrigatorio) || (departamentoAtual.documentosObrigatorios && departamentoAtual.documentosObrigatorios.length > 0)) {
-        const validacao = validarAvancoDepartamento({
-          processo,
-          departamento: departamentoAtual,
-          questionarios: questionarios.map(q => ({
-            id: q.id,
-            label: q.label || 'Pergunta',
-            tipo: q.tipo as any || 'text',
-            obrigatorio: q.obrigatorio || false,
-            opcoes: Array.isArray(q.opcoes) ? q.opcoes : [],
-            condicao: q.condicaoPerguntaId ? {
-              perguntaId: q.condicaoPerguntaId,
-              operador: (q.condicaoOperador as any) || 'igual',
-              valor: q.condicaoValor || '',
-            } : undefined,
-          })),
-          documentos: processo.documentos || [],
-          respostas: respostasMap,
+      const ultimoFluxo = processo.historicoFluxos[0];
+      if (ultimoFluxo) {
+        await tx.historicoFluxo.update({
+          where: { id: ultimoFluxo.id },
+          data: {
+            status: 'concluido',
+            saidaEm: new Date(),
+          },
         });
+      }
 
-        if (!validacao.valido) {
-          // Retornar erros de validaÃ§Ã£o
-          const errosCriticos = validacao.erros.filter(e => e.tipo === 'erro');
-          return NextResponse.json(
-            {
-              error: 'Requisitos obrigatÃ³rios nÃ£o preenchidos',
-              detalhes: errosCriticos.map(e => e.mensagem),
-              validacao: validacao.erros,
-            },
-            { status: 400 }
-          );
-        }
-      }
-      } catch (validacaoError) {
-        // Se a validação falhar, apenas logar e continuar (não bloquear o avanço)
-        console.error('Erro na validação (não bloqueante):', validacaoError);
-      }
-    }
-    
-    // ============================================
-    // VALIDAÃ‡ÃƒO PASSOU - AVANÃ‡AR PROCESSO
-    // ============================================
-    
-    // Atualizar processo
-    const processoAtualizado = await prisma.processo.update({
-      where: { id: processoId },
-      data: {
-        departamentoAtual: proximoDepartamentoId,
-        departamentoAtualIndex: proximoIndex,
-        progresso: Math.round(((proximoIndex + 1) / processo.fluxoDepartamentos.length) * 100),
-        dataAtualizacao: new Date(),
-      },
-      include: {
-        empresa: true,
-        tags: { include: { tag: true } },
-      },
-    });
-    
-    // Marcar histÃ³rico de fluxo anterior como concluÃ­do
-    const ultimoFluxo = processo.historicoFluxos[0];
-    if (ultimoFluxo) {
-      await prisma.historicoFluxo.update({
-        where: { id: ultimoFluxo.id },
+      await tx.historicoFluxo.create({
         data: {
-          status: 'concluido',
-          saidaEm: new Date(),
+          processoId,
+          departamentoId: proximoDepartamentoId,
+          ordem: proximoIndex,
+          status: 'em_andamento',
+          entradaEm: new Date(),
         },
       });
-    }
-    
-    // Criar novo histÃ³rico de fluxo
-    await prisma.historicoFluxo.create({
-      data: {
-        processoId: processoId,
-        departamentoId: proximoDepartamentoId,
-        ordem: proximoIndex,
-        status: 'em_andamento',
-        entradaEm: new Date(),
-      },
-    });
-    
-    // Criar evento de movimentaÃ§Ã£o
-    await prisma.historicoEvento.create({
-      data: {
-        processoId: processoId,
-        tipo: 'MOVIMENTACAO',
-        acao: `Processo movido de "${departamentoAtual?.nome || 'N/A'}" para "${proximoDepartamento.nome}"`,
-        responsavelId: user.id,
-        departamento: proximoDepartamento.nome,
-        dataTimestamp: BigInt(Date.now()),
-      },
+
+      await tx.historicoEvento.create({
+        data: {
+          processoId,
+          tipo: 'MOVIMENTACAO',
+          acao: `Processo movido de "${departamentoAtual?.nome || 'N/A'}" para "${proximoDepartamento.nome}"`,
+          responsavelId: user.id,
+          departamento: proximoDepartamento.nome,
+          dataTimestamp: BigInt(Date.now()),
+        },
+      });
+
+      return proc;
     });
 
-    // Auto-atribuir responsÃ¡vel ao responsÃ¡vel do departamento destino
     try {
-      // 1. Buscar gerente do departamento destino
       let novoResponsavel = await prisma.usuario.findFirst({
         where: {
           ativo: true,
@@ -252,7 +173,6 @@ export async function POST(
         select: { id: true, nome: true },
       });
 
-      // 2. Se nÃ£o hÃ¡ gerente, buscar pelo nome do responsÃ¡vel cadastrado no departamento
       if (!novoResponsavel && proximoDepartamento.responsavel) {
         novoResponsavel = await prisma.usuario.findFirst({
           where: {
@@ -263,14 +183,13 @@ export async function POST(
         });
       }
 
-      // 3. Fallback: qualquer usuÃ¡rio ativo vinculado ao departamento
       if (!novoResponsavel) {
         novoResponsavel = await prisma.usuario.findFirst({
           where: {
             ativo: true,
             departamentoId: proximoDepartamentoId,
           },
-          orderBy: { role: 'asc' }, // prioriza ADMIN > GERENTE > USUARIO
+          orderBy: { role: 'asc' },
           select: { id: true, nome: true },
         });
       }
@@ -282,10 +201,9 @@ export async function POST(
         });
       }
     } catch {
-      // NÃ£o bloquear avanÃ§o se falhar
+      // Nao bloquear avancao se falhar.
     }
 
-    // Criar notificaÃ§Ãµes persistidas: somente gerentes do dept destino e responsÃ¡vel do processo (se definido)
     try {
       const gerentesDestino = await prisma.usuario.findMany({
         where: {
@@ -296,45 +214,38 @@ export async function POST(
         select: { id: true },
       });
 
-      const ids = new Set<number>(gerentesDestino.map((u) => u.id));
+      const ids = new Set<number>(gerentesDestino.map((usuario) => usuario.id));
 
-      // responsÃ¡vel do processo (se existir)
       if (typeof (processoAtualizado as any).responsavelId === 'number') {
         ids.add((processoAtualizado as any).responsavelId);
       }
 
-      // evita notificar quem moveu
       ids.delete(user.id);
 
       const destinatarios = Array.from(ids);
       if (destinatarios.length > 0) {
-        const nomeEmpresa = processoAtualizado.nomeEmpresa || 'Empresa';
-        const nomeServico = processoAtualizado.nomeServico ? ` - ${processoAtualizado.nomeServico}` : '';
-        const mensagem = `Processo no seu departamento: ${nomeEmpresa}${nomeServico}`;
+        const nomeEmpresa = (processoAtualizado as any).nomeEmpresa || 'Empresa';
+        const nomeServico = (processoAtualizado as any).nomeServico
+          ? ` - ${(processoAtualizado as any).nomeServico}`
+          : '';
 
         await prisma.notificacao.createMany({
-          data: destinatarios.map((id) => ({
-            usuarioId: id,
-            mensagem,
+          data: destinatarios.map((usuarioId) => ({
+            usuarioId,
+            mensagem: `Processo avancou para ${proximoDepartamento.nome}: ${nomeEmpresa}${nomeServico}`,
             tipo: 'INFO',
-            processoId: processoId,
-            link: `/`,
+            processoId,
+            link: '/',
           })),
         });
       }
-    } catch (e) {
-      // NÃ£o derruba a movimentaÃ§Ã£o se notificaÃ§Ã£o falhar
-      console.error('Erro ao criar notificaÃ§Ãµes de movimentaÃ§Ã£o:', e);
+    } catch (error) {
+      console.error('Erro ao criar notificacoes de avancao:', error);
     }
-    
+
     return NextResponse.json(processoAtualizado);
   } catch (error) {
-    console.error('Erro ao avanÃ§ar processo:', error);
-    return NextResponse.json(
-      { error: 'Erro ao avanÃ§ar processo' },
-      { status: 500 }
-    );
+    console.error('Erro ao avancar processo:', error);
+    return NextResponse.json({ error: 'Erro ao avancar processo' }, { status: 500 });
   }
 }
-
-

@@ -522,8 +522,17 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         try {
           const me = await api.getMe();
           if (me && me.id) {
-            // Normaliza role para lowercase para compatibilidade com checagens no front
-            const normalized = { ...(me as any), role: String((me as any).role || '').toLowerCase() } as any;
+            const departamentoRaw =
+              (me as any).departamentoId ??
+              (me as any).departamento_id ??
+              (me as any).departamento?.id;
+            const departamentoId = Number(departamentoRaw);
+            const normalized = {
+              ...(me as any),
+              role: String((me as any).role || '').toLowerCase(),
+              departamentoId: Number.isFinite(departamentoId) && departamentoId > 0 ? departamentoId : undefined,
+              departamento_id: Number.isFinite(departamentoId) && departamentoId > 0 ? departamentoId : undefined,
+            } as any;
             setUsuarioLogado(normalized);
           }
         } catch (err) {
@@ -683,10 +692,22 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
             console.log('[realtime] Documento change', payload?.eventType, payload);
           } catch {}
         }
-        // Quando documentos mudam, nÃ£o preservamos o array `documentos` existente
-        // para evitar manter itens jÃ¡ removidos localmente. ForÃ§a refresh completo.
-        skipPreserveDetailsRef.current = true;
-        scheduleRefresh();
+        // Atualiza diretamente o processo afetado para garantir que documentos
+        // sejam re-filtrados por permissão/visibilidade imediatamente.
+        const processoId = Number((payload.new as any)?.processoId ?? (payload.old as any)?.processoId);
+        if (Number.isFinite(processoId) && processoId > 0) {
+          void api.getProcesso(processoId).then(processoAtualizado => {
+            if (processoAtualizado) {
+              setProcessos(prev => prev.map(p => p.id === processoId ? processoAtualizado : p));
+            }
+          }).catch(() => {
+            skipPreserveDetailsRef.current = true;
+            scheduleRefresh();
+          });
+        } else {
+          skipPreserveDetailsRef.current = true;
+          scheduleRefresh();
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'Notificacao' }, () => scheduleRefresh())
       .subscribe((status) => {
@@ -1260,6 +1281,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           descricao: dados.descricao,
           notasCriador: dados.notasCriador,
           dataEntrega: (dados as any).dataEntrega, // Prazo de entrega
+          processoOrigemId: (dados as any).processoOrigemId,
           interligadoComId: (dados as any).interligadoComId,
           interligadoNome: (dados as any).interligadoNome,
           interligadoParalelo: (dados as any).interligadoParalelo,
@@ -1320,13 +1342,9 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
   const avancarParaProximoDepartamento = useCallback(
     async (processoId: number) => {
-      const roleLower = String(usuarioLogado?.role || '').toLowerCase();
-      const bypassValidacoesObrigatorias = roleLower === 'admin' || roleLower === 'admin_departamento';
-
       // ValidaÃ§Ã£o: antes de avanÃ§ar, verificar se o questionÃ¡rio do departamento atual
       // possui perguntas obrigatÃ³rias nÃ£o respondidas. Se sim, bloqueia o avanÃ§o.
-      if (!bypassValidacoesObrigatorias) {
-        try {
+      try {
         // Busca o processo completo no backend para garantir que temos questionÃ¡rios e respostas atualizadas
         const processoAtualizado = await api.getProcesso(processoId).catch(() => null);
         const processoDados = processoAtualizado ?? processos.find(p => p.id === processoId);
@@ -1399,9 +1417,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
             return;
           }
         }
-        } catch (err) {
+      } catch (err) {
         console.warn('ValidaÃ§Ã£o de questionÃ¡rio falhou:', err);
-        }
       }
       try {
         setGlobalLoading(true);
@@ -1442,8 +1459,6 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
   );
 
   const finalizarProcesso = useCallback(async (processoId: number) => {
-    const roleLower = String(usuarioLogado?.role || '').toLowerCase();
-    const bypassValidacoesObrigatorias = roleLower === 'admin' || roleLower === 'admin_departamento';
     try {
       setGlobalLoading(true);
       
@@ -1461,7 +1476,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       // ============================================
       // PROCESSO PARALELO (deptIndependente): validar TODOS os departamentos do fluxo
       // ============================================
-      if (!bypassValidacoesObrigatorias && processoCompleto.deptIndependente) {
+      if (processoCompleto.deptIndependente) {
         const fluxoIds: number[] = (Array.isArray(processoCompleto.fluxoDepartamentos)
           ? processoCompleto.fluxoDepartamentos : []).map(Number).filter(Number.isFinite);
 
@@ -1515,7 +1530,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           );
           return;
         }
-      } else if (!bypassValidacoesObrigatorias) {
+      } else {
         // ============================================
         // PROCESSO NORMAL: validar apenas o departamento atual
         // ============================================
@@ -1599,7 +1614,12 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       };
     } catch (error: any) {
       console.error('Erro ao finalizar:', error);
-      adicionarNotificacao(error.message || 'Erro ao finalizar processo', 'erro');
+      const msg = error.message || 'Erro ao finalizar processo';
+      if (msg.includes('Requisitos obrigatÃ³rios') || msg.includes('obrigatÃ³ria') || msg.includes('obrigatÃ³rio')) {
+        await mostrarAlerta?.('Campos obrigatÃ³rios', msg, 'aviso');
+      } else {
+        adicionarNotificacao(msg, 'erro');
+      }
       throw error;
     } finally {
       setGlobalLoading(false);

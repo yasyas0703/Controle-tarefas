@@ -8,8 +8,11 @@ export const runtime = 'nodejs';
 export const preferredRegion = 'gru1';
 
 // GET /api/templates
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const templates = await prisma.template.findMany({
       include: {
         criadoPor: {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckCircle2, Circle, Loader2, Lock, AlertCircle } from 'lucide-react';
 
 interface ChecklistItem {
@@ -64,10 +64,6 @@ export default function ChecklistFluxo({
   const [salvando, setSalvando] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  const getDeptNome = useCallback((id: number) => {
-    return departamentos.find((d: any) => d.id === id)?.nome || `Dept #${id}`;
-  }, [departamentos]);
-
   useEffect(() => {
     let active = true;
     (async () => {
@@ -92,7 +88,7 @@ export default function ChecklistFluxo({
         const dept = departamentos.find((d: any) => d.id === deptId);
         return {
           departamentoId: deptId,
-          departamentoNome: getDeptNome(deptId),
+          departamentoNome: dept?.nome || `Dept #${deptId}`,
           concluido: !!checklistEntry?.concluido,
           observacao: checklistEntry?.observacao || '',
           concluidoEm: checklistEntry?.concluidoEm,
@@ -106,7 +102,7 @@ export default function ChecklistFluxo({
       setLoading(false);
     })();
     return () => { active = false; };
-  }, [processoId, fluxoDepartamentos, getDeptNome]);
+  }, [processoId, fluxoDepartamentos, departamentos]);
 
   // Lógica de sequência: dept N só pode dar check se dept N-1 já deu check
   const podeDarCheck = (idx: number): boolean => {

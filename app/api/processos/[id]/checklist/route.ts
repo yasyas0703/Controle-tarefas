@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { assertProcessAccess } from '@/app/utils/processAccess';
+import { validarDepartamentoProcesso } from '@/app/utils/processValidation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const preferredRegion = 'gru1';
 
-// GET /api/processos/[id]/checklist — Busca checklist de departamentos de um processo
+// GET /api/processos/[id]/checklist
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -16,8 +18,9 @@ export async function GET(
     if (!user) return error;
 
     const processoId = parseInt(params.id);
+    const access = await assertProcessAccess(user, processoId, 'read');
+    if (access.error) return access.error;
 
-    // Tenta buscar da tabela dedicada
     try {
       const checklist = await (prisma as any).checklistDepartamento.findMany({
         where: { processoId },
@@ -25,7 +28,7 @@ export async function GET(
       });
       return NextResponse.json(checklist);
     } catch {
-      // Tabela pode não existir ainda
+      // Leitura pode degradar se a tabela ainda nao existir.
       return NextResponse.json([]);
     }
   } catch (error) {
@@ -34,7 +37,7 @@ export async function GET(
   }
 }
 
-// POST /api/processos/[id]/checklist — Criar/atualizar item de checklist
+// POST /api/processos/[id]/checklist
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -45,41 +48,44 @@ export async function POST(
 
     const processoId = parseInt(params.id);
     const data = await request.json();
-
     const { departamentoId, concluido } = data;
 
     if (!departamentoId) {
-      return NextResponse.json({ error: 'departamentoId obrigatório' }, { status: 400 });
+      return NextResponse.json({ error: 'departamentoId obrigatorio' }, { status: 400 });
     }
 
+    const access = await assertProcessAccess(user, processoId, 'checklist', {
+      departamentoId: Number(departamentoId),
+    });
+    if (access.error) return access.error;
+
     try {
-      // Buscar o processo para validar a ordem do fluxo
       const processo = await (prisma as any).processo.findUnique({
         where: { id: processoId },
         select: { fluxoDepartamentos: true, deptIndependente: true },
       });
 
       if (!processo) {
-        return NextResponse.json({ error: 'Processo não encontrado' }, { status: 404 });
+        return NextResponse.json({ error: 'Processo nao encontrado' }, { status: 404 });
       }
 
       const fluxo: number[] = Array.isArray(processo.fluxoDepartamentos)
         ? processo.fluxoDepartamentos.map(Number)
         : [];
 
-      // Validação sequencial: só pode dar check se o anterior no fluxo já está concluído
       if (concluido && fluxo.length > 1) {
         const idx = fluxo.indexOf(Number(departamentoId));
         if (idx > 0) {
-          // Buscar checklist do departamento anterior
           const anterior = await (prisma as any).checklistDepartamento.findFirst({
             where: { processoId, departamentoId: fluxo[idx - 1] },
           });
+
           if (!anterior || !anterior.concluido) {
             const deptAnterior = await prisma.departamento.findUnique({
               where: { id: fluxo[idx - 1] },
               select: { nome: true },
             });
+
             return NextResponse.json(
               { error: `"${deptAnterior?.nome || `Dept #${fluxo[idx - 1]}`}" precisa dar check primeiro.` },
               { status: 400 }
@@ -88,7 +94,29 @@ export async function POST(
         }
       }
 
-      // Upsert: cria ou atualiza
+      if (concluido) {
+        const resultadoValidacao = await validarDepartamentoProcesso(processoId, Number(departamentoId));
+
+        if (!resultadoValidacao.encontrado) {
+          return NextResponse.json(
+            { error: resultadoValidacao.validacao.erros[0]?.mensagem || 'Departamento nao encontrado' },
+            { status: resultadoValidacao.status }
+          );
+        }
+
+        if (!resultadoValidacao.valido) {
+          const errosCriticos = resultadoValidacao.validacao.erros.filter((erro) => erro.tipo === 'erro');
+          return NextResponse.json(
+            {
+              error: 'Requisitos obrigatorios nao preenchidos',
+              detalhes: errosCriticos.map((erro) => erro.mensagem),
+              validacao: resultadoValidacao.validacao.erros,
+            },
+            { status: 400 }
+          );
+        }
+      }
+
       const existing = await (prisma as any).checklistDepartamento.findFirst({
         where: { processoId, departamentoId: Number(departamentoId) },
       });
@@ -103,7 +131,6 @@ export async function POST(
           },
         });
 
-        // Registrar evento de histórico quando departamento conclui
         if (concluido) {
           try {
             const dept = await prisma.departamento.findUnique({
@@ -120,46 +147,53 @@ export async function POST(
                 dataTimestamp: BigInt(Date.now()),
               },
             });
-          } catch { /* não bloquear */ }
+          } catch {
+            // Nao bloquear por falha de historico.
+          }
         }
 
         return NextResponse.json(updated);
-      } else {
-        const created = await (prisma as any).checklistDepartamento.create({
-          data: {
-            processoId,
-            departamentoId: Number(departamentoId),
-            concluido: Boolean(concluido),
-            concluidoPorId: concluido ? user.id : null,
-            concluidoEm: concluido ? new Date() : null,
-          },
-        });
-
-        // Registrar evento de histórico quando departamento conclui
-        if (concluido) {
-          try {
-            const dept = await prisma.departamento.findUnique({
-              where: { id: Number(departamentoId) },
-              select: { nome: true },
-            });
-            await prisma.historicoEvento.create({
-              data: {
-                processoId,
-                tipo: 'CONCLUSAO',
-                acao: `Departamento "${dept?.nome || `#${departamentoId}`}" concluiu sua parte (check paralelo)`,
-                responsavelId: user.id,
-                departamento: dept?.nome || `Dept #${departamentoId}`,
-                dataTimestamp: BigInt(Date.now()),
-              },
-            });
-          } catch { /* não bloquear */ }
-        }
-
-        return NextResponse.json(created);
       }
+
+      const created = await (prisma as any).checklistDepartamento.create({
+        data: {
+          processoId,
+          departamentoId: Number(departamentoId),
+          concluido: Boolean(concluido),
+          concluidoPorId: concluido ? user.id : null,
+          concluidoEm: concluido ? new Date() : null,
+        },
+      });
+
+      if (concluido) {
+        try {
+          const dept = await prisma.departamento.findUnique({
+            where: { id: Number(departamentoId) },
+            select: { nome: true },
+          });
+          await prisma.historicoEvento.create({
+            data: {
+              processoId,
+              tipo: 'CONCLUSAO',
+              acao: `Departamento "${dept?.nome || `#${departamentoId}`}" concluiu sua parte (check paralelo)`,
+              responsavelId: user.id,
+              departamento: dept?.nome || `Dept #${departamentoId}`,
+              dataTimestamp: BigInt(Date.now()),
+            },
+          });
+        } catch {
+          // Nao bloquear por falha de historico.
+        }
+      }
+
+      return NextResponse.json(created);
     } catch (err) {
       console.error('Erro ao salvar checklist departamento:', err);
-      return NextResponse.json({ ok: true }); // Graceful fallback se tabela não existir
+      const code = (err as any)?.code;
+      return NextResponse.json(
+        { error: code === 'P2021' ? 'Checklist indisponivel no momento' : 'Erro ao salvar checklist' },
+        { status: code === 'P2021' ? 503 : 500 }
+      );
     }
   } catch (error) {
     console.error('Erro ao salvar checklist:', error);

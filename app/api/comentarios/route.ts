@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { assertProcessAccess } from '@/app/utils/processAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -9,6 +10,9 @@ export const preferredRegion = 'gru1';
 // GET /api/comentarios?processoId=123
 export async function GET(request: NextRequest) {
   try {
+    const { user, error } = await requireAuth(request);
+    if (!user) return error;
+
     const { searchParams } = new URL(request.url);
     const processoId = searchParams.get('processoId');
     
@@ -20,6 +24,8 @@ export async function GET(request: NextRequest) {
     }
 
     const pid = parseInt(processoId);
+    const access = await assertProcessAccess(user, pid, 'read');
+    if (access.error) return access.error;
 
     // Coletar IDs de todos os processos interligados (mesma lógica da auditoria)
     const processosIds = new Set<number>([pid]);
@@ -94,9 +100,16 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { criadoEm: 'desc' },
     });
+    const comentariosFiltrados = access.visibleDepartmentIds
+      ? comentarios.filter((comentario) => {
+          const departamentoComentario = Number(comentario.departamentoId);
+          if (!Number.isFinite(departamentoComentario)) return true;
+          return access.visibleDepartmentIds!.includes(departamentoComentario);
+        })
+      : comentarios;
 
     // Adicionar info de processo de origem para o front
-    const comentariosComOrigem = comentarios.map((c) => ({
+    const comentariosComOrigem = comentariosFiltrados.map((c) => ({
       ...c,
       processoOrigemId: c.processoId,
       processoOrigemNome: processosNomes[c.processoId] || `#${c.processoId}`,
@@ -120,13 +133,20 @@ export async function POST(request: NextRequest) {
     if (!user) return error;
     
     const data = await request.json();
+    const access = await assertProcessAccess(user, Number(data?.processoId), 'comment', {
+      departamentoId: Number(data?.departamentoId),
+    });
+    if (access.error) return access.error;
+    const departamentoComentario = Number.isFinite(Number(data?.departamentoId))
+      ? Number(data.departamentoId)
+      : (access.userDeptId ?? access.processo.departamentoAtual);
     
     // Dados base do comentário
     const comentarioData: any = {
       processoId: data.processoId,
       texto: data.texto,
       autorId: user.id,
-      departamentoId: data.departamentoId,
+      departamentoId: departamentoComentario,
       mencoes: data.mencoes || [],
     };
     

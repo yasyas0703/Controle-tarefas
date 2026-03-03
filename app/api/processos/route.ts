@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
 import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
+import { buildProcessReadWhere, getUserDepartmentId, isAdminLike } from '@/app/utils/processAccess';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,6 +64,243 @@ function toPrismaStatus(status: string) {
   return s === s.toLowerCase() ? s.toUpperCase() : s;
 }
 
+async function buildChecklistInicialData(
+  tx: any,
+  fluxoFinal: number[],
+  responsavelId: number | undefined,
+  responsavelNome: string | undefined
+) {
+  const deptIdsParalelo = fluxoFinal
+    .map((deptId: any) => Number(deptId))
+    .filter((deptId: number) => Number.isFinite(deptId) && deptId > 0);
+
+  if (deptIdsParalelo.length === 0) {
+    return [];
+  }
+
+  const gerentesPorDept = await tx.usuario.findMany({
+    where: {
+      departamentoId: { in: deptIdsParalelo },
+      role: 'GERENTE',
+      ativo: true,
+    },
+    select: { id: true, nome: true, departamentoId: true },
+  });
+
+  const gerenteMap = new Map<number, { id: number; nome: string }>();
+  for (const gerente of gerentesPorDept) {
+    if (gerente.departamentoId && !gerenteMap.has(gerente.departamentoId)) {
+      gerenteMap.set(gerente.departamentoId, { id: gerente.id, nome: gerente.nome });
+    }
+  }
+
+  const deptsInfo = await tx.departamento.findMany({
+    where: { id: { in: deptIdsParalelo } },
+    select: { id: true, responsavel: true },
+  });
+
+  const deptResponsavelMap = new Map<number, string>();
+  for (const dept of deptsInfo) {
+    if (dept.responsavel) {
+      deptResponsavelMap.set(dept.id, dept.responsavel);
+    }
+  }
+
+  return deptIdsParalelo.map((deptId: number) => {
+    const gerente = gerenteMap.get(deptId);
+    return {
+      departamentoId: deptId,
+      concluido: false,
+      responsavelId: gerente?.id || responsavelId || null,
+      responsavelNome: gerente?.nome || deptResponsavelMap.get(deptId) || responsavelNome || null,
+    };
+  });
+}
+
+async function persistQuestionariosPorDepartamentoTx(
+  tx: any,
+  processoId: number,
+  qpd: Record<string, any>,
+  toTipoCampo: (tipo: any) => string
+) {
+  for (const [deptIdRaw, perguntasRaw] of Object.entries(qpd)) {
+    const departamentoId = Number(deptIdRaw);
+    if (!Number.isFinite(departamentoId) || departamentoId <= 0) continue;
+
+    const perguntas = Array.isArray(perguntasRaw) ? perguntasRaw : [];
+    const idMap = new Map<number, number>();
+    const pendentesCondicao: Array<{
+      createdId: number;
+      condicao: { perguntaId: number; operador?: string; valor?: string };
+    }> = [];
+    const pendentesControladoPor: Array<{
+      createdId: number;
+      controladoPorOriginal: number;
+    }> = [];
+
+    for (let i = 0; i < perguntas.length; i++) {
+      const pergunta: any = perguntas[i] || {};
+      const label = String(pergunta.label ?? '').trim();
+      if (!label) continue;
+
+      const opcoes = Array.isArray(pergunta.opcoes)
+        ? pergunta.opcoes
+            .map((opcao: any) => String(opcao ?? '').trim())
+            .filter((opcao: string) => opcao.length > 0)
+        : [];
+
+      const ordem = Number.isFinite(Number(pergunta.ordem)) ? Number(pergunta.ordem) : i;
+      const originalId = Number(pergunta.id);
+
+      const created = await tx.questionarioDepartamento.create({
+        data: {
+          processoId,
+          departamentoId,
+          label,
+          tipo: toTipoCampo(pergunta.tipo) as any,
+          obrigatorio: Boolean(pergunta.obrigatorio),
+          ordem,
+          opcoes,
+          condicaoPerguntaId: null,
+          condicaoOperador: null,
+          condicaoValor: null,
+          modoRepeticao: pergunta.modoRepeticao || null,
+          subPerguntas: pergunta.subPerguntas ? JSON.parse(JSON.stringify(pergunta.subPerguntas)) : undefined,
+          controladoPor: null,
+        },
+      });
+
+      if (Number.isFinite(originalId)) {
+        idMap.set(originalId, created.id);
+      }
+
+      if (pergunta?.condicao?.perguntaId) {
+        pendentesCondicao.push({
+          createdId: created.id,
+          condicao: {
+            perguntaId: Number(pergunta.condicao.perguntaId),
+            operador: pergunta?.condicao?.operador ? String(pergunta.condicao.operador) : undefined,
+            valor: pergunta?.condicao?.valor ? String(pergunta.condicao.valor) : undefined,
+          },
+        });
+      }
+
+      if (pergunta.controladoPor && Number.isFinite(Number(pergunta.controladoPor))) {
+        pendentesControladoPor.push({
+          createdId: created.id,
+          controladoPorOriginal: Number(pergunta.controladoPor),
+        });
+      }
+    }
+
+    for (const item of pendentesCondicao) {
+      const mapped = idMap.get(Number(item.condicao.perguntaId));
+      await tx.questionarioDepartamento.update({
+        where: { id: item.createdId },
+        data: {
+          condicaoPerguntaId: mapped ?? null,
+          condicaoOperador: item.condicao.operador ?? null,
+          condicaoValor: item.condicao.valor ?? null,
+        },
+      });
+    }
+
+    for (const item of pendentesControladoPor) {
+      const mapped = idMap.get(item.controladoPorOriginal);
+      if (mapped) {
+        await tx.questionarioDepartamento.update({
+          where: { id: item.createdId },
+          data: { controladoPor: mapped },
+        });
+      }
+    }
+  }
+}
+
+async function persistInterligacaoProcessos(params: {
+  processoOrigemId: number;
+  processoDestino: {
+    id: number;
+    nomeServico?: string | null;
+    nomeEmpresa?: string | null;
+  };
+  criadoPorId: number;
+}) {
+  const { processoOrigemId, processoDestino, criadoPorId } = params;
+
+  if (!Number.isFinite(processoOrigemId) || processoOrigemId <= 0) return;
+  if (processoOrigemId === processoDestino.id) return;
+
+  const origem = await prisma.processo.findUnique({
+    where: { id: processoOrigemId },
+    select: { id: true, nomeServico: true, nomeEmpresa: true },
+  });
+
+  if (!origem) {
+    console.warn(
+      `[LOG] Processo origem #${processoOrigemId} não encontrado; interligação será ignorada sem abortar a criação.`
+    );
+    return;
+  }
+
+  const origemNome = origem.nomeServico || origem.nomeEmpresa || `#${origem.id}`;
+  const destinoNome =
+    processoDestino.nomeServico || processoDestino.nomeEmpresa || `#${processoDestino.id}`;
+
+  try {
+    await prisma.historicoEvento.create({
+      data: {
+        processoId: processoDestino.id,
+        tipo: 'ALTERACAO',
+        acao: `🔗 Solicitação interligada — continuação de: ${origemNome}`,
+        responsavelId: criadoPorId,
+        departamento: 'Sistema',
+        dataTimestamp: BigInt(Date.now()),
+      },
+    });
+  } catch (error) {
+    console.warn(
+      `Não foi possível criar histórico de interligação no processo #${processoDestino.id}:`,
+      error
+    );
+  }
+
+  try {
+    await prisma.historicoEvento.create({
+      data: {
+        processoId: origem.id,
+        tipo: 'ALTERACAO',
+        acao: `🔗 Nova solicitação interligada criada: ${destinoNome} (#${processoDestino.id})`,
+        responsavelId: criadoPorId,
+        departamento: 'Sistema',
+        dataTimestamp: BigInt(Date.now() + 1),
+      },
+    });
+  } catch (error) {
+    console.warn(`Não foi possível criar histórico no processo de origem #${origem.id}:`, error);
+  }
+
+  try {
+    await (prisma as any).interligacaoProcesso.upsert({
+      where: {
+        processoOrigemId_processoDestinoId: {
+          processoOrigemId: origem.id,
+          processoDestinoId: processoDestino.id,
+        },
+      },
+      update: {},
+      create: {
+        processoOrigemId: origem.id,
+        processoDestinoId: processoDestino.id,
+        criadoPorId,
+        automatica: true,
+      },
+    });
+  } catch (error) {
+    console.warn(`Não foi possível criar interligação com processo #${origem.id}:`, error);
+  }
+}
+
 // GET /api/processos
 export async function GET(request: NextRequest) {
   try {
@@ -82,9 +320,13 @@ export async function GET(request: NextRequest) {
       ...(departamentoId && { departamentoAtual: parseInt(departamentoId) }),
       ...(empresaId && { empresaId: parseInt(empresaId) }),
     };
+    const readWhere = buildProcessReadWhere(user);
+    const where = Object.keys(readWhere).length > 0
+      ? { AND: [baseWhere, readWhere] }
+      : baseWhere;
 
     const processos = await prisma.processo.findMany({
-      where: baseWhere,
+      where,
       include: lite
         ? {
             empresa: true,
@@ -124,8 +366,11 @@ export async function GET(request: NextRequest) {
     // Filtrar documentos por visibilidade usando utilitário centralizado
     const userId = Number((user as any).id);
     const userRole = String((user as any).role || '').toUpperCase();
-    const userDeptId = Number((user as any).departamentoId) || null;
+    const userDeptId = getUserDepartmentId(user);
     const usuarioPermissao = { id: userId, role: userRole, departamentoId: userDeptId };
+    const visibleDepartmentIds = isAdminLike(user)
+      ? null
+      : (typeof userDeptId === 'number' ? [userDeptId] : []);
 
     for (const p of processos) {
       if (Array.isArray((p as any).documentos)) {
@@ -139,8 +384,20 @@ export async function GET(request: NextRequest) {
               allowedDepartamentos: d.allowedDepartamentos || null,
             },
             usuarioPermissao
+          ) && (
+            !visibleDepartmentIds ||
+            !Number.isFinite(Number(d?.departamentoId ?? d?.departamento_id)) ||
+            visibleDepartmentIds.includes(Number(d?.departamentoId ?? d?.departamento_id))
           )
         );
+      }
+
+      if (visibleDepartmentIds && Array.isArray((p as any).comentarios)) {
+        (p as any).comentarios = (p as any).comentarios.filter((comentario: any) => {
+          const departamentoComentario = Number(comentario?.departamentoId ?? comentario?.departamento_id);
+          if (!Number.isFinite(departamentoComentario)) return true;
+          return visibleDepartmentIds.includes(departamentoComentario);
+        });
       }
 
     }
@@ -166,6 +423,10 @@ export async function GET(request: NextRequest) {
               allowedDepartamentos: (d as any).allowedDepartamentos || null,
             },
             usuarioPermissao
+          ) && (
+            !visibleDepartmentIds ||
+            !Number.isFinite(Number((d as any)?.departamentoId ?? (d as any)?.departamento_id)) ||
+            visibleDepartmentIds.includes(Number((d as any)?.departamentoId ?? (d as any)?.departamento_id))
           )) {
             countPorProcesso[d.processoId] = (countPorProcesso[d.processoId] || 0) + 1;
           }
@@ -327,6 +588,8 @@ export async function POST(request: NextRequest) {
     
     const dataInicio = parseDateMaybe(data?.dataInicio) ?? new Date();
     const dataEntrega = parseDateMaybe(data?.dataEntrega) ?? addDays(dataInicio, 15);
+    const processoOrigemIdParsed = Number(data?.processoOrigemId);
+    const processoOrigemId = Number.isFinite(processoOrigemIdParsed) ? processoOrigemIdParsed : undefined;
 
     const responsavelIdRaw = data?.responsavelId;
     let responsavelId = Number.isFinite(Number(responsavelIdRaw)) ? Number(responsavelIdRaw) : undefined;
@@ -397,8 +660,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const qpd = data?.questionariosPorDepartamento;
     const tProcesso = Date.now();
-    // Agrupa as escritas principais em uma transação para reduzir overhead
     const processo = await prisma.$transaction(async (tx) => {
       const proc = await tx.processo.create({
         data: {
@@ -421,7 +684,6 @@ export async function POST(request: NextRequest) {
           progresso: data.progresso || 0,
           dataInicio,
           dataEntrega,
-          // Interligação e independência de departamentos
           ...(data.interligadoComId ? { interligadoComId: Number(data.interligadoComId) } : {}),
           ...(data.interligadoNome ? { interligadoNome: String(data.interligadoNome) } : {}),
           ...(data.interligadoParalelo != null ? { interligadoParalelo: Boolean(data.interligadoParalelo) } : {}),
@@ -454,73 +716,71 @@ export async function POST(request: NextRequest) {
           deptIndependente: true,
         },
       });
+
+      if (data.deptIndependente && Array.isArray(fluxoFinal) && fluxoFinal.length > 1) {
+        const checklistInicial = await buildChecklistInicialData(
+          tx,
+          fluxoFinal,
+          responsavelId,
+          responsavelNome
+        );
+
+        if (checklistInicial.length > 0) {
+          await (tx as any).checklistDepartamento.createMany({
+            data: checklistInicial.map((item: any) => ({
+              processoId: proc.id,
+              ...item,
+            })),
+            skipDuplicates: true,
+          });
+          console.log('[LOG] Checklist paralelo criado com responsáveis por departamento');
+        }
+      }
+
+      if (qpd && typeof qpd === 'object') {
+        await persistQuestionariosPorDepartamentoTx(
+          tx,
+          proc.id,
+          qpd as Record<string, any>,
+          toTipoCampo
+        );
+      }
+
+      await tx.historicoEvento.create({
+        data: {
+          processoId: proc.id,
+          tipo: 'INICIO',
+          acao: `Solicitação criada: ${proc.nomeServico || 'Solicitação'}`,
+          responsavelId: user.id,
+          departamento: 'Sistema',
+          dataTimestamp: BigInt(Date.now()),
+        },
+      });
+
+      await tx.historicoFluxo.create({
+        data: {
+          processoId: proc.id,
+          departamentoId: proc.departamentoAtual,
+          ordem: proc.departamentoAtualIndex,
+          status: 'em_andamento',
+          entradaEm: new Date(),
+        },
+      });
+
       return proc;
     });
-    console.log('[LOG] prisma.processo.create:', Date.now() - t0, 'ms');
+    console.log('[LOG] prisma.$transaction (processo):', Date.now() - tProcesso, 'ms');
 
-    // Se deptIndependente, criar entradas de checklist para cada departamento do fluxo
-    // com o responsável (gerente) de cada departamento
-    if (data.deptIndependente && Array.isArray(fluxoFinal) && fluxoFinal.length > 1) {
-      try {
-        const deptIdsParalelo = fluxoFinal
-          .map((deptId: any) => Number(deptId))
-          .filter((deptId: number) => Number.isFinite(deptId) && deptId > 0);
-
-        // Buscar o gerente de cada departamento do fluxo paralelo
-        const gerentesPorDept = await prisma.usuario.findMany({
-          where: {
-            departamentoId: { in: deptIdsParalelo },
-            role: 'GERENTE',
-            ativo: true,
-          },
-          select: { id: true, nome: true, departamentoId: true },
-        });
-
-        // Mapear departamentoId -> gerente (pega o primeiro gerente ativo de cada dept)
-        const gerenteMap = new Map<number, { id: number; nome: string }>();
-        for (const g of gerentesPorDept) {
-          if (g.departamentoId && !gerenteMap.has(g.departamentoId)) {
-            gerenteMap.set(g.departamentoId, { id: g.id, nome: g.nome });
-          }
-        }
-
-        // Também buscar o campo "responsavel" (string) de cada departamento como fallback
-        const deptsInfo = await prisma.departamento.findMany({
-          where: { id: { in: deptIdsParalelo } },
-          select: { id: true, responsavel: true },
-        });
-        const deptResponsavelMap = new Map<number, string>();
-        for (const d of deptsInfo) {
-          if (d.responsavel) deptResponsavelMap.set(d.id, d.responsavel);
-        }
-
-        await (prisma as any).checklistDepartamento.createMany({
-          data: deptIdsParalelo.map((deptId: number) => {
-            const gerente = gerenteMap.get(deptId);
-            // Use the department's gerente if available; otherwise fall back to
-            // the original process responsavelId so each department shows its
-            // own responsible instead of leaving it null (which would cause the
-            // frontend to display the process creator for every department).
-            const deptResponsavelNome = gerente?.nome || deptResponsavelMap.get(deptId) || responsavelNome || null;
-            return {
-              processoId: processo.id,
-              departamentoId: deptId,
-              concluido: false,
-              responsavelId: gerente?.id || responsavelId || null,
-              responsavelNome: deptResponsavelNome,
-            };
-          }),
-          skipDuplicates: true,
-        });
-        console.log('[LOG] Checklist paralelo criado com responsáveis por departamento');
-      } catch (e) {
-        console.error('Erro ao criar checklist inicial:', e);
-      }
+    if (typeof processoOrigemId === 'number') {
+      await persistInterligacaoProcessos({
+        processoOrigemId,
+        processoDestino: processo,
+        criadoPorId: user.id,
+      });
     }
 
     // Notificação persistida: somente gerentes do departamento e responsável (se definido)
     try {
-      const tNotif = Date.now();
       // gerentes do dept inicial
       const gerentes = await prisma.usuario.findMany({
         where: {
@@ -561,192 +821,6 @@ export async function POST(request: NextRequest) {
       console.error('Erro ao criar notificações de criação:', e);
     }
 
-    // Persistir questionários por departamento (se fornecido pelo front)
-    // Estrutura esperada: { [departamentoId]: Questionario[] }
-    // OBS: o front usa ids temporários (Date.now()). Aqui criamos as perguntas e mapeamos
-    // os ids temporários para os ids reais para manter as condições funcionando.
-    try {
-      const tQuestionario = Date.now();
-      const qpd = data?.questionariosPorDepartamento;
-      if (qpd && typeof qpd === 'object') {
-        await prisma.$transaction(async (tx) => {
-          for (const [deptIdRaw, perguntasRaw] of Object.entries(qpd as Record<string, any>)) {
-            const departamentoId = Number(deptIdRaw);
-            if (!Number.isFinite(departamentoId) || departamentoId <= 0) continue;
-
-            const perguntas = Array.isArray(perguntasRaw) ? perguntasRaw : [];
-            const idMap = new Map<number, number>();
-            const pendentesCondicao: Array<{
-              createdId: number;
-              condicao: { perguntaId: number; operador?: string; valor?: string };
-            }> = [];
-            const pendentesControladoPor: Array<{
-              createdId: number;
-              controladoPorOriginal: number;
-            }> = [];
-
-            for (let i = 0; i < perguntas.length; i++) {
-              const p: any = perguntas[i] || {};
-              const label = String(p.label ?? '').trim();
-              if (!label) continue;
-
-              const opcoes = Array.isArray(p.opcoes)
-                ? p.opcoes
-                    .map((x: any) => String(x ?? '').trim())
-                    .filter((x: string) => x.length > 0)
-                : [];
-
-              const ordem = Number.isFinite(Number(p.ordem)) ? Number(p.ordem) : i;
-              const originalId = Number(p.id);
-
-              const created = await tx.questionarioDepartamento.create({
-                data: {
-                  processoId: processo.id,
-                  departamentoId,
-                  label,
-                  tipo: toTipoCampo(p.tipo) as any,
-                  obrigatorio: Boolean(p.obrigatorio),
-                  ordem,
-                  opcoes,
-                  // Condição será resolvida em um segundo passo (ids reais)
-                  condicaoPerguntaId: null,
-                  condicaoOperador: null,
-                  condicaoValor: null,
-                  // grupo_repetivel
-                  modoRepeticao: p.modoRepeticao || null,
-                  subPerguntas: p.subPerguntas ? JSON.parse(JSON.stringify(p.subPerguntas)) : undefined,
-                  // controladoPor será remapeado depois
-                  controladoPor: null,
-                },
-              });
-
-              if (Number.isFinite(originalId)) {
-                idMap.set(originalId, created.id);
-              }
-
-              if (p?.condicao?.perguntaId) {
-                pendentesCondicao.push({
-                  createdId: created.id,
-                  condicao: {
-                    perguntaId: Number(p.condicao.perguntaId),
-                    operador: p?.condicao?.operador ? String(p.condicao.operador) : undefined,
-                    valor: p?.condicao?.valor ? String(p.condicao.valor) : undefined,
-                  },
-                });
-              }
-
-              // Guardar controladoPor para remapear depois
-              if (p.controladoPor && Number.isFinite(Number(p.controladoPor))) {
-                pendentesControladoPor.push({
-                  createdId: created.id,
-                  controladoPorOriginal: Number(p.controladoPor),
-                });
-              }
-            }
-
-            // Resolver condições com IDs reais
-            for (const item of pendentesCondicao) {
-              const mapped = idMap.get(Number(item.condicao.perguntaId));
-              await tx.questionarioDepartamento.update({
-                where: { id: item.createdId },
-                data: {
-                  condicaoPerguntaId: mapped ?? null,
-                  condicaoOperador: item.condicao.operador ?? null,
-                  condicaoValor: item.condicao.valor ?? null,
-                },
-              });
-            }
-
-            // Resolver controladoPor com IDs reais
-            for (const item of pendentesControladoPor) {
-              const mapped = idMap.get(item.controladoPorOriginal);
-              if (mapped) {
-                await tx.questionarioDepartamento.update({
-                  where: { id: item.createdId },
-                  data: { controladoPor: mapped },
-                });
-              }
-            }
-          }
-        });
-        console.log('[LOG] prisma.$transaction (questionarios):', Date.now() - t0, 'ms');
-      }
-    } catch (e) {
-      // Não quebra a criação do processo caso falhe ao persistir questionários
-      console.warn('Aviso: falha ao persistir questionários do processo:', e);
-    }
-    
-    // Criar histórico inicial
-    const tHistorico = Date.now();
-    await prisma.historicoEvento.create({
-      data: {
-        processoId: processo.id,
-        tipo: 'INICIO',
-        acao: `Solicitação criada: ${processo.nomeServico || 'Solicitação'}`,
-        responsavelId: user.id,
-        departamento: 'Sistema',
-        dataTimestamp: BigInt(Date.now()),
-      },
-    });
-    console.log('[LOG] prisma.historicoEvento.create:', Date.now() - t0, 'ms');
-
-    // Se o processo é interligado com outro, registrar eventos de interligação em ambos
-    if (data.interligadoComId) {
-      const origemId = Number(data.interligadoComId);
-      const origemNome = data.interligadoNome ? String(data.interligadoNome) : `#${origemId}`;
-      const novoNome = processo.nomeServico || processo.nomeEmpresa || `#${processo.id}`;
-      try {
-        // Evento no processo NOVO: "Continuação de..."
-        await prisma.historicoEvento.create({
-          data: {
-            processoId: processo.id,
-            tipo: 'ALTERACAO',
-            acao: `🔗 Solicitação interligada — continuação de: ${origemNome}`,
-            responsavelId: user.id,
-            departamento: 'Sistema',
-            dataTimestamp: BigInt(Date.now() + 1),
-          },
-        });
-        // Evento no processo ORIGEM: "Nova solicitação criada como continuação"
-        await prisma.historicoEvento.create({
-          data: {
-            processoId: origemId,
-            tipo: 'ALTERACAO',
-            acao: `🔗 Nova solicitação interligada criada: ${novoNome} (#${processo.id})`,
-            responsavelId: user.id,
-            departamento: 'Sistema',
-            dataTimestamp: BigInt(Date.now() + 2),
-          },
-        });
-        // Registrar na tabela InterligacaoProcesso
-        await (prisma as any).interligacaoProcesso.create({
-          data: {
-            processoOrigemId: origemId,
-            processoDestinoId: processo.id,
-            criadoPorId: user.id,
-            automatica: true,
-          },
-        }).catch(() => { /* ignora se já existe */ });
-        console.log('[LOG] interligação registrada:', Date.now() - t0, 'ms');
-      } catch (e) {
-        console.error('Erro ao registrar interligação no histórico:', e);
-      }
-    }
-    
-    // Criar histórico de fluxo inicial
-    if (data.departamentoAtual) {
-      await prisma.historicoFluxo.create({
-        data: {
-          processoId: processo.id,
-          departamentoId: data.departamentoAtual,
-          ordem: 0,
-          status: 'em_andamento',
-          entradaEm: new Date(),
-        },
-      });
-      console.log('[LOG] prisma.historicoFluxo.create:', Date.now() - t0, 'ms');
-    }
-    
     console.log('[LOG] FIM POST /api/processos:', Date.now() - t0, 'ms');
     return NextResponse.json(processo, { status: 201 });
   } catch (error) {
@@ -758,7 +832,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-
-
 
