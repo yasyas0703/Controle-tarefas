@@ -136,9 +136,10 @@ export function validarAvancoDepartamento(params: {
     if (!avaliarCondicao(pergunta)) continue;
 
     const resposta = respostas[pergunta.id];
-    
+    const tipoNormalizado = (pergunta.tipo || '').toString().toLowerCase();
+
     // Para checkbox, verificar se array tem pelo menos 1 item
-    if (pergunta.tipo === 'checkbox') {
+    if (tipoNormalizado === 'checkbox') {
       let valores: string[] = [];
       try {
         if (typeof resposta === 'string') {
@@ -156,7 +157,7 @@ export function validarAvancoDepartamento(params: {
           tipo: 'erro',
         });
       }
-    } else if (pergunta.tipo === 'boolean') {
+    } else if (tipoNormalizado === 'boolean') {
       // Para boolean, "false" é uma resposta válida
       if (resposta === null || resposta === undefined) {
         erros.push({
@@ -165,7 +166,7 @@ export function validarAvancoDepartamento(params: {
           tipo: 'erro',
         });
       }
-    } else if (pergunta.tipo === 'file') {
+    } else if (tipoNormalizado === 'file') {
       // Para file, a validação de documentos é feita separadamente
       // Verificar se existe algum documento vinculado à pergunta
       const docVinculado = documentos.find(
@@ -229,7 +230,7 @@ export function validarAvancoDepartamento(params: {
  */
 function validarTipoResposta(pergunta: any, resposta: any): ErroValidacao | null {
   try {
-    switch (pergunta.tipo) {
+    switch ((pergunta.tipo || '').toString().toLowerCase()) {
       case 'email':
         emailSchema.parse(resposta);
         break;

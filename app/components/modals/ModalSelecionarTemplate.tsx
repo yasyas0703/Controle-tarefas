@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, FileText, Info, MoreVertical, Trash2, Edit, ClipboardList, Link2 } from 'lucide-react';
+import { X, FileText, Info, MoreVertical, Trash2, Edit, ClipboardList, Link2, ArrowUp, ArrowDown } from 'lucide-react';
 import { useSistema } from '@/app/context/SistemaContext';
 import { Template } from '@/app/types';
 import { api } from '@/app/utils/api';
@@ -35,7 +35,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
   const [templateComTooltipNome, setTemplateComTooltipNome] = useState<number | null>(null);
   const [showMenuTemplate, setShowMenuTemplate] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [interligarCom, setInterligarCom] = useState<number | null>(null);
+  const [interligarCom, setInterligarCom] = useState<number[]>([]);
   const [interligarParalelo, setInterligarParalelo] = useState(false);
   const [deptIndependente, setDeptIndependente] = useState(false);
   const role = String(usuarioLogado?.role ?? '').toLowerCase();
@@ -73,6 +73,35 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
     if (typeof responsavelId !== 'number') return null;
     return usuariosResponsaveis.find((u) => u.id === responsavelId) ?? null;
   }, [usuariosResponsaveis, responsavelId]);
+
+  const toggleInterligacao = (templateId: number) => {
+    setInterligarCom((prev) =>
+      prev.includes(templateId) ? prev.filter((id) => id !== templateId) : [...prev, templateId]
+    );
+  };
+
+  useEffect(() => {
+    if (typeof templateSelecionado !== 'number') return;
+    setInterligarCom((prev) => prev.filter((id) => id !== templateSelecionado));
+  }, [templateSelecionado]);
+
+  useEffect(() => {
+    if (interligarCom.length === 0 && interligarParalelo) {
+      setInterligarParalelo(false);
+    }
+  }, [interligarCom, interligarParalelo]);
+
+  const moverInterligacao = (templateId: number, direcao: -1 | 1) => {
+    setInterligarCom((prev) => {
+      const index = prev.indexOf(templateId);
+      if (index < 0) return prev;
+      const nextIndex = index + direcao;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
 
   const handleCriar = async () => {
     if (!empresaSelecionada) {
@@ -177,9 +206,8 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
         criadoPor: usuarioLogado?.nome,
         descricao: `Solicitação criada via template: ${template.nome}`,
         dataEntrega: prazoEntrega ? new Date(prazoEntrega) : undefined, // Prazo de entrega
-        ...(interligarCom ? {
-          interligadoComId: interligarCom,
-          interligadoNome: templatesDisponiveis.find(t => t.id === interligarCom)?.nome || `Template #${interligarCom}`,
+        ...(interligarCom.length > 0 ? {
+          interligacaoTemplateIds: interligarCom,
           interligadoParalelo: interligarParalelo,
         } : {}),
         ...(deptIndependente ? { deptIndependente: true } : {}),
@@ -382,26 +410,80 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
               <div className="mt-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   <Link2 className="inline w-4 h-4 mr-1" />
-                  Interligar com outra atividade <span className="text-gray-400 text-xs font-normal">(opcional)</span>
+                  Selecione as atividades para continuar <span className="text-gray-400 text-xs font-normal">(opcional)</span>
                 </label>
-                <select
-                  value={interligarCom || ''}
-                  onChange={(e) => setInterligarCom(e.target.value ? Number(e.target.value) : null)}
-                  className="w-full px-4 py-3 border border-purple-300 dark:border-purple-700 rounded-xl focus:ring-2 focus:ring-purple-500 bg-purple-50 dark:bg-purple-900/20 text-gray-900 dark:text-[var(--fg)]"
-                >
-                  <option value="">Nenhuma (solicitação independente)</option>
+                <div className="space-y-2 rounded-xl border border-purple-200 bg-white p-3">
                   {templatesDisponiveis
-                    .filter(t => t.id !== templateSelecionado)
-                    .map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.nome}{t.descricao ? ` — ${t.descricao}` : ''}
-                      </option>
-                    ))}
-                </select>
-                {interligarCom && (
+                    .filter((t) => t.id !== templateSelecionado)
+                    .map((t) => {
+                      const selecionado = interligarCom.includes(t.id);
+                      const ordem = interligarCom.indexOf(t.id);
+                      return (
+                        <label
+                          key={t.id}
+                          className={`flex items-center gap-3 rounded-lg border p-3 transition-all ${
+                            selecionado
+                              ? 'border-purple-400 bg-purple-50'
+                              : 'border-gray-200 hover:border-purple-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selecionado}
+                            onChange={() => toggleInterligacao(t.id)}
+                            className="h-4 w-4 rounded text-purple-600 focus:ring-purple-500"
+                          />
+                          {selecionado && (
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500 text-xs font-bold text-white">
+                              {ordem + 1}
+                            </span>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-gray-700">
+                              {t.nome}
+                            </span>
+                            {t.descricao && (
+                              <span className="block truncate text-xs text-gray-500">
+                                {t.descricao}
+                              </span>
+                            )}
+                          </div>
+                          {selecionado && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  moverInterligacao(t.id, -1);
+                                }}
+                                className="rounded p-1 text-gray-500 hover:bg-purple-100 hover:text-purple-700"
+                                title="Mover para cima"
+                              >
+                                <ArrowUp size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  moverInterligacao(t.id, 1);
+                                }}
+                                className="rounded p-1 text-gray-500 hover:bg-purple-100 hover:text-purple-700"
+                                title="Mover para baixo"
+                              >
+                                <ArrowDown size={14} />
+                              </button>
+                            </div>
+                          )}
+                        </label>
+                      );
+                    })}
+                </div>
+                {interligarCom.length > 0 && (
                   <>
                     <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
-                      🔗 Ao finalizar esta solicitação, a atividade selecionada será criada automaticamente como continuação.
+                      🔗 Ao finalizar esta solicitacao, a primeira atividade da lista sera criada automaticamente. As demais permanecem salvas em fila.
                     </p>
                     <label className="flex items-center gap-2 mt-2 cursor-pointer">
                       <input
@@ -411,7 +493,7 @@ export default function ModalSelecionarTemplate({ onClose, onEditTemplate }: Mod
                         className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
                       />
                       <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
-                        ⚡ Solicitação interligada com departamentos em paralelo
+                        ⚡ Ativar departamentos em paralelo nas atividades interligadas
                       </span>
                     </label>
                   </>

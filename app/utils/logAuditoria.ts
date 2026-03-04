@@ -71,6 +71,67 @@ export async function registrarLog(opts: {
   }
 }
 
+function normalizeAuditValue(value: any): any {
+  if (value === undefined || value === null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map((item) => normalizeAuditValue(item));
+  if (value && typeof value === 'object') {
+    const normalized: Record<string, any> = {};
+    for (const key of Object.keys(value).sort()) {
+      normalized[key] = normalizeAuditValue(value[key]);
+    }
+    return normalized;
+  }
+  return value;
+}
+
+export function serializarValorAuditoria(value: any): string {
+  const normalized = normalizeAuditValue(value);
+  if (normalized === null) return '';
+  return typeof normalized === 'string' ? normalized : JSON.stringify(normalized);
+}
+
+export async function registrarLogsCampos(opts: {
+  usuarioId: number;
+  acao: string;
+  entidade: string;
+  entidadeId?: number | null;
+  entidadeNome?: string | null;
+  processoId?: number | null;
+  empresaId?: number | null;
+  departamentoId?: number | null;
+  ip?: string | null;
+  campos: Array<{
+    campo: string;
+    valorAnterior?: any;
+    valorNovo?: any;
+    detalhes?: string | null;
+  }>;
+}) {
+  for (const campo of opts.campos) {
+    const valorAnterior = serializarValorAuditoria(campo.valorAnterior);
+    const valorNovo = serializarValorAuditoria(campo.valorNovo);
+    if (valorAnterior === valorNovo && !campo.detalhes) continue;
+
+    await registrarLog({
+      usuarioId: opts.usuarioId,
+      acao: opts.acao,
+      entidade: opts.entidade,
+      entidadeId: opts.entidadeId ?? null,
+      entidadeNome: opts.entidadeNome ?? null,
+      campo: campo.campo,
+      valorAnterior: valorAnterior || null,
+      valorNovo: valorNovo || null,
+      detalhes: campo.detalhes ?? null,
+      processoId: opts.processoId ?? null,
+      empresaId: opts.empresaId ?? null,
+      departamentoId: opts.departamentoId ?? null,
+      ip: opts.ip ?? null,
+    });
+  }
+}
+
 /**
  * Helper: compara dois objetos e retorna os campos que mudaram.
  * Útil para registrar cada campo editado individualmente.
@@ -87,8 +148,8 @@ export function detectarMudancas(
     if (camposParaIgnorar.includes(campo)) continue;
     const a = antes[campo];
     const d = depois[campo];
-    const aStr = a != null ? String(a) : '';
-    const dStr = d != null ? String(d) : '';
+    const aStr = serializarValorAuditoria(a);
+    const dStr = serializarValorAuditoria(d);
     if (aStr !== dStr) {
       mudancas.push({ campo, valorAnterior: aStr, valorNovo: dStr });
     }

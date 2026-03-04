@@ -1,87 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
-import { requireAuth, requireRole } from '@/app/utils/routeAuth';
+import { requireAuth } from '@/app/utils/routeAuth';
 import { GHOST_USER_EMAIL } from '@/app/utils/constants';
+import { coletarProcessosInterligados } from '@/app/utils/processChain';
 
-/**
- * GET /api/auditoria
- * Busca o histÃ³rico de eventos de um processo
- */
+function construirAcaoLog(log: any) {
+  if (log.campo) {
+    if (log.acao === 'ANEXAR') {
+      return `Documento anexado: ${log.valorNovo || log.entidadeNome || ''}`.trim();
+    }
+    if (log.acao === 'PREENCHER') {
+      return `Resposta preenchida: ${log.campo}`;
+    }
+    if (log.acao === 'INTERLIGAR') {
+      return `Interligacao registrada: ${log.campo}`;
+    }
+    return `Campo "${log.campo}" alterado`;
+  }
+
+  if (log.detalhes) return String(log.detalhes);
+
+  return `${log.acao} em ${log.entidade}${log.entidadeNome ? `: ${log.entidadeNome}` : ''}`;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
 
     const { searchParams } = new URL(request.url);
-    const processoId = searchParams.get('processoId');
+    const processoId = Number(searchParams.get('processoId'));
 
-    if (!processoId) {
-      return NextResponse.json({ error: 'processoId Ã© obrigatÃ³rio' }, { status: 400 });
+    if (!Number.isFinite(processoId) || processoId <= 0) {
+      return NextResponse.json({ error: 'processoId e obrigatorio' }, { status: 400 });
     }
 
-    const pid = parseInt(processoId);
+    const cadeia = await coletarProcessosInterligados(processoId);
+    const processosIds = cadeia.ids.length > 0 ? cadeia.ids : [processoId];
 
-    // Buscar o processo para verificar interligaÃ§Ãµes
-    const processo = await prisma.processo.findUnique({
-      where: { id: pid },
-      select: { id: true, interligadoComId: true, interligadoNome: true, nomeServico: true, nomeEmpresa: true },
-    });
-
-    // Coletar IDs de todos os processos interligados
-    const processosIds = new Set<number>([pid]);
-    const processosNomes: Record<number, string> = {};
-    if (processo) {
-      processosNomes[pid] = processo.nomeServico || processo.nomeEmpresa || `#${pid}`;
-    }
-
-    // Processo pai (este processo Ã© continuaÃ§Ã£o de outro)
-    if (processo?.interligadoComId) {
-      processosIds.add(processo.interligadoComId);
-      processosNomes[processo.interligadoComId] = processo.interligadoNome || `#${processo.interligadoComId}`;
-    }
-
-    // Processos filhos (outros processos que sÃ£o continuaÃ§Ã£o deste)
-    const filhos = await prisma.processo.findMany({
-      where: { interligadoComId: pid },
-      select: { id: true, nomeServico: true, nomeEmpresa: true },
-    });
-    for (const f of filhos) {
-      processosIds.add(f.id);
-      processosNomes[f.id] = f.nomeServico || f.nomeEmpresa || `#${f.id}`;
-    }
-
-    // TambÃ©m verificar via tabela InterligacaoProcesso
-    try {
-      const interligacoes = await (prisma as any).interligacaoProcesso.findMany({
-        where: {
-          OR: [
-            { processoOrigemId: pid },
-            { processoDestinoId: pid },
-          ],
-        },
-      });
-      for (const inter of interligacoes) {
-        if (inter.processoOrigemId !== pid) processosIds.add(inter.processoOrigemId);
-        if (inter.processoDestinoId !== pid) processosIds.add(inter.processoDestinoId);
-      }
-    } catch { /* tabela pode nÃ£o existir */ }
-
-    // Buscar nomes de processos que ainda nÃ£o temos
-    const idsSemNome = Array.from(processosIds).filter(id => !processosNomes[id]);
-    if (idsSemNome.length > 0) {
-      const extras = await prisma.processo.findMany({
-        where: { id: { in: idsSemNome } },
-        select: { id: true, nomeServico: true, nomeEmpresa: true },
-      });
-      for (const e of extras) {
-        processosNomes[e.id] = e.nomeServico || e.nomeEmpresa || `#${e.id}`;
-      }
-    }
-
-    // Buscar histÃ³rico de eventos de TODOS os processos interligados (excluindo ghost)
     const historico = await prisma.historicoEvento.findMany({
       where: {
-        processoId: { in: Array.from(processosIds) },
+        processoId: { in: processosIds },
         responsavel: { email: { not: GHOST_USER_EMAIL }, isGhost: { not: true } },
       },
       include: {
@@ -93,69 +52,98 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: {
-        data: 'desc',
-      },
+      orderBy: { data: 'desc' },
     });
 
-    // Serializar BigInt para string e adicionar informaÃ§Ã£o do processo de origem
+    const logsAuditoria = await prisma.logAuditoria.findMany({
+      where: {
+        processoId: { in: processosIds },
+        usuario: { email: { not: GHOST_USER_EMAIL }, isGhost: { not: true } },
+      },
+      include: {
+        usuario: {
+          select: { id: true, nome: true, email: true },
+        },
+      },
+      orderBy: { criadoEm: 'desc' },
+    });
+
     const historicoSerializado = historico.map((evento) => ({
       ...evento,
       dataTimestamp: evento.dataTimestamp ? evento.dataTimestamp.toString() : null,
-      // Campos extras para o front identificar eventos de processos interligados
       processoOrigemId: evento.processoId,
-      processoOrigemNome: processosNomes[evento.processoId] || `#${evento.processoId}`,
-      isInterligado: evento.processoId !== pid,
+      processoOrigemNome: cadeia.nomes[evento.processoId] || `#${evento.processoId}`,
+      isInterligado: evento.processoId !== processoId,
     }));
 
-    return NextResponse.json(historicoSerializado);
+    const logsSerializados = logsAuditoria.map((log) => ({
+      id: `log-${log.id}`,
+      tipo: log.campo ? 'ALTERACAO_CAMPO' : 'ALTERACAO',
+      acao: construirAcaoLog(log),
+      responsavel: log.usuario,
+      data: log.criadoEm,
+      campo: log.campo,
+      valorAnterior: log.valorAnterior,
+      valorNovo: log.valorNovo,
+      detalhes: log.detalhes,
+      entidade: log.entidade,
+      entidadeNome: log.entidadeNome,
+      isFieldLevel: Boolean(log.campo),
+      processoOrigemId: log.processoId,
+      processoOrigemNome: log.processoId ? cadeia.nomes[log.processoId] || `#${log.processoId}` : null,
+      isInterligado: log.processoId !== processoId,
+    }));
+
+    const timeline = [...historicoSerializado, ...logsSerializados].sort((a: any, b: any) => {
+      const dataA = new Date(a.data).getTime();
+      const dataB = new Date(b.data).getTime();
+      return dataB - dataA;
+    });
+
+    return NextResponse.json(timeline);
   } catch (error) {
-    console.error('Erro ao buscar histÃ³rico:', error);
+    console.error('Erro ao buscar historico:', error);
     return NextResponse.json(
-      { error: 'Erro ao buscar histÃ³rico', details: error instanceof Error ? error.message : 'Erro desconhecido' },
+      { error: 'Nao foi possivel carregar o historico desta solicitacao.' },
       { status: 500 }
     );
   }
 }
 
-/**
- * POST /api/auditoria
- * Registra um novo evento no histÃ³rico
- */
 export async function POST(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
 
-    // Ghost user: nÃ£o registrar eventos
-    const ghostCheck = await prisma.usuario.findUnique({ where: { id: user.id as number }, select: { isGhost: true, email: true } });
+    const ghostCheck = await prisma.usuario.findUnique({
+      where: { id: user.id as number },
+      select: { isGhost: true, email: true },
+    });
     if (ghostCheck?.isGhost || ghostCheck?.email === GHOST_USER_EMAIL) {
       return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     const body = await request.json();
-    const { processoId, tipo, acao, responsavelId, departamento, detalhes, dataTimestamp } = body;
+    const { processoId, tipo, acao, responsavelId, departamento, dataTimestamp } = body;
 
     if (!processoId || !tipo || !acao) {
       return NextResponse.json(
-        { error: 'processoId, tipo e acao sÃ£o obrigatÃ³rios' },
+        { error: 'processoId, tipo e acao sao obrigatorios' },
         { status: 400 }
       );
     }
 
-    // Validar tipo de evento
     const tiposValidos = ['INICIO', 'ALTERACAO', 'MOVIMENTACAO', 'CONCLUSAO', 'FINALIZACAO', 'DOCUMENTO', 'COMENTARIO'];
     if (!tiposValidos.includes(tipo)) {
       return NextResponse.json(
-        { error: `Tipo de evento invÃ¡lido. Use: ${tiposValidos.join(', ')}` },
+        { error: `Tipo de evento invalido. Use: ${tiposValidos.join(', ')}` },
         { status: 400 }
       );
     }
 
-    // Criar evento no histÃ³rico
     const evento = await prisma.historicoEvento.create({
       data: {
-        processoId: parseInt(processoId),
+        processoId: Number(processoId),
         tipo,
         acao,
         responsavelId: responsavelId || user.id,
@@ -177,49 +165,15 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Erro ao registrar evento:', error);
     return NextResponse.json(
-      { error: 'Erro ao registrar evento', details: error instanceof Error ? error.message : 'Erro desconhecido' },
+      { error: 'Nao foi possivel registrar este evento no historico.' },
       { status: 500 }
     );
   }
 }
 
-/**
- * DELETE /api/auditoria/[id]
- * Remove um evento do histÃ³rico (apenas para admins)
- */
-export async function DELETE(request: NextRequest) {
-  try {
-    const { user, error } = await requireAuth(request);
-    if (!user) return error;
-
-    // Apenas admins podem deletar histÃ³rico
-    if (!requireRole(user, ['ADMIN'])) {
-      return NextResponse.json(
-        { error: 'Apenas administradores podem deletar histÃ³rico' },
-        { status: 403 }
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
-      return NextResponse.json({ error: 'id Ã© obrigatÃ³rio' }, { status: 400 });
-    }
-
-    await prisma.historicoEvento.delete({
-      where: {
-        id: parseInt(id),
-      },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Erro ao deletar evento:', error);
-    return NextResponse.json(
-      { error: 'Erro ao deletar evento', details: error instanceof Error ? error.message : 'Erro desconhecido' },
-      { status: 500 }
-    );
-  }
+export async function DELETE() {
+  return NextResponse.json(
+    { error: 'O historico da solicitacao e permanente e nao pode ser apagado.' },
+    { status: 403 }
+  );
 }
-

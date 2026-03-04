@@ -174,54 +174,19 @@ export default function PainelLogs() {
   // ─── Exclusão ────────────────────────────────────────────
   const excluirSelecionados = async () => {
     if (selecionados.size === 0) return;
-
-    const confirmou = await mostrarConfirmacao({
-      titulo: 'Excluir Logs Selecionados',
-      mensagem: `Tem certeza que deseja excluir ${selecionados.size} log(s) selecionado(s)?\n\nEsta ação não pode ser desfeita.`,
-      tipo: 'perigo',
-      textoConfirmar: 'Sim, Excluir',
-      textoCancelar: 'Cancelar',
-    });
-
-    if (!confirmou) return;
-
-    setExcluindo(true);
-    try {
-      const result = await api.deleteLogs?.({ ids: Array.from(selecionados) });
-      void mostrarAlerta?.('Logs Excluídos', `${result?.deletados || selecionados.size} log(s) excluído(s) com sucesso.`, 'sucesso');
-      setSelecionados(new Set());
-      setModoSelecao(false);
-      await carregarLogs();
-    } catch (err: any) {
-      void mostrarAlerta?.('Erro', err.message || 'Erro ao excluir logs', 'erro');
-    } finally {
-      setExcluindo(false);
-    }
+    await mostrarAlerta?.(
+      'Historico permanente',
+      'Os logs de auditoria sao permanentes e nao podem ser apagados.',
+      'info'
+    );
   };
 
   const excluirTodos = async () => {
-    const confirmou = await mostrarConfirmacao({
-      titulo: 'Limpar Todo o Histórico',
-      mensagem: `ATENÇÃO: Isso irá EXCLUIR PERMANENTEMENTE todos os ${logs.length} registros de log do sistema.\n\nEsta ação NÃO pode ser desfeita. Recomendamos exportar um backup antes de continuar.\n\nDeseja prosseguir?`,
-      tipo: 'perigo',
-      textoConfirmar: 'Sim, Limpar Tudo',
-      textoCancelar: 'Cancelar',
-    });
-
-    if (!confirmou) return;
-
-    setExcluindo(true);
-    try {
-      const result = await api.deleteLogs?.({ todos: true });
-      void mostrarAlerta?.('Histórico Limpo', `${result?.deletados || 0} log(s) excluído(s) com sucesso.`, 'sucesso');
-      setSelecionados(new Set());
-      setModoSelecao(false);
-      await carregarLogs();
-    } catch (err: any) {
-      void mostrarAlerta?.('Erro', err.message || 'Erro ao limpar logs', 'erro');
-    } finally {
-      setExcluindo(false);
-    }
+    await mostrarAlerta?.(
+      'Historico permanente',
+      'Os logs de auditoria sao permanentes e nao podem ser apagados.',
+      'info'
+    );
   };
 
   if (usuarioLogado?.role !== 'admin' && usuarioLogado?.role !== 'admin_departamento') {
@@ -247,42 +212,6 @@ export default function PainelLogs() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {/* Botão Selecionar */}
-          <button
-            onClick={() => {
-              if (modoSelecao) { limparSelecao(); } else { setModoSelecao(true); }
-            }}
-            className={`px-4 py-2 rounded-xl font-medium flex items-center gap-2 transition text-sm ${
-              modoSelecao
-                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
-                : 'bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
-            }`}
-          >
-            {modoSelecao ? <XCircle size={16} /> : <CheckSquare size={16} />}
-            {modoSelecao ? 'Cancelar' : 'Selecionar'}
-          </button>
-          {/* Excluir selecionados */}
-          {modoSelecao && selecionados.size > 0 && (
-            <button
-              onClick={excluirSelecionados}
-              disabled={excluindo}
-              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium flex items-center gap-2 transition text-sm disabled:opacity-50"
-            >
-              {excluindo ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-              Excluir ({selecionados.size})
-            </button>
-          )}
-          {/* Limpar todos */}
-          {logs.length > 0 && (
-            <button
-              onClick={excluirTodos}
-              disabled={excluindo}
-              className="px-4 py-2 bg-gray-100 hover:bg-red-50 hover:text-red-600 rounded-xl font-medium text-gray-600 flex items-center gap-2 transition text-sm dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-red-900/30 dark:hover:text-red-400 disabled:opacity-50"
-            >
-              <Trash2 size={16} />
-              Limpar Tudo
-            </button>
-          )}
           <button
             onClick={carregarLogs}
             disabled={loading}
@@ -292,6 +221,10 @@ export default function PainelLogs() {
             Atualizar
           </button>
         </div>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-900/20 dark:text-amber-200">
+        O historico de logs e permanente. Exclusao em massa e limpeza total foram desativadas.
       </div>
 
       {/* Barra de seleção em lote */}

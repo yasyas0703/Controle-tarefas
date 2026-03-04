@@ -60,7 +60,12 @@ export async function PUT(
       entidade: 'COMENTARIO',
       entidadeId: comentario.id,
       entidadeNome: `Comentario #${comentario.id}`,
+      campo: 'texto',
+      valorAnterior: comentarioExistente.texto,
+      valorNovo: texto,
+      detalhes: 'Comentario editado.',
       processoId: comentario.processoId || null,
+      departamentoId: comentario.departamentoId || null,
       ip: getIp(request),
     });
 
@@ -138,7 +143,12 @@ export async function DELETE(
       entidade: 'COMENTARIO',
       entidadeId: comentario.id,
       entidadeNome: `Comentario #${comentario.id}`,
+      campo: 'texto',
+      valorAnterior: comentario.texto,
+      valorNovo: null,
+      detalhes: 'Comentario movido para lixeira.',
       processoId: comentario.processoId || null,
+      departamentoId: comentario.departamentoId || null,
       ip: getIp(request),
     });
 

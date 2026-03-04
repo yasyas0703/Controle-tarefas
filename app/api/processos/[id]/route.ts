@@ -4,6 +4,8 @@ import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
 import { assertProcessAccess, getUserDepartmentId } from '@/app/utils/processAccess';
 import { validarProcessoParaFinalizacao } from '@/app/utils/processValidation';
+import { registrarLog, detectarMudancas, getIp, registrarLogsCampos } from '@/app/utils/logAuditoria';
+import { ensureProcessInterligacaoSchema, normalizeInterligacaoTemplateIds } from '@/app/utils/processInterligacaoSchema';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -44,6 +46,7 @@ export async function GET(
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureProcessInterligacaoSchema();
     const processoId = parseInt(params.id);
     const access = await assertProcessAccess(user, processoId, 'read');
     if (access.error) return access.error;
@@ -190,47 +193,80 @@ export async function GET(
     (processo as any).questionariosPorDepartamento = questionariosPorDeptObj;
 
     // ========== MERGE QUESTIONÁRIOS DE PROCESSOS INTERLIGADOS ==========
-    // Se este processo é interligado com outro, buscar questionários e respostas do(s) processo(s) vinculado(s)
+    // Percorrer TODA a cadeia de interligações usando AMBAS as fontes:
+    // 1. Campo interligadoComId (cadeia pai)
+    // 2. Tabela InterligacaoProcesso (relações origem/destino)
     try {
       const processosInterligadosIds: number[] = [];
       const processosInterligadosInfo: Record<number, { nomeServico: string; nomeEmpresa: string }> = {};
+      const visitados = new Set<number>([processo.id]);
 
-      // Processo pai (este é continuação de outro)
-      if (processo.interligadoComId) {
-        processosInterligadosIds.push(processo.interligadoComId);
-        processosInterligadosInfo[processo.interligadoComId] = {
-          nomeServico: processo.interligadoNome || `#${processo.interligadoComId}`,
-          nomeEmpresa: '',
-        };
-      }
-
-      // Processos filhos (outros que são continuação deste)
-      const filhos = await prisma.processo.findMany({
-        where: { interligadoComId: processo.id },
-        select: { id: true, nomeServico: true, nomeEmpresa: true },
-      });
-      for (const f of filhos) {
-        processosInterligadosIds.push(f.id);
-        processosInterligadosInfo[f.id] = {
-          nomeServico: f.nomeServico || `#${f.id}`,
-          nomeEmpresa: f.nomeEmpresa || '',
-        };
-      }
-
-      // Via tabela InterligacaoProcesso
-      try {
-        const interligacoes = await (prisma as any).interligacaoProcesso.findMany({
-          where: {
-            OR: [
-              { processoOrigemId: processo.id },
-              { processoDestinoId: processo.id },
-            ],
-          },
+      // Percorrer toda a cadeia de ancestrais via interligadoComId (pai, avô, bisavô...)
+      const ancestraisIds: number[] = [];
+      let ancestralId: number | null = processo.interligadoComId;
+      while (ancestralId && !visitados.has(ancestralId)) {
+        visitados.add(ancestralId);
+        ancestraisIds.push(ancestralId);
+        const ancestral = await prisma.processo.findUnique({
+          where: { id: ancestralId },
+          select: { id: true, nomeServico: true, nomeEmpresa: true, interligadoComId: true, interligadoNome: true },
         });
-        for (const inter of interligacoes) {
-          const outroId = inter.processoOrigemId === processo.id ? inter.processoDestinoId : inter.processoOrigemId;
-          if (!processosInterligadosIds.includes(outroId)) {
-            processosInterligadosIds.push(outroId);
+        if (!ancestral) break;
+        processosInterligadosInfo[ancestral.id] = {
+          nomeServico: ancestral.nomeServico || ancestral.interligadoNome || `#${ancestral.id}`,
+          nomeEmpresa: ancestral.nomeEmpresa || '',
+        };
+        ancestralId = ancestral.interligadoComId;
+      }
+      // Inverter: mais antigo primeiro (bisavô, avô, pai)
+      ancestraisIds.reverse();
+      processosInterligadosIds.push(...ancestraisIds);
+
+      // Percorrer todos os descendentes via interligadoComId (filhos, netos...) via BFS
+      const fila: number[] = [processo.id];
+      while (fila.length > 0) {
+        const parentId = fila.shift()!;
+        const filhos = await prisma.processo.findMany({
+          where: { interligadoComId: parentId },
+          select: { id: true, nomeServico: true, nomeEmpresa: true },
+        });
+        for (const f of filhos) {
+          if (visitados.has(f.id)) continue;
+          visitados.add(f.id);
+          processosInterligadosIds.push(f.id);
+          processosInterligadosInfo[f.id] = {
+            nomeServico: f.nomeServico || `#${f.id}`,
+            nomeEmpresa: f.nomeEmpresa || '',
+          };
+          fila.push(f.id);
+        }
+      }
+
+      // Percorrer TODA a cadeia via tabela InterligacaoProcesso (BFS)
+      // Isso cobre processos antigos que não têm interligadoComId preenchido
+      try {
+        const filaInterligacao = [processo.id, ...processosInterligadosIds];
+        const jaConsultados = new Set<number>();
+        while (filaInterligacao.length > 0) {
+          const currentId = filaInterligacao.shift()!;
+          if (jaConsultados.has(currentId)) continue;
+          jaConsultados.add(currentId);
+
+          const interligacoes = await (prisma as any).interligacaoProcesso.findMany({
+            where: {
+              OR: [
+                { processoOrigemId: currentId },
+                { processoDestinoId: currentId },
+              ],
+            },
+          });
+          for (const inter of interligacoes) {
+            const outroId = inter.processoOrigemId === currentId ? inter.processoDestinoId : inter.processoOrigemId;
+            if (!visitados.has(outroId)) {
+              visitados.add(outroId);
+              processosInterligadosIds.push(outroId);
+              filaInterligacao.push(outroId);
+            }
           }
         }
       } catch { /* tabela pode não existir */ }
@@ -247,19 +283,6 @@ export async function GET(
             processosInterligadosInfo[e.id] = {
               nomeServico: e.nomeServico || `#${e.id}`,
               nomeEmpresa: e.nomeEmpresa || '',
-            };
-          }
-        }
-        // Buscar nomeEmpresa do pai se ainda não temos
-        if (processo.interligadoComId && !processosInterligadosInfo[processo.interligadoComId]?.nomeEmpresa) {
-          const pai = await prisma.processo.findUnique({
-            where: { id: processo.interligadoComId },
-            select: { nomeServico: true, nomeEmpresa: true },
-          });
-          if (pai) {
-            processosInterligadosInfo[processo.interligadoComId] = {
-              nomeServico: pai.nomeServico || processo.interligadoNome || `#${processo.interligadoComId}`,
-              nomeEmpresa: pai.nomeEmpresa || '',
             };
           }
         }
@@ -327,7 +350,37 @@ export async function GET(
           }
         }
 
-        (processo as any).respostasInterligadas = Object.values(respostasInterligadas);
+        // Buscar documentos dos processos interligados para exibir arquivos anexados
+        const documentosInterligados = await prisma.documento.findMany({
+          where: { processoId: { in: processosInterligadosIds } },
+          select: {
+            id: true,
+            processoId: true,
+            nome: true,
+            tipo: true,
+            tipoCategoria: true,
+            url: true,
+            perguntaId: true,
+            departamentoId: true,
+            dataUpload: true,
+          },
+        });
+
+        // Agrupar documentos por processoId
+        for (const doc of documentosInterligados) {
+          const pId = doc.processoId;
+          if (!respostasInterligadas[pId]) continue;
+          if (!respostasInterligadas[pId].documentos) {
+            respostasInterligadas[pId].documentos = [];
+          }
+          respostasInterligadas[pId].documentos.push(doc);
+        }
+
+        // Ordenar por ID do processo (mais antigo = menor ID primeiro) para exibir cronologicamente
+        const interligadasOrdenadas = processosInterligadosIds
+          .filter(id => respostasInterligadas[id])
+          .map(id => respostasInterligadas[id]);
+        (processo as any).respostasInterligadas = interligadasOrdenadas;
       }
     } catch (e) {
       console.error('Erro ao buscar questionários interligados:', e);
@@ -349,6 +402,7 @@ export async function PUT(
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureProcessInterligacaoSchema();
 
     const processoId = parseInt(params.id);
     const roleUpper = String((user as any).role || '').toUpperCase();
@@ -427,6 +481,10 @@ export async function PUT(
     }
     
     const novoInicio = parseDateMaybe(data?.dataInicio);
+    const interligacaoTemplateIdsAtualizados =
+      data?.interligacaoTemplateIds !== undefined
+        ? normalizeInterligacaoTemplateIds(data.interligacaoTemplateIds)
+        : undefined;
 
     const dataEntregaFoiEnviada = Object.prototype.hasOwnProperty.call(data ?? {}, 'dataEntrega');
     const entregaParsed = parseDateMaybe(data?.dataEntrega);
@@ -486,6 +544,12 @@ export async function PUT(
         ...(novoInicio !== undefined && { dataInicio: novoInicio }),
         ...(dataEntregaFoiEnviada && entregaParsed !== undefined && { dataEntrega: entregaParsed }),
         ...(entregaCalculada !== undefined && { dataEntrega: entregaCalculada }),
+        ...(data.processoOrigemId !== undefined && { processoOrigemId: data.processoOrigemId }),
+        ...(data.interligadoComId !== undefined && { interligadoComId: data.interligadoComId }),
+        ...(data.interligadoNome !== undefined && { interligadoNome: data.interligadoNome }),
+        ...(data.interligadoParalelo !== undefined && { interligadoParalelo: Boolean(data.interligadoParalelo) }),
+        ...(interligacaoTemplateIdsAtualizados !== undefined && { interligacaoTemplateIds: interligacaoTemplateIdsAtualizados }),
+        ...(data.deptIndependente !== undefined && { deptIndependente: Boolean(data.deptIndependente) }),
         dataAtualizacao: new Date(),
       },
       include: {
@@ -498,32 +562,101 @@ export async function PUT(
       },
     });
     
-    // Criar evento de alteração
+    // Logging campo-a-campo detalhado (LogAuditoria)
     if (processoAntigo) {
-      const mudancas: string[] = [];
+      const camposAntes: Record<string, any> = {
+        nome: processoAntigo.nome,
+        nomeServico: processoAntigo.nomeServico,
+        nomeEmpresa: processoAntigo.nomeEmpresa,
+        cliente: processoAntigo.cliente,
+        email: processoAntigo.email,
+        telefone: processoAntigo.telefone,
+        status: processoAntigo.status,
+        prioridade: processoAntigo.prioridade,
+        descricao: processoAntigo.descricao,
+        notasCriador: processoAntigo.notasCriador,
+        responsavelId: processoAntigo.responsavelId,
+        empresaId: processoAntigo.empresaId,
+        departamentoAtual: processoAntigo.departamentoAtual,
+        departamentoAtualIndex: processoAntigo.departamentoAtualIndex,
+        progresso: processoAntigo.progresso,
+        processoOrigemId: (processoAntigo as any).processoOrigemId,
+        interligadoComId: processoAntigo.interligadoComId,
+        interligadoNome: processoAntigo.interligadoNome,
+        interligadoParalelo: (processoAntigo as any).interligadoParalelo,
+        interligacaoTemplateIds: (processoAntigo as any).interligacaoTemplateIds,
+        deptIndependente: (processoAntigo as any).deptIndependente,
+      };
+      const camposDepois: Record<string, any> = {
+        nome: processo.nome,
+        nomeServico: processo.nomeServico,
+        nomeEmpresa: processo.nomeEmpresa,
+        cliente: processo.cliente,
+        email: processo.email,
+        telefone: processo.telefone,
+        status: processo.status,
+        prioridade: processo.prioridade,
+        descricao: processo.descricao,
+        notasCriador: processo.notasCriador,
+        responsavelId: processo.responsavelId,
+        empresaId: processo.empresaId,
+        departamentoAtual: processo.departamentoAtual,
+        departamentoAtualIndex: processo.departamentoAtualIndex,
+        progresso: processo.progresso,
+        processoOrigemId: (processo as any).processoOrigemId,
+        interligadoComId: processo.interligadoComId,
+        interligadoNome: processo.interligadoNome,
+        interligadoParalelo: (processo as any).interligadoParalelo,
+        interligacaoTemplateIds: (processo as any).interligacaoTemplateIds,
+        deptIndependente: (processo as any).deptIndependente,
+      };
+      const mudancasDetalhadas = detectarMudancas(camposAntes, camposDepois);
+      const ip = getIp(request);
+
+      await registrarLogsCampos({
+        usuarioId: user.id,
+        acao: 'EDITAR',
+        entidade: 'PROCESSO',
+        entidadeId: processo.id,
+        entidadeNome: processo.nomeServico || processo.nomeEmpresa || `#${processo.id}`,
+        processoId: processo.id,
+        empresaId: processo.empresaId,
+        ip,
+        campos: mudancasDetalhadas.map((mudanca) => ({
+          campo: mudanca.campo,
+          valorAnterior: mudanca.valorAnterior,
+          valorNovo: mudanca.valorNovo,
+        })),
+      });
+
+      // Criar evento de alteração (HistoricoEvento - resumo)
+      const mudancasResumo: string[] = [];
       if (processoAntigo.status !== processo.status) {
-        mudancas.push(`Status: ${processoAntigo.status} → ${processo.status}`);
+        mudancasResumo.push(`Status: ${processoAntigo.status} → ${processo.status}`);
       }
       if (processoAntigo.prioridade !== processo.prioridade) {
-        mudancas.push(`Prioridade: ${processoAntigo.prioridade} → ${processo.prioridade}`);
+        mudancasResumo.push(`Prioridade: ${processoAntigo.prioridade} → ${processo.prioridade}`);
       }
       if (processoAntigo.departamentoAtual !== processo.departamentoAtual) {
-        mudancas.push(`Departamento alterado`);
+        mudancasResumo.push(`Departamento alterado`);
       }
-      
-      if (mudancas.length > 0) {
+      if (mudancasDetalhadas.length > 0 && mudancasResumo.length === 0) {
+        mudancasResumo.push(`${mudancasDetalhadas.length} campo(s) alterado(s): ${mudancasDetalhadas.map(m => m.campo).join(', ')}`);
+      }
+
+      if (mudancasResumo.length > 0) {
         try {
           await prisma.historicoEvento.create({
             data: {
               processoId: processo.id,
               tipo: 'ALTERACAO',
-              acao: mudancas.join(', '),
+              acao: mudancasResumo.join(', '),
               responsavelId: user.id,
               dataTimestamp: BigInt(Date.now()),
             },
           });
         } catch (e) {
-          console.warn('Falha ao criar histórico de alteração (processo pode ter sido excluído em paralelo):', e);
+          console.warn('Falha ao criar histórico de alteração:', e);
         }
       }
 
@@ -583,6 +716,7 @@ export async function DELETE(
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureProcessInterligacaoSchema();
 
     const roleUpper = String((user as any).role || '').toUpperCase();
     const processoId = parseInt(params.id);

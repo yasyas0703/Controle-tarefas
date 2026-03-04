@@ -417,8 +417,12 @@ const normalizeProcesso = (raw: any) => {
       : [],
     // Campos explícitos para departamentos independentes e interligação
     deptIndependente: Boolean(raw?.deptIndependente),
+    processoOrigemId: raw?.processoOrigemId ? Number(raw.processoOrigemId) : null,
     interligadoComId: raw?.interligadoComId ? Number(raw.interligadoComId) : null,
     interligadoNome: raw?.interligadoNome ?? null,
+    interligacaoTemplateIds: Array.isArray(raw?.interligacaoTemplateIds)
+      ? raw.interligacaoTemplateIds.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0)
+      : [],
     tags: tagsIds,
     tagsMetadata,
     comentarios,
@@ -433,6 +437,20 @@ const normalizeProcesso = (raw: any) => {
     historicoEvento: historico,
   };
   return resultado;
+};
+
+const MENSAGENS_ERRO_HTTP: Record<number, string> = {
+  400: 'Dados inválidos. Verifique as informações e tente novamente.',
+  401: 'Sessão expirada. Faça login novamente.',
+  403: 'Você não tem permissão para realizar esta ação.',
+  404: 'O recurso solicitado não foi encontrado.',
+  409: 'Conflito: este registro já existe ou foi modificado por outro usuário.',
+  413: 'O arquivo enviado é muito grande.',
+  422: 'Os dados enviados não puderam ser processados.',
+  429: 'Muitas requisições. Aguarde um momento e tente novamente.',
+  500: 'Erro interno do servidor. Tente novamente em alguns instantes.',
+  502: 'Servidor temporariamente indisponível. Tente novamente.',
+  503: 'Serviço indisponível no momento. Tente novamente em alguns instantes.',
 };
 
 async function parseError(response: Response) {
@@ -461,9 +479,9 @@ async function parseError(response: Response) {
       }
     }
 
-    return 'Erro na requisição';
+    return MENSAGENS_ERRO_HTTP[response.status] || 'Erro na requisição';
   } catch {
-    return 'Erro na requisição';
+    return MENSAGENS_ERRO_HTTP[response.status] || 'Erro na requisição';
   }
 }
 

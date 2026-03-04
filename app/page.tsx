@@ -177,8 +177,13 @@ export default function Home() {
       const result = await finalizarProcesso(processoId);
       if (result && result.finalizado) {
         const processoOrigem = processos.find((p) => p.id === result.processoId);
-        const templateAutomatico = result.interligadoComId
-          ? (templates || []).find((t) => Number(t.id) === Number(result.interligadoComId))
+        const filaAutomatica =
+          Array.isArray(result.interligacaoTemplateIds) && result.interligacaoTemplateIds.length > 0
+            ? result.interligacaoTemplateIds
+            : (result.interligadoComId ? [result.interligadoComId] : []);
+        const [templateAutomaticoId, ...restanteFila] = filaAutomatica;
+        const templateAutomatico = templateAutomaticoId
+          ? (templates || []).find((t) => Number(t.id) === Number(templateAutomaticoId))
           : null;
 
         if (templateAutomatico) {
@@ -215,6 +220,9 @@ export default function Home() {
               empresa: processoOrigem?.nomeEmpresa || processoOrigem?.nome || 'Empresa',
               empresaId: (processoOrigem as any)?.empresaId,
               processoOrigemId: result.processoId,
+              interligadoComId: result.processoId,
+              interligadoNome: processoOrigem?.nomeServico || processoOrigem?.nome || `#${result.processoId}`,
+              interligacaoTemplateIds: restanteFila,
               fluxoDepartamentos: fluxo,
               departamentoAtual: fluxo[0],
               departamentoAtualIndex: 0,
@@ -223,12 +231,14 @@ export default function Home() {
               templateId: templateAutomatico.id,
               criadoPor: usuarioLogado?.nome,
               descricao: `Solicitação interligada (continuação de #${result.processoId})`,
-              ...(result.interligadoParalelo ? { deptIndependente: true } : {}),
+              ...(result.interligadoParalelo ? { interligadoParalelo: true, deptIndependente: true } : {}),
             } as any);
 
             void mostrarAlerta?.(
               'Interligação automática',
-              `A solicitação "${templateAutomatico.nome}" foi criada automaticamente após finalizar o processo #${result.processoId}.`,
+              restanteFila.length > 0
+                ? `A solicitacao "${templateAutomatico.nome}" foi criada e ${restanteFila.length} atividade(s) ficaram salvas na fila.`
+                : `A solicitacao "${templateAutomatico.nome}" foi criada automaticamente apos finalizar o processo #${result.processoId}.`,
               'sucesso'
             );
             return;
@@ -956,10 +966,12 @@ export default function Home() {
             }
             setInterligarInfo(null);
           }}
-          onConfirmar={async (templateId, deptIndependente, interligarComId, interligarParalelo) => {
+          onConfirmar={async (templateIds, deptIndependente, chainToId) => {
+            const fila = Array.isArray(templateIds) ? templateIds.map(Number).filter((id) => Number.isFinite(id) && id > 0) : [];
+            const [templateId, ...restanteFila] = fila;
             const template = (templates || []).find(t => t.id === templateId);
-            if (!template) return;
-            const processoOrigem = processos.find(p => p.id === interligarInfo.processoId);
+            if (!template) return 0;
+            const processoOrigem = processos.find(p => p.id === chainToId) || processos.find(p => p.id === interligarInfo.processoId);
             try {
               const fluxo = (() => {
                 const v: any = (template as any).fluxoDepartamentos ?? (template as any).fluxo_departamentos;
@@ -971,16 +983,16 @@ export default function Home() {
                 if (v && typeof v === 'object' && !Array.isArray(v)) return v;
                 try { const p = JSON.parse(v as any); return p && typeof p === 'object' ? p : {}; } catch { return {}; }
               })();
-              // Se o usuario escolheu interligar a continuacao com outra atividade, usar template ID
-              // Caso contrario, apenas referenciar o processo original
-              const templateInterligar = interligarComId ? (templates || []).find(t => t.id === interligarComId) : null;
-              await criarProcesso({
+              const novoProcesso = await criarProcesso({
                 nome: template.nome,
                 nomeServico: template.nome,
                 nomeEmpresa: processoOrigem?.nomeEmpresa || processoOrigem?.nome || 'Empresa',
                 empresa: processoOrigem?.nomeEmpresa || processoOrigem?.nome || 'Empresa',
                 empresaId: (processoOrigem as any)?.empresaId,
-                processoOrigemId: interligarInfo.processoId,
+                processoOrigemId: chainToId,
+                interligadoComId: chainToId,
+                interligadoNome: processoOrigem?.nomeServico || processoOrigem?.nome || `#${chainToId}`,
+                interligacaoTemplateIds: restanteFila,
                 fluxoDepartamentos: fluxo,
                 departamentoAtual: fluxo[0],
                 departamentoAtualIndex: 0,
@@ -988,15 +1000,17 @@ export default function Home() {
                 personalizado: false,
                 templateId: template.id,
                 criadoPor: usuarioLogado?.nome,
-                descricao: `Solicitação interligada (continuação de #${interligarInfo.processoId})`,
-                ...(interligarComId && templateInterligar ? {
-                  interligadoComId: interligarComId,
-                  interligadoNome: templateInterligar.nome,
-                  interligadoParalelo: !!interligarParalelo,
-                } : {}),
-                ...(deptIndependente ? { deptIndependente: true } : {}),
+                descricao: `Solicitação interligada (continuação de #${chainToId})`,
+                ...(deptIndependente ? { interligadoParalelo: true, deptIndependente: true } : {}),
               } as any);
-              void mostrarAlerta?.('Interligação realizada', `A solicitação "${template.nome}" foi criada como continuação de #${interligarInfo.processoId}.`, 'sucesso');
+              void mostrarAlerta?.(
+                'Interligacao realizada',
+                restanteFila.length > 0
+                  ? `A solicitacao "${template.nome}" foi criada como continuacao de #${chainToId} e ${restanteFila.length} atividade(s) ficaram salvas na fila.`
+                  : `A solicitacao "${template.nome}" foi criada como continuacao de #${chainToId}.`,
+                'sucesso'
+              );
+              return novoProcesso?.id || 0;
             } catch (err: any) {
               void mostrarAlerta?.('Erro', err.message || 'Erro ao criar solicitação interligada', 'erro');
               throw err;

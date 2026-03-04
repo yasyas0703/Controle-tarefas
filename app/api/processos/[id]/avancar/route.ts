@@ -3,6 +3,7 @@ import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
 import { assertProcessAccess } from '@/app/utils/processAccess';
 import { validarDepartamentoProcesso } from '@/app/utils/processValidation';
+import { getIp, registrarLog } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -163,6 +164,21 @@ export async function POST(
       return proc;
     });
 
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'AVANCAR',
+      entidade: 'PROCESSO',
+      entidadeId: processoId,
+      entidadeNome: (processoAtualizado as any).nomeServico || (processoAtualizado as any).nomeEmpresa || `#${processoId}`,
+      campo: 'departamentoAtual',
+      valorAnterior: departamentoAtual.nome,
+      valorNovo: proximoDepartamento.nome,
+      detalhes: `Processo avancado de "${departamentoAtual.nome}" para "${proximoDepartamento.nome}".`,
+      processoId,
+      departamentoId: proximoDepartamentoId,
+      ip: getIp(request),
+    });
+
     try {
       let novoResponsavel = await prisma.usuario.findFirst({
         where: {
@@ -246,6 +262,9 @@ export async function POST(
     return NextResponse.json(processoAtualizado);
   } catch (error) {
     console.error('Erro ao avancar processo:', error);
-    return NextResponse.json({ error: 'Erro ao avancar processo' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Nao foi possivel avancar a solicitacao agora. Tente novamente.' },
+      { status: 500 }
+    );
   }
 }

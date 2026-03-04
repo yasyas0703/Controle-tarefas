@@ -3,6 +3,7 @@ import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
 import { assertProcessAccess } from '@/app/utils/processAccess';
 import { validarDepartamentoProcesso } from '@/app/utils/processValidation';
+import { getIp, registrarLog } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -147,6 +148,20 @@ export async function POST(
                 dataTimestamp: BigInt(Date.now()),
               },
             });
+            await registrarLog({
+              usuarioId: user.id,
+              acao: 'CHECK',
+              entidade: 'PROCESSO',
+              entidadeId: processoId,
+              entidadeNome: `Processo #${processoId}`,
+              campo: 'checklistDepartamento',
+              valorAnterior: null,
+              valorNovo: dept?.nome || `Dept #${departamentoId}`,
+              detalhes: `Departamento "${dept?.nome || `#${departamentoId}`}" concluiu sua etapa.`,
+              processoId,
+              departamentoId: Number(departamentoId),
+              ip: getIp(request),
+            });
           } catch {
             // Nao bloquear por falha de historico.
           }
@@ -181,6 +196,20 @@ export async function POST(
               dataTimestamp: BigInt(Date.now()),
             },
           });
+          await registrarLog({
+            usuarioId: user.id,
+            acao: 'CHECK',
+            entidade: 'PROCESSO',
+            entidadeId: processoId,
+            entidadeNome: `Processo #${processoId}`,
+            campo: 'checklistDepartamento',
+            valorAnterior: null,
+            valorNovo: dept?.nome || `Dept #${departamentoId}`,
+            detalhes: `Departamento "${dept?.nome || `#${departamentoId}`}" concluiu sua etapa.`,
+            processoId,
+            departamentoId: Number(departamentoId),
+            ip: getIp(request),
+          });
         } catch {
           // Nao bloquear por falha de historico.
         }
@@ -191,12 +220,15 @@ export async function POST(
       console.error('Erro ao salvar checklist departamento:', err);
       const code = (err as any)?.code;
       return NextResponse.json(
-        { error: code === 'P2021' ? 'Checklist indisponivel no momento' : 'Erro ao salvar checklist' },
+        { error: code === 'P2021' ? 'Checklist indisponivel no momento' : 'Nao foi possivel registrar o check deste departamento.' },
         { status: code === 'P2021' ? 503 : 500 }
       );
     }
   } catch (error) {
     console.error('Erro ao salvar checklist:', error);
-    return NextResponse.json({ error: 'Erro ao salvar checklist' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Nao foi possivel atualizar o checklist desta solicitacao.' },
+      { status: 500 }
+    );
   }
 }

@@ -38,7 +38,12 @@ export async function POST(request: NextRequest) {
         processoId: pid,
         departamentoId: did,
       },
-      select: { id: true },
+      select: { id: true, label: true },
+    });
+
+    const departamento = await prisma.departamento.findUnique({
+      where: { id: did },
+      select: { nome: true },
     });
 
     if (questionariosValidos.length !== questionarioIds.length) {
@@ -47,7 +52,21 @@ export async function POST(request: NextRequest) {
         { status: 403 }
       );
     }
-    
+
+    // Buscar respostas existentes para detectar mudanças
+    const respostasExistentes = await prisma.respostaQuestionario.findMany({
+      where: { processoId: pid, questionarioId: { in: questionarioIds } },
+      select: { questionarioId: true, resposta: true },
+    });
+    const existenteMap: Record<number, string> = {};
+    for (const r of respostasExistentes) {
+      existenteMap[r.questionarioId] = r.resposta;
+    }
+    const labelMap: Record<number, string> = {};
+    for (const q of questionariosValidos) {
+      labelMap[q.id] = q.label;
+    }
+
     // Salvar/atualizar respostas
     const resultados = await Promise.all(
       Object.entries(respostas).map(async ([questionarioId, resposta]) => {
@@ -76,16 +95,46 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    await registrarLog({
-      usuarioId: user.id,
-      acao: 'PREENCHER',
-      entidade: 'QUESTIONARIO',
-      entidadeId: pid,
-      entidadeNome: `Respostas do processo #${pid}`,
-      processoId: pid,
-      departamentoId: did,
-      ip: getIp(request),
-    });
+    // Logging detalhado por pergunta
+    const ip = getIp(request);
+    const perguntasAlteradas: string[] = [];
+    for (const [questionarioId, resposta] of Object.entries(respostas)) {
+      const qId = parseInt(questionarioId);
+      const respostaStr = typeof resposta === 'string' ? resposta : JSON.stringify(resposta);
+      const anteriorStr = existenteMap[qId] || '';
+      if (anteriorStr !== respostaStr) {
+        perguntasAlteradas.push(labelMap[qId] || `Pergunta #${qId}`);
+        await registrarLog({
+          usuarioId: user.id,
+          acao: 'PREENCHER',
+          entidade: 'QUESTIONARIO',
+          entidadeId: qId,
+          entidadeNome: labelMap[qId] || `Pergunta #${qId}`,
+          campo: labelMap[qId] || `pergunta_${qId}`,
+          valorAnterior: anteriorStr || null,
+          valorNovo: respostaStr,
+          processoId: pid,
+          departamentoId: did,
+          ip,
+        });
+      }
+    }
+
+    if (perguntasAlteradas.length > 0) {
+      await prisma.historicoEvento.create({
+        data: {
+          processoId: pid,
+          tipo: 'ALTERACAO',
+          acao:
+            perguntasAlteradas.length === 1
+              ? `Resposta atualizada: ${perguntasAlteradas[0]}`
+              : `${perguntasAlteradas.length} respostas atualizadas em ${departamento?.nome || `Departamento #${did}`}`,
+          responsavelId: user.id,
+          departamento: departamento?.nome || `Departamento #${did}`,
+          dataTimestamp: BigInt(Date.now()),
+        },
+      });
+    }
 
     return NextResponse.json({ 
       message: 'Respostas salvas com sucesso',
@@ -99,7 +148,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
 
 
 

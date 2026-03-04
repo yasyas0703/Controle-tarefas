@@ -3,6 +3,7 @@ import { prisma } from '@/app/utils/prisma';
 import { uploadFile, deleteFile } from '@/app/utils/supabase';
 import { requireAuth } from '@/app/utils/routeAuth';
 import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
+import { registrarLog, getIp, registrarLogsCampos } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -182,7 +183,46 @@ export async function POST(request: NextRequest) {
         dataTimestamp: BigInt(Date.now()),
       },
     });
-    
+
+    // Log detalhado de upload
+    const ip = getIp(request);
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'ANEXAR',
+      entidade: 'DOCUMENTO',
+      entidadeId: documento.id,
+      entidadeNome: file.name,
+      campo: 'arquivo',
+      valorAnterior: null,
+      valorNovo: file.name,
+      processoId,
+      departamentoId: departamentoId || undefined,
+      ip,
+    });
+
+    await registrarLogsCampos({
+      usuarioId: user.id,
+      acao: 'ANEXAR',
+      entidade: 'DOCUMENTO',
+      entidadeId: documento.id,
+      entidadeNome: file.name,
+      processoId,
+      departamentoId: departamentoId || undefined,
+      ip,
+      campos: [
+        { campo: 'nome', valorNovo: documento.nome },
+        { campo: 'tipo', valorNovo: documento.tipo },
+        { campo: 'tipoCategoria', valorNovo: documento.tipoCategoria },
+        { campo: 'tamanho', valorNovo: documento.tamanho },
+        { campo: 'departamentoId', valorNovo: documento.departamentoId },
+        { campo: 'perguntaId', valorNovo: documento.perguntaId },
+        { campo: 'visibility', valorNovo: (documento as any).visibility },
+        { campo: 'allowedRoles', valorNovo: (documento as any).allowedRoles },
+        { campo: 'allowedUserIds', valorNovo: (documento as any).allowedUserIds },
+        { campo: 'allowedDepartamentos', valorNovo: (documento as any).allowedDepartamentos },
+      ],
+    });
+
     return jsonBigInt(documento, { status: 201 });
   } catch (error) {
     console.error('Erro no upload:', error);

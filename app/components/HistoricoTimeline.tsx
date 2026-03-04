@@ -2,15 +2,16 @@
 
 import React from 'react';
 import {
-  CheckCircle, ArrowRight, FileText, Upload, MessageSquare, 
+  CheckCircle, ArrowRight, FileText, Upload, MessageSquare,
   Star, Edit, Trash2, User, Calendar, Clock, Activity,
-  AlertCircle, Flag, PlayCircle, XCircle, PauseCircle, Link2
+  AlertCircle, Flag, PlayCircle, XCircle, PauseCircle, Link2,
+  FileEdit
 } from 'lucide-react';
 import { formatarData } from '@/app/utils/helpers';
 
 export interface HistoricoEvento {
-  id: number;
-  tipo: 'INICIO' | 'ALTERACAO' | 'MOVIMENTACAO' | 'CONCLUSAO' | 'FINALIZACAO' | 'DOCUMENTO' | 'COMENTARIO';
+  id: number | string;
+  tipo: 'INICIO' | 'ALTERACAO' | 'MOVIMENTACAO' | 'CONCLUSAO' | 'FINALIZACAO' | 'DOCUMENTO' | 'COMENTARIO' | 'ALTERACAO_CAMPO';
   acao: string;
   responsavel?: {
     id: number;
@@ -24,6 +25,13 @@ export interface HistoricoEvento {
   isInterligado?: boolean;
   processoOrigemId?: number;
   processoOrigemNome?: string;
+  // Campos de alteração campo-a-campo
+  isFieldLevel?: boolean;
+  campo?: string;
+  valorAnterior?: string | null;
+  valorNovo?: string | null;
+  entidade?: string;
+  entidadeNome?: string;
 }
 
 interface HistoricoTimelineProps {
@@ -48,6 +56,8 @@ export default function HistoricoTimeline({ historico, compact = false }: Histor
         return <CheckCircle className="w-5 h-5 text-emerald-600" />;
       case 'FINALIZACAO':
         return <Star className="w-5 h-5 text-amber-600" />;
+      case 'ALTERACAO_CAMPO':
+        return <FileEdit className="w-5 h-5 text-orange-600" />;
       default:
         return <Activity className="w-5 h-5 text-gray-600" />;
     }
@@ -69,6 +79,8 @@ export default function HistoricoTimeline({ historico, compact = false }: Histor
         return 'bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700';
       case 'FINALIZACAO':
         return 'bg-amber-100 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700';
+      case 'ALTERACAO_CAMPO':
+        return 'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700';
       default:
         return 'bg-gray-100 dark:bg-gray-900/30 border-gray-300 dark:border-gray-700';
     }
@@ -146,6 +158,32 @@ export default function HistoricoTimeline({ historico, compact = false }: Histor
                     </span>
                   )}
                 </div>
+
+                {/* Diff visual para alterações de campo */}
+                {evento.isFieldLevel && evento.campo && (
+                  <div className="mt-2 p-2 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                      {evento.campo}
+                    </p>
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                      {evento.valorAnterior ? (
+                        <span className="line-through text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-1.5 py-0.5 rounded max-w-[200px] truncate">
+                          {evento.valorAnterior}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 italic text-xs">(vazio)</span>
+                      )}
+                      <ArrowRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                      {evento.valorNovo ? (
+                        <span className="text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-1.5 py-0.5 rounded font-medium max-w-[200px] truncate">
+                          {evento.valorNovo}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 italic text-xs">(vazio)</span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Footer */}
                 <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">

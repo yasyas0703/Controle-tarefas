@@ -118,7 +118,7 @@ interface SistemaContextType {
   atualizarProcesso: (processoId: number, dados: Partial<Processo>) => Promise<void>;
   excluirProcesso: (processoId: number, motivoExclusao?: string, motivoExclusaoCustom?: string) => Promise<void>;
   avancarParaProximoDepartamento: (processoId: number) => Promise<void>;
-  finalizarProcesso: (processoId: number) => Promise<{ finalizado: boolean; processoId: number; interligadoComId: number | null; interligadoParalelo: boolean; processoNome: string } | void>;
+  finalizarProcesso: (processoId: number) => Promise<{ finalizado: boolean; processoId: number; interligadoComId: number | null; interligadoParalelo: boolean; processoNome: string; interligacaoTemplateIds: number[] } | void>;
   globalLoading: boolean;
   setGlobalLoading: (v: boolean) => void;
   aplicarTagsProcesso: (processoId: number, tags: number[]) => Promise<void>;
@@ -1200,6 +1200,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         departamentoAtual: 'Departamento Atual', dataEntrega: 'Data de Entrega',
         progresso: 'Progresso', empresaId: 'Empresa',
         interligadoComId: 'Interligado com', interligadoNome: 'Nome Interligação',
+        interligacaoTemplateIds: 'Fila de Interligação',
         deptIndependente: 'Departamentos Independentes',
       };
       const camposIgnorar = ['questionariosPorDepartamento', 'fluxoDepartamentos', 'dataAtualizacao', 'dataFinalizacao'];
@@ -1282,6 +1283,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           notasCriador: dados.notasCriador,
           dataEntrega: (dados as any).dataEntrega, // Prazo de entrega
           processoOrigemId: (dados as any).processoOrigemId,
+          interligacaoTemplateIds: (dados as any).interligacaoTemplateIds,
           interligadoComId: (dados as any).interligadoComId,
           interligadoNome: (dados as any).interligadoNome,
           interligadoParalelo: (dados as any).interligadoParalelo,
@@ -1611,6 +1613,9 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         interligadoComId: processoCompleto.interligadoComId ?? null,
         interligadoParalelo: !!(processoCompleto as any).interligadoParalelo,
         processoNome: processoCompleto.nomeEmpresa || processoCompleto.nome || `#${processoId}`,
+        interligacaoTemplateIds: Array.isArray((processoCompleto as any).interligacaoTemplateIds)
+          ? ((processoCompleto as any).interligacaoTemplateIds as any[]).map(Number).filter((id) => Number.isFinite(id) && id > 0)
+          : [],
       };
     } catch (error: any) {
       console.error('Erro ao finalizar:', error);

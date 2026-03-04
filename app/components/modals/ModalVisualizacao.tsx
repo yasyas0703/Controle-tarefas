@@ -229,6 +229,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                 (processo as any).respostasInterligadas.map((interligado: any) => {
                   const deptEntries = Object.entries(interligado.departamentos || {});
                   if (deptEntries.length === 0) return null;
+                  const docsInterligados = Array.isArray(interligado.documentos) ? interligado.documentos : [];
                   return deptEntries.map(([deptIdStr, deptData]: [string, any]) => {
                     const deptId = Number(deptIdStr);
                     const dept = departamentos.find((d: any) => Number(d?.id) === deptId);
@@ -236,6 +237,15 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                     const respostas = deptData?.respostas || {};
                     if (questionario.length === 0) return null;
                     const IconeDept = dept ? getIconeDepartamento(dept.icone) : null;
+
+                    // Função para buscar documentos do interligado vinculados a uma pergunta
+                    const docsInterligadosDaPergunta = (perguntaId: number) => {
+                      return docsInterligados.filter((d: any) => {
+                        const dPerg = numero(d?.perguntaId ?? d?.pergunta_id);
+                        return dPerg === perguntaId;
+                      });
+                    };
+
                     return (
                       <div key={`interligado-${interligado.processoId}-${deptId}`} className="bg-white dark:bg-[var(--card)] rounded-xl p-6 border border-purple-300 dark:border-purple-600 shadow-sm relative">
                         <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 rounded-lg text-xs font-semibold max-w-[60%] text-right">
@@ -257,12 +267,71 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           {questionario.map((pergunta: any) => {
+                            const tipoLower = (pergunta.tipo || '').toString().toLowerCase();
+
+                            // Tratamento especial para perguntas do tipo file
+                            if (tipoLower === 'file') {
+                              const anexos = docsInterligadosDaPergunta(numero(pergunta.id));
+                              if (!anexos.length) {
+                                return (
+                                  <div key={pergunta.id} className="md:col-span-2">
+                                    <div className="bg-gray-50 dark:bg-[var(--muted)] rounded-lg p-4 border border-transparent dark:border-[var(--border)]">
+                                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">{pergunta.label}</label>
+                                      <div className="text-sm text-gray-500 italic">Nenhum arquivo anexado</div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div key={pergunta.id} className="md:col-span-2">
+                                  <div className="bg-gray-50 dark:bg-[var(--muted)] rounded-lg p-4 border border-transparent dark:border-[var(--border)]">
+                                    <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">{pergunta.label}</label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      {anexos.map((doc: any) => (
+                                        <div
+                                          key={doc.id}
+                                          className="bg-white dark:bg-[var(--card)] rounded-lg p-3 border border-gray-200 dark:border-[var(--border)] flex items-center justify-between gap-3 w-full overflow-hidden"
+                                        >
+                                          <div className="flex-1 min-w-0 overflow-hidden">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                              <FileText size={16} className="text-gray-400 flex-shrink-0" />
+                                              <span className="block font-medium text-sm text-gray-800 dark:text-[var(--fg)] truncate" title={doc.nome}>{formatarNomeArquivo(doc.nome)}</span>
+                                            </div>
+                                            {doc.dataUpload && <div className="text-xs text-gray-500 mt-1">{formatarDataHora(doc.dataUpload)}</div>}
+                                          </div>
+                                          <div className="flex gap-1 flex-shrink-0 justify-end ml-3">
+                                            <button
+                                              onClick={() => setShowPreviewDocumento(doc)}
+                                              className="p-1 text-cyan-600 hover:bg-cyan-100 rounded"
+                                              title="Visualizar"
+                                            >
+                                              <Eye size={14} />
+                                            </button>
+                                            {doc.url && (
+                                              <a
+                                                href={doc.url}
+                                                download={doc.nome}
+                                                className="p-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-[var(--muted)] rounded"
+                                                title="Baixar"
+                                              >
+                                                <Download size={14} />
+                                              </a>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
                             const valor = respostas[String(pergunta.id)];
                             const hasValor = valor !== undefined && valor !== null && String(valor).trim() !== '';
 
                             // Tratamento para checkbox
                             let valorFormatado: any = valor;
-                            if (pergunta.tipo === 'checkbox' && hasValor) {
+                            if (tipoLower === 'checkbox' && hasValor) {
                               try {
                                 const valores = typeof valor === 'string' ? JSON.parse(valor) : valor;
                                 valorFormatado = Array.isArray(valores)
@@ -281,12 +350,12 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                             }
 
                             return (
-                              <div key={pergunta.id} className={pergunta.tipo === 'textarea' ? 'md:col-span-2' : ''}>
+                              <div key={pergunta.id} className={tipoLower === 'textarea' ? 'md:col-span-2' : ''}>
                                 <div className="bg-gray-50 dark:bg-[var(--muted)] rounded-lg p-4 border border-transparent dark:border-[var(--border)]">
                                   <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">{pergunta.label}</label>
                                   {hasValor ? (
                                     <div className="text-gray-800 dark:text-[var(--fg)]">
-                                      {pergunta.tipo === 'textarea' ? (
+                                      {tipoLower === 'textarea' ? (
                                         <div className="whitespace-pre-wrap">{String(valorFormatado)}</div>
                                       ) : typeof valor === 'boolean' ? (
                                         valor ? 'Sim' : 'Não'
@@ -330,11 +399,11 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
               );
 
             const hasAlgumAnexo = questionario.some((pergunta: any) => {
-              if (pergunta?.tipo !== 'file') return false;
+              if ((pergunta?.tipo || '').toString().toLowerCase() !== 'file') return false;
               return documentosDaPergunta(dept.id, numero(pergunta?.id)).length > 0;
             });
 
-            const hasPerguntasFile = questionario.some((p: any) => p?.tipo === 'file');
+            const hasPerguntasFile = questionario.some((p: any) => (p?.tipo || '').toString().toLowerCase() === 'file');
 
             // SEMPRE exibir se houver questionário (mesmo que seja só file sem resposta)
             const hasConteudo = questionario.length > 0;
@@ -365,7 +434,8 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {questionario.map((pergunta: any) => {
-                    if (pergunta?.tipo === 'file') {
+                    const tipoPerguntaLower = (pergunta?.tipo || '').toString().toLowerCase();
+                    if (tipoPerguntaLower === 'file') {
                       const anexos = documentosDaPergunta(dept.id, numero(pergunta?.id));
                       
                       if (!anexos.length) {
@@ -447,7 +517,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                     
                     // Tratamento especial para checkbox
                     let respostaFormatada: any = resposta;
-                    if (pergunta.tipo === 'checkbox') {
+                    if (tipoPerguntaLower === 'checkbox') {
                       try {
                         const valores = typeof resposta === 'string' ? JSON.parse(resposta) : resposta;
                         respostaFormatada = Array.isArray(valores)
@@ -466,11 +536,11 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
                     }
                     
                     return (
-                      <div key={pergunta.id} className={pergunta.tipo === 'textarea' ? 'md:col-span-2' : ''}>
+                      <div key={pergunta.id} className={tipoPerguntaLower === 'textarea' ? 'md:col-span-2' : ''}>
                         <div className="bg-gray-50 dark:bg-[var(--muted)] rounded-lg p-4 border border-transparent dark:border-[var(--border)]">
                           <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">{pergunta.label}</label>
                           <div className="text-gray-800 dark:text-[var(--fg)]">
-                            {pergunta.tipo === 'textarea' ? (
+                            {tipoPerguntaLower === 'textarea' ? (
                               <div className="whitespace-pre-wrap">{String(respostaFormatada)}</div>
                             ) : (
                               String(respostaFormatada)

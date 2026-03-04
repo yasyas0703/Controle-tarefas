@@ -6,9 +6,6 @@ import { GHOST_USER_EMAIL } from '@/app/utils/constants';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-/**
- * GET /api/logs - Obtém logs de auditoria global (apenas admin)
- */
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
@@ -20,7 +17,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const limite = parseInt(searchParams.get('limite') || '500');
+    const limite = parseInt(searchParams.get('limite') || '500', 10);
     const acao = searchParams.get('acao');
     const entidade = searchParams.get('entidade');
     const usuarioId = searchParams.get('usuarioId');
@@ -30,7 +27,7 @@ export async function GET(request: NextRequest) {
     };
     if (acao) where.acao = acao;
     if (entidade) where.entidade = entidade;
-    if (usuarioId) where.usuarioId = parseInt(usuarioId);
+    if (usuarioId) where.usuarioId = parseInt(usuarioId, 10);
 
     try {
       const logs = await (prisma as any).logAuditoria.findMany({
@@ -43,7 +40,6 @@ export async function GET(request: NextRequest) {
       });
       return NextResponse.json(logs);
     } catch (e: any) {
-      // Se a tabela não existir ainda (migration pendente), retorna vazio
       if (e?.code === 'P2021' || e?.message?.includes('does not exist')) {
         return NextResponse.json([]);
       }
@@ -51,13 +47,10 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error('Erro ao buscar logs:', error);
-    return NextResponse.json({ error: 'Erro ao buscar logs' }, { status: 500 });
+    return NextResponse.json({ error: 'Nao foi possivel carregar os logs de auditoria.' }, { status: 500 });
   }
 }
 
-/**
- * POST /api/logs - Registra um log de auditoria
- */
 export async function POST(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
@@ -65,8 +58,10 @@ export async function POST(request: NextRequest) {
 
     const data = await request.json();
 
-    // Ghost user: não registrar logs
-    const ghostCheck = await prisma.usuario.findUnique({ where: { id: user.id as number }, select: { isGhost: true, email: true } });
+    const ghostCheck = await prisma.usuario.findUnique({
+      where: { id: user.id as number },
+      select: { isGhost: true, email: true },
+    });
     if (ghostCheck?.isGhost || ghostCheck?.email === GHOST_USER_EMAIL) {
       return NextResponse.json({ ok: true }, { status: 200 });
     }
@@ -80,8 +75,8 @@ export async function POST(request: NextRequest) {
           entidadeId: data.entidadeId || null,
           entidadeNome: data.entidadeNome || null,
           campo: data.campo || null,
-          valorAnterior: data.valorAnterior ? String(data.valorAnterior) : null,
-          valorNovo: data.valorNovo ? String(data.valorNovo) : null,
+          valorAnterior: data.valorAnterior != null ? String(data.valorAnterior) : null,
+          valorNovo: data.valorNovo != null ? String(data.valorNovo) : null,
           detalhes: data.detalhes || null,
           processoId: data.processoId || null,
           empresaId: data.empresaId || null,
@@ -91,7 +86,6 @@ export async function POST(request: NextRequest) {
       });
       return NextResponse.json(log, { status: 201 });
     } catch (e: any) {
-      // Se a tabela não existir ainda, silencioso
       if (e?.code === 'P2021' || e?.message?.includes('does not exist')) {
         return NextResponse.json({ ok: true, pending: 'migration_needed' }, { status: 200 });
       }
@@ -99,15 +93,10 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('Erro ao registrar log:', error);
-    return NextResponse.json({ error: 'Erro ao registrar log' }, { status: 500 });
+    return NextResponse.json({ error: 'Nao foi possivel registrar o log de auditoria.' }, { status: 500 });
   }
 }
 
-/**
- * DELETE /api/logs - Excluir logs de auditoria (admin only)
- * Body: { ids: number[] } para exclusão seletiva
- *    ou { todos: true } para limpar todos os logs
- */
 export async function DELETE(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
@@ -118,36 +107,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
     }
 
-    const body = await request.json();
-
-    try {
-      let deletados = 0;
-
-      if (body.todos === true) {
-        const result = await (prisma as any).logAuditoria.deleteMany({});
-        deletados = result.count;
-      } else if (Array.isArray(body.ids) && body.ids.length > 0) {
-        const idsNumericos = body.ids.map(Number).filter((n: number) => !isNaN(n));
-        if (idsNumericos.length === 0) {
-          return NextResponse.json({ error: 'Nenhum ID válido fornecido' }, { status: 400 });
-        }
-        const result = await (prisma as any).logAuditoria.deleteMany({
-          where: { id: { in: idsNumericos } },
-        });
-        deletados = result.count;
-      } else {
-        return NextResponse.json({ error: 'Forneça { ids: [...] } ou { todos: true }' }, { status: 400 });
-      }
-
-      return NextResponse.json({ success: true, deletados });
-    } catch (e: any) {
-      if (e?.code === 'P2021' || e?.message?.includes('does not exist')) {
-        return NextResponse.json({ success: true, deletados: 0 });
-      }
-      throw e;
-    }
+    return NextResponse.json(
+      { error: 'Os logs de auditoria sao permanentes e nao podem ser apagados.' },
+      { status: 403 }
+    );
   } catch (error) {
-    console.error('Erro ao excluir logs:', error);
-    return NextResponse.json({ error: 'Erro ao excluir logs' }, { status: 500 });
+    console.error('Erro ao bloquear exclusao de logs:', error);
+    return NextResponse.json({ error: 'Nao foi possivel proteger os logs de auditoria.' }, { status: 500 });
   }
 }

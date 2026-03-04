@@ -43,8 +43,10 @@ export interface Processo {
   responsavelId?: number;
   responsavel?: Pick<Usuario, 'id' | 'nome' | 'email'>;
   // Interligação de solicitações
+  processoOrigemId?: number | null;
   interligadoComId?: number;
   interligadoNome?: string;
+  interligacaoTemplateIds?: number[];
   // Departamentos independentes
   deptIndependente?: boolean;
   // Checklist por departamento  

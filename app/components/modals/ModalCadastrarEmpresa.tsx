@@ -107,7 +107,12 @@ export default function ModalCadastrarEmpresa({ onClose, empresa }: ModalCadastr
 
   useEffect(() => {
     if (empresa) {
-      setFormData(empresa);
+      // Substituir valores null por '' para evitar warning de value={null} em inputs
+      const sanitized: Record<string, any> = {};
+      for (const [key, val] of Object.entries(empresa)) {
+        sanitized[key] = val === null ? '' : val;
+      }
+      setFormData(sanitized as Partial<Empresa>);
       setEmpresaCadastrada(empresa.cadastrada !== false);
     }
   }, [empresa]);

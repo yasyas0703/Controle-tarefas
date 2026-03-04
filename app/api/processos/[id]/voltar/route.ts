@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { getIp, registrarLog } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -102,6 +103,21 @@ export async function POST(
       },
     });
 
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'VOLTAR',
+      entidade: 'PROCESSO',
+      entidadeId: processoId,
+      entidadeNome: processo.nomeServico || processo.nomeEmpresa || `#${processoId}`,
+      campo: 'departamentoAtual',
+      valorAnterior: atualDepartamento?.nome || null,
+      valorNovo: destinoDepartamento?.nome || null,
+      detalhes: `Processo retornado de "${atualDepartamento?.nome || 'N/A'}" para "${destinoDepartamento?.nome || 'N/A'}".`,
+      processoId,
+      departamentoId: destinoId,
+      ip: getIp(request),
+    });
+
     // Auto-atribuir responsável ao responsável do departamento destino
     try {
       // 1. Buscar gerente do departamento destino
@@ -150,6 +166,9 @@ export async function POST(
     return NextResponse.json(processoAtualizado);
   } catch (error) {
     console.error('Erro ao voltar processo:', error);
-    return NextResponse.json({ error: 'Erro ao voltar processo' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Nao foi possivel retornar a solicitacao agora. Tente novamente.' },
+      { status: 500 }
+    );
   }
 }

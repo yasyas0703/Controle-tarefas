@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Link2, X, ArrowRight, Save, FolderOpen, Edit3, Trash2, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Link2, X, ArrowRight, Save, FolderOpen, Edit3, Trash2, Check, ChevronDown, ChevronUp, ArrowUp, ArrowDown } from 'lucide-react';
 import ModalBase from './ModalBase';
 import { api } from '@/app/utils/api';
 import type { FluxoInterligacao } from '@/app/types';
@@ -10,7 +10,7 @@ interface ModalInterligarProps {
   processoNome: string;
   processoId: number;
   templates: Array<{ id: number; nome: string; descricao?: string }>;
-  onConfirmar: (templateId: number, deptIndependente: boolean, interligarComId?: number | null, interligarParalelo?: boolean) => void;
+  onConfirmar: (templateIds: number[], deptIndependente: boolean, chainToId: number) => Promise<number>;
   onPular: () => void;
   onCancelar?: () => void; // Cancel without finalizing (undo finalization)
   onClose: () => void;
@@ -27,8 +27,6 @@ export default function ModalInterligar({
 }: ModalInterligarProps) {
   const [templatesSelecionados, setTemplatesSelecionados] = useState<number[]>([]);
   const [paralelo, setParalelo] = useState(false);
-  const [interligarCom, setInterligarCom] = useState<number | null>(null);
-  const [interligarParalelo, setInterligarParalelo] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // --- Fluxos Salvos ---
@@ -65,14 +63,23 @@ export default function ModalInterligar({
     );
   };
 
+  const moverTemplate = (id: number, direcao: -1 | 1) => {
+    setTemplatesSelecionados((prev) => {
+      const index = prev.indexOf(id);
+      if (index < 0) return prev;
+      const nextIndex = index + direcao;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
+
   const handleConfirmar = async () => {
     if (templatesSelecionados.length === 0) return;
     setLoading(true);
     try {
-      for (const templateId of templatesSelecionados) {
-        await onConfirmar(templateId, paralelo, interligarCom, interligarParalelo);
-      }
-      // Ao finalizar interligação com sucesso, fechar o modal.
+      await onConfirmar(templatesSelecionados, paralelo, processoId);
       onClose();
     } finally {
       setLoading(false);
@@ -195,7 +202,7 @@ export default function ModalInterligar({
               A solicitacao &quot;{processoNome}&quot; foi finalizada com sucesso!
             </p>
             <p className="text-xs text-purple-600 dark:text-purple-400 mt-2">
-              Deseja interligar com outra solicitacao? O historico sera compartilhado e a proxima solicitacao sera criada automaticamente.
+              O historico sera compartilhado e a proxima solicitacao sera criada automaticamente. Se voce escolher mais de uma atividade, as proximas ficam salvas em ordem.
             </p>
           </div>
         </div>
@@ -319,6 +326,9 @@ export default function ModalInterligar({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
               Selecione as atividades para continuar:
             </label>
+            <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+              A primeira atividade sera criada agora. As demais ficarao salvas em fila e so aparecerao quando a anterior for finalizada.
+            </p>
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {templates.map((template) => (
                 <label
@@ -335,6 +345,11 @@ export default function ModalInterligar({
                     onChange={() => toggleTemplate(template.id)}
                     className="w-4 h-4 text-purple-500 rounded focus:ring-purple-500"
                   />
+                  {templatesSelecionados.includes(template.id) && (
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500 text-xs font-bold text-white">
+                      {templatesSelecionados.indexOf(template.id) + 1}
+                    </span>
+                  )}
                   <div className="min-w-0 flex-1">
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300 block truncate">
                       {template.nome}
@@ -345,6 +360,34 @@ export default function ModalInterligar({
                       </span>
                     )}
                   </div>
+                  {templatesSelecionados.includes(template.id) && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          moverTemplate(template.id, -1);
+                        }}
+                        className="rounded p-1 text-gray-500 hover:bg-white/70 hover:text-purple-600"
+                        title="Mover para cima"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          moverTemplate(template.id, 1);
+                        }}
+                        className="rounded p-1 text-gray-500 hover:bg-white/70 hover:text-purple-600"
+                        title="Mover para baixo"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </label>
               ))}
             </div>
@@ -428,51 +471,6 @@ export default function ModalInterligar({
           </div>
         )}
 
-        {/* Interligar continuacao com outra atividade */}
-        {templatesSelecionados.length > 0 && templates.filter(t => !templatesSelecionados.includes(t.id)).length > 0 && (
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              <Link2 className="inline w-4 h-4 mr-1" />
-              Interligar continuacao com outra atividade <span className="text-gray-400 text-xs font-normal">(opcional)</span>
-            </label>
-            <select
-              value={interligarCom || ''}
-              onChange={(e) => {
-                setInterligarCom(e.target.value ? Number(e.target.value) : null);
-                if (!e.target.value) setInterligarParalelo(false);
-              }}
-              className="w-full px-3 py-2 border border-purple-300 dark:border-purple-700 rounded-lg focus:ring-2 focus:ring-purple-500 bg-purple-50 dark:bg-purple-900/20 text-gray-900 dark:text-[var(--fg)] text-sm"
-            >
-              <option value="">Nenhuma (solicitacao independente)</option>
-              {templates
-                .filter(t => !templatesSelecionados.includes(t.id))
-                .map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.nome}{t.descricao ? ` — ${t.descricao}` : ''}
-                  </option>
-                ))}
-            </select>
-            {interligarCom && (
-              <>
-                <p className="text-xs text-purple-600 dark:text-purple-400">
-                  Ao finalizar esta continuacao, a atividade selecionada sera criada automaticamente.
-                </p>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={interligarParalelo}
-                    onChange={(e) => setInterligarParalelo(e.target.checked)}
-                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                  />
-                  <span className="text-xs font-medium text-purple-700 dark:text-purple-300">
-                    Solicitacao interligada com departamentos em paralelo
-                  </span>
-                </label>
-              </>
-            )}
-          </div>
-        )}
-
         {/* Botoes - 3 opcoes claras */}
         <div className="flex flex-col gap-3 pt-2">
           <div className="flex justify-end gap-3">
@@ -488,7 +486,7 @@ export default function ModalInterligar({
               className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
             >
               <Link2 className="w-4 h-4" />
-              {loading ? 'Interligando...' : `Interligar e Continuar${templatesSelecionados.length > 1 ? ` (${templatesSelecionados.length})` : ''}`}
+              {loading ? 'Salvando fila...' : `Criar proxima atividade${templatesSelecionados.length > 1 ? ` (+${templatesSelecionados.length - 1} na fila)` : ''}`}
             </button>
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 text-center">

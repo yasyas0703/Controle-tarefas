@@ -3,6 +3,7 @@ import { prisma } from '@/app/utils/prisma';
 import { deleteFile, generateSignedUrl } from '@/app/utils/supabase';
 import { requireAuth, requireRole } from '@/app/utils/routeAuth';
 import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
+import { detectarMudancas, getIp, registrarLogsCampos } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -139,6 +140,22 @@ export async function DELETE(
         dataTimestamp: BigInt(Date.now()),
       },
     });
+
+    await registrarLogsCampos({
+      usuarioId: user.id,
+      acao: 'EXCLUIR',
+      entidade: 'DOCUMENTO',
+      entidadeId: documento.id,
+      entidadeNome: documento.nome,
+      processoId: documento.processoId,
+      departamentoId: documento.departamentoId,
+      ip: getIp(request),
+      campos: [
+        { campo: 'arquivo', valorAnterior: documento.nome, valorNovo: null, detalhes: 'Documento movido para lixeira.' },
+        { campo: 'tipo', valorAnterior: documento.tipo, valorNovo: null },
+        { campo: 'perguntaId', valorAnterior: documento.perguntaId, valorNovo: null },
+      ],
+    });
     
     return NextResponse.json({ 
       message: 'Documento movido para lixeira',
@@ -210,6 +227,37 @@ export async function PATCH(
     const atualizado = await prisma.documento.update({
       where: { id: docId },
       data: updateData,
+    });
+
+    const mudancas = detectarMudancas(
+      {
+        visibility: (documento as any).visibility,
+        allowedRoles: (documento as any).allowedRoles,
+        allowedUserIds: (documento as any).allowedUserIds,
+        allowedDepartamentos: (documento as any).allowedDepartamentos,
+      },
+      {
+        visibility: (atualizado as any).visibility,
+        allowedRoles: (atualizado as any).allowedRoles,
+        allowedUserIds: (atualizado as any).allowedUserIds,
+        allowedDepartamentos: (atualizado as any).allowedDepartamentos,
+      }
+    );
+
+    await registrarLogsCampos({
+      usuarioId: user.id,
+      acao: 'EDITAR',
+      entidade: 'DOCUMENTO',
+      entidadeId: atualizado.id,
+      entidadeNome: atualizado.nome,
+      processoId: atualizado.processoId,
+      departamentoId: atualizado.departamentoId,
+      ip: getIp(request),
+      campos: mudancas.map((mudanca) => ({
+        campo: mudanca.campo,
+        valorAnterior: mudanca.valorAnterior,
+        valorNovo: mudanca.valorNovo,
+      })),
     });
 
     return jsonBigInt(atualizado);

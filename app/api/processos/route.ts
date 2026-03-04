@@ -3,6 +3,8 @@ import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
 import { verificarPermissaoDocumento } from '@/app/utils/verificarPermissaoDocumento';
 import { buildProcessReadWhere, getUserDepartmentId, isAdminLike } from '@/app/utils/processAccess';
+import { ensureProcessInterligacaoSchema, normalizeInterligacaoTemplateIds } from '@/app/utils/processInterligacaoSchema';
+import { getIp, registrarLog, registrarLogsCampos } from '@/app/utils/logAuditoria';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -296,6 +298,18 @@ async function persistInterligacaoProcessos(params: {
         automatica: true,
       },
     });
+    await registrarLog({
+      usuarioId: criadoPorId,
+      acao: 'INTERLIGAR',
+      entidade: 'PROCESSO',
+      entidadeId: processoDestino.id,
+      entidadeNome: destinoNome,
+      campo: 'processoOrigemId',
+      valorAnterior: null,
+      valorNovo: String(origem.id),
+      detalhes: `Solicitacao #${processoDestino.id} criada como continuacao de #${origem.id}.`,
+      processoId: processoDestino.id,
+    });
   } catch (error) {
     console.warn(`Não foi possível criar interligação com processo #${origem.id}:`, error);
   }
@@ -306,6 +320,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureProcessInterligacaoSchema();
 
     const { searchParams } = new URL(request.url);
     
@@ -470,6 +485,7 @@ export async function POST(request: NextRequest) {
 
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureProcessInterligacaoSchema();
     console.log('[LOG] requireAuth:', Date.now() - t0, 'ms');
 
     const data = await request.json();
@@ -590,6 +606,7 @@ export async function POST(request: NextRequest) {
     const dataEntrega = parseDateMaybe(data?.dataEntrega) ?? addDays(dataInicio, 15);
     const processoOrigemIdParsed = Number(data?.processoOrigemId);
     const processoOrigemId = Number.isFinite(processoOrigemIdParsed) ? processoOrigemIdParsed : undefined;
+    const interligacaoTemplateIds = normalizeInterligacaoTemplateIds(data?.interligacaoTemplateIds);
 
     const responsavelIdRaw = data?.responsavelId;
     let responsavelId = Number.isFinite(Number(responsavelIdRaw)) ? Number(responsavelIdRaw) : undefined;
@@ -684,9 +701,11 @@ export async function POST(request: NextRequest) {
           progresso: data.progresso || 0,
           dataInicio,
           dataEntrega,
+          ...(typeof processoOrigemId === 'number' ? { processoOrigemId } : {}),
           ...(data.interligadoComId ? { interligadoComId: Number(data.interligadoComId) } : {}),
           ...(data.interligadoNome ? { interligadoNome: String(data.interligadoNome) } : {}),
           ...(data.interligadoParalelo != null ? { interligadoParalelo: Boolean(data.interligadoParalelo) } : {}),
+          ...(interligacaoTemplateIds.length > 0 ? { interligacaoTemplateIds } : {}),
           ...(data.deptIndependente != null ? { deptIndependente: Boolean(data.deptIndependente) } : {}),
         },
         select: {
@@ -710,9 +729,11 @@ export async function POST(request: NextRequest) {
           progresso: true,
           dataInicio: true,
           dataEntrega: true,
+          processoOrigemId: true,
           interligadoComId: true,
           interligadoNome: true,
           interligadoParalelo: true,
+          interligacaoTemplateIds: true,
           deptIndependente: true,
         },
       });
@@ -770,6 +791,55 @@ export async function POST(request: NextRequest) {
       return proc;
     });
     console.log('[LOG] prisma.$transaction (processo):', Date.now() - tProcesso, 'ms');
+
+    const ip = getIp(request as any);
+    const entidadeNome = processo.nomeServico || processo.nomeEmpresa || `#${processo.id}`;
+
+    await registrarLog({
+      usuarioId: user.id,
+      acao: 'CRIAR',
+      entidade: 'PROCESSO',
+      entidadeId: processo.id,
+      entidadeNome,
+      processoId: processo.id,
+      empresaId: processo.empresaId ?? null,
+      detalhes: `Solicitacao criada${processoOrigemId ? ` como continuacao de #${processoOrigemId}` : ''}.`,
+      ip,
+    });
+
+    await registrarLogsCampos({
+      usuarioId: user.id,
+      acao: 'CRIAR',
+      entidade: 'PROCESSO',
+      entidadeId: processo.id,
+      entidadeNome,
+      processoId: processo.id,
+      empresaId: processo.empresaId ?? null,
+      ip,
+      campos: [
+        { campo: 'nome', valorNovo: processo.nome },
+        { campo: 'nomeServico', valorNovo: processo.nomeServico },
+        { campo: 'nomeEmpresa', valorNovo: processo.nomeEmpresa },
+        { campo: 'cliente', valorNovo: processo.cliente },
+        { campo: 'email', valorNovo: processo.email },
+        { campo: 'telefone', valorNovo: processo.telefone },
+        { campo: 'responsavelId', valorNovo: processo.responsavelId },
+        { campo: 'status', valorNovo: processo.status },
+        { campo: 'prioridade', valorNovo: processo.prioridade },
+        { campo: 'departamentoAtual', valorNovo: processo.departamentoAtual },
+        { campo: 'fluxoDepartamentos', valorNovo: processo.fluxoDepartamentos },
+        { campo: 'descricao', valorNovo: processo.descricao },
+        { campo: 'notasCriador', valorNovo: processo.notasCriador },
+        { campo: 'dataInicio', valorNovo: processo.dataInicio },
+        { campo: 'dataEntrega', valorNovo: processo.dataEntrega },
+        { campo: 'processoOrigemId', valorNovo: processo.processoOrigemId },
+        { campo: 'interligadoComId', valorNovo: processo.interligadoComId },
+        { campo: 'interligadoNome', valorNovo: processo.interligadoNome },
+        { campo: 'interligacaoTemplateIds', valorNovo: processo.interligacaoTemplateIds },
+        { campo: 'interligadoParalelo', valorNovo: processo.interligadoParalelo },
+        { campo: 'deptIndependente', valorNovo: processo.deptIndependente },
+      ],
+    });
 
     if (typeof processoOrigemId === 'number') {
       await persistInterligacaoProcessos({
@@ -832,4 +902,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
