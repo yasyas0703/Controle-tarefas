@@ -716,12 +716,18 @@ model LogAuditoria {
   empresaId   Int?     // Se relacionado a uma empresa
   departamentoId Int?  // Se relacionado a um departamento
   ip          String?  // IP do usuário (opcional)
+  apagado     Boolean  @default(false)
+  apagadoEm   DateTime?
+  apagadoPorId Int?
+  apagadoPorNome String?
+  apagadoMotivo String? @db.Text
   criadoEm    DateTime @default(now())
 
   @@index([usuarioId])
   @@index([entidade])
   @@index([processoId])
   @@index([empresaId])
+  @@index([apagado])
   @@index([criadoEm])
   @@index([acao])
 }

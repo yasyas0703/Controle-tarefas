@@ -5,6 +5,7 @@ import { Departamento, Processo, Tag, Usuario, Notificacao, Empresa, Template } 
 import type { TipoAlerta } from '@/app/components/modals/ModalAlerta';
 import { api } from '@/app/utils/api';
 import { getSupabaseBrowserClient } from '@/app/utils/supabaseBrowser';
+import { GHOST_USER_EMAIL, MASTER_USER_EMAIL } from '@/app/utils/constants';
 import LoadingOverlay from '@/app/components/LoadingOverlay';
 
 type RealtimeGroupStatus = 'disabled' | 'connecting' | 'connected' | 'fallback';
@@ -1042,8 +1043,8 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           const data = await res.json();
           const isGhostOrMaster =
             (usuarioLogado as any).isGhost === true ||
-            usuarioLogado.email === 'ghost@triar.com' ||
-            usuarioLogado.email === 'master@triar.com';
+            usuarioLogado.email === GHOST_USER_EMAIL ||
+            usuarioLogado.email === MASTER_USER_EMAIL;
           if (data.ativo && !isGhostOrMaster) {
             setModoManutencao(true);
           } else if (!data.ativo) {

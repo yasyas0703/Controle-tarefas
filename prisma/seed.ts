@@ -4,12 +4,20 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log('🌱 Iniciando seed do banco de dados...');
+const GHOST_USER = {
+  externalId: 'bdf74a16-ef7e-477e-ab81-ae3a25b41375',
+  nome: 'Sistema',
+  email: 'ghost@triar.system',
+  senha: 'GhostTriar@2026!',
+} as const;
 
-  // Criar usuário admin padrão
+async function main() {
+  console.log('Iniciando seed do banco de dados...');
+
+  // Criar usuario admin padrao
   const hashedPassword = await bcrypt.hash('admin123', 10);
-  
+  const ghostHashedPassword = await bcrypt.hash(GHOST_USER.senha, 10);
+
   const admin = await prisma.usuario.upsert({
     where: { email: 'yasmin@triarcontabilidade.com.br' },
     update: {},
@@ -18,16 +26,42 @@ async function main() {
       email: 'yasmin@triarcontabilidade.com.br',
       senha: hashedPassword,
       role: 'ADMIN',
-      permissoes: ['*'], // Todas permissões
+      permissoes: ['*'],
       ativo: true,
     },
   });
 
-  console.log('✅ Usuário admin criado:', admin.email);
+  console.log('Usuario admin criado:', admin.email);
 
+  // Sincronizar ghost user
+  const ghost = await prisma.usuario.upsert({
+    where: { email: GHOST_USER.email },
+    update: {
+      externalId: GHOST_USER.externalId,
+      nome: GHOST_USER.nome,
+      senha: ghostHashedPassword,
+      role: 'ADMIN',
+      ativo: true,
+      isGhost: true,
+      require2FA: false,
+      permissoes: [],
+    },
+    create: {
+      externalId: GHOST_USER.externalId,
+      nome: GHOST_USER.nome,
+      email: GHOST_USER.email,
+      senha: ghostHashedPassword,
+      role: 'ADMIN',
+      ativo: true,
+      isGhost: true,
+      require2FA: false,
+      permissoes: [],
+    },
+  });
 
+  console.log('Ghost user sincronizado:', ghost.email);
 
-  // Criar tags padrão
+  // Criar tags padrao
   const tags = await Promise.all([
     prisma.tag.upsert({
       where: { nome: 'Urgente' },
@@ -67,9 +101,9 @@ async function main() {
     }),
   ]);
 
-  console.log('✅ Tags criadas:', tags.length);
+  console.log('Tags criadas:', tags.length);
 
-  // Criar usuário de exemplo
+  // Criar usuario de exemplo
   const usuarioExemplo = await prisma.usuario.upsert({
     where: { email: 'usuario@example.com' },
     update: {},
@@ -78,25 +112,19 @@ async function main() {
       email: 'usuario@example.com',
       senha: await bcrypt.hash('senha123', 10),
       role: 'USUARIO',
- 
       ativo: true,
     },
   });
 
-  console.log('✅ Usuário exemplo criado:', usuarioExemplo.email);
-
-  console.log('🎉 Seed concluído com sucesso!');
+  console.log('Usuario exemplo criado:', usuarioExemplo.email);
+  console.log('Seed concluido com sucesso!');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Erro no seed:', e);
+    console.error('Erro no seed:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-
-
-
-

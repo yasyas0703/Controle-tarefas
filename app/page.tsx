@@ -610,8 +610,8 @@ export default function Home() {
               <span className="hidden sm:inline">Departamentos</span>
               <span className="sm:hidden">Deptos</span>
             </button>
-            {/* Aba Logs - apenas admin/admin_departamento */}
-            {isAdminLike && (
+            {/* Aba Logs - admins e superusuarios */}
+            {(isAdminLike || isSuperUser) && (
               <button
                 onClick={() => setAbaAtiva('logs')}
                 className={`

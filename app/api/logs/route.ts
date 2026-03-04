@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
-import { GHOST_USER_EMAIL } from '@/app/utils/constants';
+import { GHOST_USER_EMAIL, MASTER_USER_EMAIL } from '@/app/utils/constants';
+import { ensureLogAuditoriaSoftDeleteSchema } from '@/app/utils/logAuditoriaSchema';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+function isSuperUser(user: any) {
+  return user?.isGhost === true || user?.email === GHOST_USER_EMAIL || user?.email === MASTER_USER_EMAIL;
+}
 
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureLogAuditoriaSoftDeleteSchema();
 
     const roleUpper = String((user as any).role || '').toUpperCase();
-    if (roleUpper !== 'ADMIN' && roleUpper !== 'ADMIN_DEPARTAMENTO') {
+    const superUser = isSuperUser(user);
+    if (roleUpper !== 'ADMIN' && roleUpper !== 'ADMIN_DEPARTAMENTO' && !superUser) {
       return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
     }
 
@@ -24,6 +31,7 @@ export async function GET(request: NextRequest) {
 
     const where: any = {
       usuario: { email: { not: GHOST_USER_EMAIL }, isGhost: { not: true } },
+      ...(superUser ? {} : { apagado: false }),
     };
     if (acao) where.acao = acao;
     if (entidade) where.entidade = entidade;
@@ -55,6 +63,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureLogAuditoriaSoftDeleteSchema();
 
     const data = await request.json();
 
@@ -101,18 +110,70 @@ export async function DELETE(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureLogAuditoriaSoftDeleteSchema();
 
     const roleUpper = String((user as any).role || '').toUpperCase();
-    if (roleUpper !== 'ADMIN' && roleUpper !== 'ADMIN_DEPARTAMENTO') {
-      return NextResponse.json({ error: 'Acesso restrito a administradores' }, { status: 403 });
+    const superUser = isSuperUser(user);
+    if (roleUpper !== 'ADMIN' && !superUser) {
+      return NextResponse.json(
+        { error: 'Apenas administradores podem excluir logs.' },
+        { status: 403 }
+      );
     }
 
-    return NextResponse.json(
-      { error: 'Os logs de auditoria sao permanentes e nao podem ser apagados.' },
-      { status: 403 }
-    );
+    const body = await request.json().catch(() => ({}));
+    const ids = Array.isArray(body?.ids)
+      ? body.ids.map((id: any) => Number(id)).filter((id: number) => Number.isFinite(id) && id > 0)
+      : [];
+    const todos = body?.todos === true;
+    const motivo = typeof body?.motivo === 'string' ? body.motivo.trim() : '';
+
+    if (!todos && ids.length === 0) {
+      return NextResponse.json(
+        { error: 'Selecione ao menos um log para excluir.' },
+        { status: 400 }
+      );
+    }
+
+    const logsAlvo = await prisma.logAuditoria.findMany({
+      where: {
+        ...(todos ? {} : { id: { in: ids } }),
+        apagado: false,
+        usuario: { email: { not: GHOST_USER_EMAIL }, isGhost: { not: true } },
+      },
+      select: { id: true },
+    });
+
+    const idsAlvo = logsAlvo.map((log) => log.id);
+    if (idsAlvo.length === 0) {
+      return NextResponse.json({ success: true, deletados: 0 });
+    }
+
+    const agora = new Date();
+    const resultado = await prisma.logAuditoria.updateMany({
+      where: { id: { in: idsAlvo } },
+      data: {
+        apagado: true,
+        apagadoEm: agora,
+        apagadoPorId: Number(user.id),
+        apagadoPorNome: String((user as any).nome || 'Administrador'),
+        apagadoMotivo: motivo || null,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      deletados: resultado.count,
+      message:
+        resultado.count === 1
+          ? '1 log foi ocultado da visao comum. O ghost continua vendo esse registro.'
+          : `${resultado.count} logs foram ocultados da visao comum. O ghost continua vendo esses registros.`,
+    });
   } catch (error) {
-    console.error('Erro ao bloquear exclusao de logs:', error);
-    return NextResponse.json({ error: 'Nao foi possivel proteger os logs de auditoria.' }, { status: 500 });
+    console.error('Erro ao excluir logs:', error);
+    return NextResponse.json(
+      { error: 'Nao foi possivel excluir os logs selecionados.' },
+      { status: 500 }
+    );
   }
 }

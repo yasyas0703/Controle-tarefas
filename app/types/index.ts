@@ -403,6 +403,11 @@ export interface LogAuditoria {
   processoId?: number | null;
   empresaId?: number | null;
   departamentoId?: number | null;
+  apagado?: boolean;
+  apagadoEm?: Date | string | null;
+  apagadoPorId?: number | null;
+  apagadoPorNome?: string | null;
+  apagadoMotivo?: string | null;
   criadoEm: Date | string;
 }
 

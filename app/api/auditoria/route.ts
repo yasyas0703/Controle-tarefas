@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
-import { GHOST_USER_EMAIL } from '@/app/utils/constants';
+import { GHOST_USER_EMAIL, MASTER_USER_EMAIL } from '@/app/utils/constants';
 import { coletarProcessosInterligados } from '@/app/utils/processChain';
+import { ensureLogAuditoriaSoftDeleteSchema } from '@/app/utils/logAuditoriaSchema';
 
 function construirAcaoLog(log: any) {
   if (log.campo) {
@@ -27,6 +28,12 @@ export async function GET(request: NextRequest) {
   try {
     const { user, error } = await requireAuth(request);
     if (!user) return error;
+    await ensureLogAuditoriaSoftDeleteSchema();
+
+    const superUser =
+      (user as any).isGhost === true ||
+      (user as any).email === GHOST_USER_EMAIL ||
+      (user as any).email === MASTER_USER_EMAIL;
 
     const { searchParams } = new URL(request.url);
     const processoId = Number(searchParams.get('processoId'));
@@ -59,6 +66,7 @@ export async function GET(request: NextRequest) {
       where: {
         processoId: { in: processosIds },
         usuario: { email: { not: GHOST_USER_EMAIL }, isGhost: { not: true } },
+        ...(superUser ? {} : { apagado: false }),
       },
       include: {
         usuario: {
@@ -89,6 +97,11 @@ export async function GET(request: NextRequest) {
       entidade: log.entidade,
       entidadeNome: log.entidadeNome,
       isFieldLevel: Boolean(log.campo),
+      apagado: (log as any).apagado ?? false,
+      apagadoEm: (log as any).apagadoEm ?? null,
+      apagadoPorId: (log as any).apagadoPorId ?? null,
+      apagadoPorNome: (log as any).apagadoPorNome ?? null,
+      apagadoMotivo: (log as any).apagadoMotivo ?? null,
       processoOrigemId: log.processoId,
       processoOrigemNome: log.processoId ? cadeia.nomes[log.processoId] || `#${log.processoId}` : null,
       isInterligado: log.processoId !== processoId,

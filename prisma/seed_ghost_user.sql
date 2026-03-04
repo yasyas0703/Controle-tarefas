@@ -11,6 +11,7 @@ INSERT INTO "Usuario" (
   "role",
   "ativo",
   "isGhost",
+  "require2FA",
   "permissoes",
   "criadoEm"
 ) VALUES (
@@ -21,12 +22,15 @@ INSERT INTO "Usuario" (
   'ADMIN',
   true,
   true,
+  false,
   '{}',
   NOW()
 )
 ON CONFLICT ("email") DO UPDATE SET
   "externalId" = EXCLUDED."externalId",
+  "nome" = EXCLUDED."nome",
   "isGhost" = true,
   "ativo" = true,
   "role" = 'ADMIN',
+  "require2FA" = false,
   "senha" = EXCLUDED."senha";

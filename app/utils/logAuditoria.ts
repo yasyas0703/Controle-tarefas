@@ -1,5 +1,6 @@
 import { prisma } from '@/app/utils/prisma';
 import { GHOST_USER_EMAIL } from './constants';
+import { ensureLogAuditoriaSoftDeleteSchema } from './logAuditoriaSchema';
 
 // Cache de IDs de ghost users para evitar queries repetidas
 let ghostUserIdsCache: Set<number> | null = null;
@@ -43,6 +44,8 @@ export async function registrarLog(opts: {
   ip?: string | null;
 }) {
   try {
+    await ensureLogAuditoriaSoftDeleteSchema();
+
     // Ghost user: não registrar logs
     const ghosts = await getGhostUserIds();
     if (ghosts.has(opts.usuarioId)) return;

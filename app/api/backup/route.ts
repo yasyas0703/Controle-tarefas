@@ -7,6 +7,7 @@ import {
   getEmpresaDocumentoQueryConfig,
   normalizeEmpresaDocumento,
 } from '@/app/utils/empresaDocumentoCompat';
+import { ensureLogAuditoriaSoftDeleteSchema } from '@/app/utils/logAuditoriaSchema';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -90,6 +91,7 @@ function normalizeChecklistDepartamento(item: any, config: { hasResponsavelId: b
 export async function GET(request: NextRequest) {
   const { user, error } = await requireAuth(request);
   if (error) return error;
+  await ensureLogAuditoriaSoftDeleteSchema();
   if (!requireRole(user, ['ADMIN'])) {
     return NextResponse.json({ error: 'Apenas administradores podem exportar backups' }, { status: 403 });
   }
@@ -209,6 +211,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { user, error } = await requireAuth(request);
   if (error) return error;
+  await ensureLogAuditoriaSoftDeleteSchema();
   if (!requireRole(user, ['ADMIN'])) {
     return NextResponse.json({ error: 'Apenas administradores podem restaurar backups' }, { status: 403 });
   }
@@ -654,6 +657,11 @@ export async function POST(request: NextRequest) {
                 empresaId: l.empresaId || null,
                 departamentoId: l.departamentoId || null,
                 ip: l.ip || null,
+                apagado: l.apagado === true,
+                apagadoEm: l.apagadoEm ? new Date(l.apagadoEm) : null,
+                apagadoPorId: l.apagadoPorId || null,
+                apagadoPorNome: l.apagadoPorNome || null,
+                apagadoMotivo: l.apagadoMotivo || null,
                 criadoEm: l.criadoEm ? new Date(l.criadoEm) : new Date(),
               },
             });
