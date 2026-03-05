@@ -31,7 +31,7 @@ export default function VisualizacaoCompleta({ processo, onClose }: Visualizacao
         .catch((err) => console.error('Erro ao carregar histórico:', err))
         .finally(() => setCarregandoHistorico(false));
     }
-  }, [abaAtiva, processo?.id]);
+  }, [abaAtiva, processo?.id, historicoCompleto.length]);
 
   // Função para exportar PDF
   const handleExportarPDF = async () => {

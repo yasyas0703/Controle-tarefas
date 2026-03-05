@@ -63,7 +63,7 @@ export default function ProcessoDetalhado({
         .catch((err) => console.error('Erro ao carregar histórico:', err))
         .finally(() => setCarregandoHistorico(false));
     }
-  }, [activeTab, processo.id]);
+  }, [activeTab, processo.id, historicoCompleto.length]);
 
   const historico = ((processo as any)?.historico || (processo as any)?.historicoEvento || []) as any[];
   const ultimasAtividades = Array.isArray(historico) ? historico.slice(0, 3) : [];

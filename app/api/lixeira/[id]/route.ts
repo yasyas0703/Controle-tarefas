@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/app/utils/prisma';
 import { requireAuth } from '@/app/utils/routeAuth';
+import { hashPassword } from '@/app/utils/auth';
 import { uploadFile } from '@/app/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,21 @@ function jsonBigInt(data: unknown, init?: { status?: number }) {
       },
     }
   );
+}
+
+function isBcryptHash(value: string): boolean {
+  return /^\$2[aby]\$\d{2}\$/.test(value);
+}
+
+async function resolveRestoredPasswordHash(rawPassword: unknown): Promise<string> {
+  const password = typeof rawPassword === 'string' ? rawPassword.trim() : '';
+  if (password) {
+    return isBcryptHash(password) ? password : hashPassword(password);
+  }
+
+  // Quando a lixeira não possui senha original, cria senha temporária e armazena somente o hash.
+  const temporaryPassword = `restored-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+  return hashPassword(temporaryPassword);
 }
 
 // Verifica se usuário pode ver item na lixeira
@@ -471,11 +487,12 @@ export async function POST(
           },
         });
       } else {
+        const senhaHash = await resolveRestoredPasswordHash(dadosOriginais.senha);
         usuarioRestaurado = await prisma.usuario.create({
           data: {
             nome: dadosOriginais.nome,
             email: dadosOriginais.email,
-            senha: dadosOriginais.senha || 'restored',
+            senha: senhaHash,
             role: (dadosOriginais.role as any) || 'USUARIO',
             departamentoId: dadosOriginais.departamentoId || null,
             ativo: true,

@@ -117,6 +117,7 @@ export default function Home() {
   const [processoSelecionado, setProcessoSelecionado] = useState<Processo | null>(null);
   const [showVisualizacao, setShowVisualizacao] = useState<Processo | null>(null);
   const [showProcessoDetalhado, setShowProcessoDetalhado] = useState<Processo | null>(null);
+  const showVisualizacaoId = showVisualizacao?.id ?? null;
   const [departamentoEmEdicao, setDepartamentoEmEdicao] = useState<Departamento | null>(null);
   
   // Estado de favoritos
@@ -291,8 +292,8 @@ export default function Home() {
   // Mantém o modal de visualização completo em sincronia com o estado global.
   // Ex.: se apagar documento na galeria/upload, o modal deve refletir imediatamente.
   useEffect(() => {
-    if (!showVisualizacao) return;
-    const atualizado = (processos || []).find((p) => Number(p?.id) === Number(showVisualizacao?.id));
+    if (showVisualizacaoId == null) return;
+    const atualizado = (processos || []).find((p) => Number(p?.id) === Number(showVisualizacaoId));
     if (!atualizado) return;
 
     const docsAtualizados = Array.isArray((atualizado as any)?.documentos) ? (atualizado as any).documentos : null;
@@ -313,7 +314,7 @@ export default function Home() {
       if (sameDocList(prevDocs, docsAtualizados)) return prev;
       return { ...(prev as any), documentos: docsAtualizados } as any;
     });
-  }, [processos, showVisualizacao?.id]);
+  }, [processos, showVisualizacaoId]);
 
   // Carregar favoritos quando o usuário está logado
   useEffect(() => {

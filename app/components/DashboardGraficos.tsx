@@ -428,8 +428,8 @@ function KpiCard({
 
 export default function DashboardGraficos() {
   const { processos: processosRaw, departamentos: deptosRaw } = useSistema();
-  const processos = (processosRaw || []) as Processo[];
-  const departamentos = (deptosRaw || []) as Departamento[];
+  const processos = useMemo(() => (processosRaw ?? []) as Processo[], [processosRaw]);
+  const departamentos = useMemo(() => (deptosRaw ?? []) as Departamento[], [deptosRaw]);
 
   // ── Filtros ──
   const [periodo, setPeriodo] = useState<PeriodoFiltro>('todos');

@@ -1131,7 +1131,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao excluir empresa', 'erro');
       throw error;
     }
-  }, [adicionarNotificacao]);
+  }, [adicionarNotificacao, empresas]);
 
   const carregarEmpresas = useCallback(async () => {
     try {
@@ -1183,7 +1183,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao excluir template', 'erro');
       throw error;
     }
-  }, [adicionarNotificacao]);
+  }, [adicionarNotificacao, templates]);
 
   const atualizarProcesso = useCallback(async (processoId: number, dados: Partial<Processo>) => {
     try {
@@ -1458,7 +1458,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         setGlobalLoading(false);
       }
     },
-    [adicionarNotificacao, mostrarAlerta, processos, setProcessos, setGlobalLoading, usuarioLogado?.role]
+    [adicionarNotificacao, mostrarAlerta, processos, setProcessos, setGlobalLoading, departamentos]
   );
 
   const finalizarProcesso = useCallback(async (processoId: number) => {
@@ -1630,7 +1630,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setGlobalLoading(false);
     }
-  }, [adicionarNotificacao, departamentos, mostrarAlerta, usuarioLogado?.role]);
+  }, [adicionarNotificacao, departamentos, mostrarAlerta]);
 
   const aplicarTagsProcesso = useCallback(async (processoId: number, novasTags: number[]) => {
     try {
@@ -1742,7 +1742,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
       adicionarNotificacao(error.message || 'Erro ao retornar processo', 'erro');
       throw error;
     }
-  }, [processos, adicionarNotificacao, mostrarConfirmacao]);
+  }, [processos, adicionarNotificacao, mostrarConfirmacao, departamentos]);
 
   const adicionarDocumentoProcesso = useCallback(async (processoId: number, arquivo: File, tipo: string, departamentoId?: number, perguntaId?: number, meta?: { visibility?: string; allowedRoles?: string[]; allowedUserIds?: number[]; allowedDepartamentos?: number[] }) => {
     try {

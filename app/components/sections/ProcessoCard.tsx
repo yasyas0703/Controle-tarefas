@@ -131,8 +131,9 @@ export default function ProcessoCard({
   // Removed inline dark-mode color overrides to rely on Tailwind classes
 
   const [editando, setEditando] = useState(false);
+  const processoResponsavelId = (processo as any).responsavelId;
   const [editNomeEmpresa, setEditNomeEmpresa] = useState(processo.nomeEmpresa || '');
-  const [editResponsavelId, setEditResponsavelId] = useState<number | undefined>((processo as any).responsavelId);
+  const [editResponsavelId, setEditResponsavelId] = useState<number | undefined>(processoResponsavelId);
   const [editCliente, setEditCliente] = useState(processo.cliente || '');
   const [salvandoEdit, setSalvandoEdit] = useState(false);
   const [voltandoDept, setVoltandoDept] = useState(false);
@@ -140,9 +141,9 @@ export default function ProcessoCard({
   // Sincronizar estado de edição quando o processo muda
   useEffect(() => {
     setEditNomeEmpresa(processo.nomeEmpresa || '');
-    setEditResponsavelId((processo as any).responsavelId);
+    setEditResponsavelId(processoResponsavelId);
     setEditCliente(processo.cliente || '');
-  }, [processo.nomeEmpresa, (processo as any).responsavelId, processo.cliente]);
+  }, [processo.nomeEmpresa, processoResponsavelId, processo.cliente]);
 
   const handleSaveEdit = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -150,7 +151,7 @@ export default function ProcessoCard({
     try {
       const updates: any = {};
       if (editNomeEmpresa !== (processo.nomeEmpresa || '')) updates.nomeEmpresa = editNomeEmpresa;
-      if (editResponsavelId !== (processo as any).responsavelId) updates.responsavelId = editResponsavelId || null;
+      if (editResponsavelId !== processoResponsavelId) updates.responsavelId = editResponsavelId || null;
       if (editCliente !== (processo.cliente || '')) updates.cliente = editCliente;
       if (Object.keys(updates).length > 0) {
         await atualizarProcesso(processo.id, updates);
