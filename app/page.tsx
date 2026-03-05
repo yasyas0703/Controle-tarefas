@@ -1064,13 +1064,14 @@ export default function Home() {
 
       {showUploadDocumento && (
         <ModalUploadDocumento
-          processo={
-            typeof showUploadDocumento === 'object' && showUploadDocumento?.id
-              ? processos.find((p) => p.id === showUploadDocumento.id)
-              : typeof showUploadDocumento === 'object'
-                ? showUploadDocumento
-                : undefined
-          }
+          processo={(() => {
+            if (typeof showUploadDocumento !== 'object' || !showUploadDocumento) return undefined;
+            const processoId = Number((showUploadDocumento as any)?.id);
+            if (Number.isFinite(processoId) && processoId > 0) {
+              return processos.find((p) => p.id === processoId) || (showUploadDocumento as any);
+            }
+            return showUploadDocumento as any;
+          })()}
           perguntaId={
             typeof showUploadDocumento === 'object' && showUploadDocumento?.perguntaId
               ? showUploadDocumento.perguntaId

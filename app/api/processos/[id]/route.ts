@@ -100,6 +100,21 @@ export async function GET(
     const userDeptId = getUserDepartmentId(user);
     const usuarioPermissao = { id: userId, role: userRole, departamentoId: userDeptId };
     const visibleDepartmentSet = visibleDepartmentIds ? new Set(visibleDepartmentIds) : null;
+    const canViewDocumento = (doc: any) =>
+      verificarPermissaoDocumento(
+        {
+          visibility: doc?.visibility,
+          allowedRoles: doc?.allowedRoles,
+          allowedUserIds: doc?.allowedUserIds,
+          uploadPorId: doc?.uploadPorId,
+          allowedDepartamentos: doc?.allowedDepartamentos || null,
+        },
+        usuarioPermissao
+      ) && (
+        !visibleDepartmentSet ||
+        !Number.isFinite(Number(doc?.departamentoId ?? doc?.departamento_id)) ||
+        visibleDepartmentSet.has(Number(doc?.departamentoId ?? doc?.departamento_id))
+      );
 
     // Montar mapa de contagem de anexos por perguntaId e por departamento (inclui total por pergunta)
     // IMPORTANTE: filtra por permissão do usuário para não expor contagens de documentos restritos
@@ -108,22 +123,7 @@ export async function GET(
         where: { processoId: processo.id },
         select: { id: true, perguntaId: true, departamentoId: true, visibility: true, allowedRoles: true, allowedUserIds: true, allowedDepartamentos: true, uploadPorId: true },
       });
-      const docsVisiveis = allDocs.filter((d: any) =>
-        verificarPermissaoDocumento(
-          {
-            visibility: d.visibility,
-            allowedRoles: d.allowedRoles,
-            allowedUserIds: d.allowedUserIds,
-            uploadPorId: d.uploadPorId,
-            allowedDepartamentos: d.allowedDepartamentos || null,
-          },
-          usuarioPermissao
-        ) && (
-          !visibleDepartmentSet ||
-          !Number.isFinite(Number((d as any)?.departamentoId ?? (d as any)?.departamento_id)) ||
-          visibleDepartmentSet.has(Number((d as any)?.departamentoId ?? (d as any)?.departamento_id))
-        )
-      );
+      const docsVisiveis = allDocs.filter((d: any) => canViewDocumento(d));
       const documentosCounts: Record<string, number> = {};
       for (const d of docsVisiveis) {
         const pid = Number((d as any)?.perguntaId ?? (d as any)?.pergunta_id ?? 0) || 0;
@@ -139,22 +139,7 @@ export async function GET(
       (processo as any).documentosCounts = {};
     }
     if (Array.isArray((processo as any).documentos)) {
-      (processo as any).documentos = (processo as any).documentos.filter((d: any) =>
-        verificarPermissaoDocumento(
-          {
-            visibility: d.visibility,
-            allowedRoles: d.allowedRoles,
-            allowedUserIds: d.allowedUserIds,
-            uploadPorId: d.uploadPorId,
-            allowedDepartamentos: d.allowedDepartamentos || null,
-          },
-          usuarioPermissao
-        ) && (
-          !visibleDepartmentSet ||
-          !Number.isFinite(Number(d?.departamentoId ?? d?.departamento_id)) ||
-          visibleDepartmentSet.has(Number(d?.departamentoId ?? d?.departamento_id))
-        )
-      );
+      (processo as any).documentos = (processo as any).documentos.filter((d: any) => canViewDocumento(d));
     }
 
     // Buscar todos os questionários por departamento vinculados a este processo
@@ -363,17 +348,33 @@ export async function GET(
             perguntaId: true,
             departamentoId: true,
             dataUpload: true,
+            visibility: true,
+            allowedRoles: true,
+            allowedUserIds: true,
+            allowedDepartamentos: true,
+            uploadPorId: true,
           },
         });
 
         // Agrupar documentos por processoId
         for (const doc of documentosInterligados) {
+          if (!canViewDocumento(doc)) continue;
           const pId = doc.processoId;
           if (!respostasInterligadas[pId]) continue;
           if (!respostasInterligadas[pId].documentos) {
             respostasInterligadas[pId].documentos = [];
           }
-          respostasInterligadas[pId].documentos.push(doc);
+          respostasInterligadas[pId].documentos.push({
+            id: doc.id,
+            processoId: doc.processoId,
+            nome: doc.nome,
+            tipo: doc.tipo,
+            tipoCategoria: doc.tipoCategoria,
+            url: doc.url,
+            perguntaId: doc.perguntaId,
+            departamentoId: doc.departamentoId,
+            dataUpload: doc.dataUpload,
+          });
         }
 
         // Ordenar por ID do processo (mais antigo = menor ID primeiro) para exibir cronologicamente

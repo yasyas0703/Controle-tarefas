@@ -50,6 +50,8 @@ const iconMap: Record<string, any> = {
   Star,
 };
 
+const REPOSITORIO_DOCS_MARKER_PREFIX = '__repositorio_docs_departamento__:';
+
 interface DepartamentosGridProps {
   onCriarDepartamento: () => void;
   onEditarDepartamento: (dept: any) => void;
@@ -76,6 +78,7 @@ export default function DepartamentosGrid({
   const {
     departamentos,
     setDepartamentos,
+    setProcessos,
     processos,
     usuarioLogado,
     setShowQuestionario,
@@ -166,23 +169,59 @@ export default function DepartamentosGrid({
     return true;
   };
 
-  const handleAdicionarDocumentoDepartamento = async (dept: any, processosDept: any[]) => {
-    if (!Array.isArray(processosDept) || processosDept.length === 0) {
-      await mostrarAlerta?.(
-        'Sem processo',
-        'Nao ha processo em andamento neste departamento para anexar documento.',
-        'aviso'
-      );
+  const getRepositorioDocsMarker = (deptId: number) => `${REPOSITORIO_DOCS_MARKER_PREFIX}${deptId}`;
+
+  const isProcessoRepositorioDocs = (processo: any, deptId: number) =>
+    String((processo as any)?.notasCriador || '').trim() === getRepositorioDocsMarker(deptId);
+
+  const handleAdicionarDocumentoDepartamento = async (dept: any, _processosDept: any[]) => {
+    const deptId = Number(dept?.id);
+    if (!Number.isFinite(deptId) || deptId <= 0) {
+      await mostrarAlerta?.('Erro', 'Departamento invalido para envio de documento.', 'erro');
       return;
     }
 
-    const processoAlvo =
-      processosDept.find((p: any) => Number(p?.departamentoAtual) === Number(dept?.id)) ||
-      processosDept[0];
+    let processoAlvo = processos.find((p: any) => isProcessoRepositorioDocs(p, deptId)) || null;
+
+    if (!processoAlvo) {
+      try {
+        const marcador = getRepositorioDocsMarker(deptId);
+        const nomeDept = typeof dept?.nome === 'string' && dept.nome.trim() ? dept.nome.trim() : `Departamento ${deptId}`;
+
+        processoAlvo = await api.salvarProcesso({
+          nome: `Repositorio de Documentos - ${nomeDept}`,
+          nomeServico: 'Repositorio de Documentos',
+          nomeEmpresa: `Documentos ${nomeDept}`,
+          cliente: 'Sistema',
+          status: 'FINALIZADO',
+          prioridade: 'BAIXA',
+          departamentoAtual: deptId,
+          departamentoAtualIndex: 0,
+          fluxoDepartamentos: [deptId],
+          notasCriador: marcador,
+          descricao: 'Processo tecnico para anexos de departamento sem cards ativos.',
+        });
+
+        const novoProcesso = processoAlvo;
+        setProcessos((prev: any[]) => {
+          if (!novoProcesso || prev.some((p: any) => Number(p.id) === Number(novoProcesso.id))) return prev;
+          return [novoProcesso as any, ...prev];
+        });
+      } catch (err: any) {
+        await mostrarAlerta?.(
+          'Erro',
+          err?.message || 'Nao foi possivel preparar o envio de documento para este departamento.',
+          'erro'
+        );
+        return;
+      }
+    }
 
     setShowUploadDocumento({
-      id: Number(processoAlvo.id),
-      departamentoId: Number(dept.id),
+      id: Number((processoAlvo as any).id),
+      departamentoId: deptId,
+      nomeEmpresa: (processoAlvo as any).nomeEmpresa,
+      nomeServico: (processoAlvo as any).nomeServico,
     });
   };
 
@@ -191,6 +230,16 @@ export default function DepartamentosGrid({
   const handleAvancarParalelo = async (processoId: number, deptId: number) => {
     const processo = processos.find((p: any) => p.id === processoId);
     if (!processo) return;
+
+    const nomeDept = departamentos.find((d: any) => d.id === deptId)?.nome || `Dept #${deptId}`;
+    const confirmado = await mostrarConfirmacao({
+      titulo: 'Confirmar conclusão',
+      mensagem: `Deseja realmente concluir o departamento "${nomeDept}" e prosseguir?`,
+      tipo: 'aviso',
+      textoConfirmar: 'Sim, concluir',
+      textoCancelar: 'Cancelar',
+    });
+    if (!confirmado) return;
 
     const fluxo = (processo.fluxoDepartamentos || []).map(Number);
     const idxDept = fluxo.indexOf(Number(deptId));
@@ -591,13 +640,10 @@ export default function DepartamentosGrid({
                                   setMenuDeptAberto(null);
                                   void handleAdicionarDocumentoDepartamento(dept, processosNoDept);
                                 }}
-                                disabled={processosNoDept.length === 0}
-                                className={`w-full px-3 py-2 text-sm text-cyan-700 hover:bg-cyan-50 flex items-center gap-2 ${
-                                  processosNoDept.length === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                                }`}
+                                className="w-full px-3 py-2 text-sm text-cyan-700 hover:bg-cyan-50 flex items-center gap-2"
                               >
                                 <Upload size={16} className="text-cyan-600" />
-                                Adicionar documento
+                                Enviar documento
                               </button>
                             )}
                             {podeEditarDepartamento && (

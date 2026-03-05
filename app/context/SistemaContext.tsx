@@ -1194,10 +1194,10 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
       // Log detalhado campo a campo
       const LABELS_PROCESSO: Record<string, string> = {
-        nomeEmpresa: 'Nome Empresa', nomeServico: 'Nome ServiÃ§o', nome: 'Nome',
+        nomeEmpresa: 'Nome Empresa', nomeServico: 'Nome Serviço', nome: 'Nome',
         cliente: 'Cliente', email: 'Email', telefone: 'Telefone',
-        status: 'Status', prioridade: 'Prioridade', descricao: 'DescriÃ§Ã£o',
-        notasCriador: 'Notas do Criador', responsavelId: 'ResponsÃ¡vel',
+        status: 'Status', prioridade: 'Prioridade', descricao: 'Descrição',
+        notasCriador: 'Notas do Criador', responsavelId: 'Responsável',
         departamentoAtual: 'Departamento Atual', dataEntrega: 'Data de Entrega',
         progresso: 'Progresso', empresaId: 'Empresa',
         interligadoComId: 'Interligado com', interligadoNome: 'Nome Interligação',
@@ -1345,6 +1345,16 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
 
   const avancarParaProximoDepartamento = useCallback(
     async (processoId: number) => {
+      const processoAtual = processos.find((p) => p.id === processoId);
+      const confirmado = await mostrarConfirmacao({
+        titulo: 'Confirmar avanço',
+        mensagem: `Deseja realmente prosseguir e avançar esta solicitação${processoAtual?.nomeEmpresa ? ` (${processoAtual.nomeEmpresa})` : ''}?`,
+        tipo: 'aviso',
+        textoConfirmar: 'Sim, avançar',
+        textoCancelar: 'Cancelar',
+      });
+      if (!confirmado) return;
+
       // ValidaÃ§Ã£o: antes de avanÃ§ar, verificar se o questionÃ¡rio do departamento atual
       // possui perguntas obrigatÃ³rias nÃ£o respondidas. Se sim, bloqueia o avanÃ§o.
       try {
@@ -1409,7 +1419,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
             const nomes = faltando.map((p: any) => p.label).join(', ');
             if (process.env.NODE_ENV !== 'production') {
               try {
-                console.debug('[validaÃ§Ã£o] faltando perguntas obrigatÃ³rias antes de avanÃ§ar', { processoId, deptId, faltandoCount: faltando.length, faltando: faltando.map((p:any)=>({id:p.id,label:p.label})) });
+                console.debug('[validação] faltando perguntas obrigatórias antes de avançar', { processoId, deptId, faltandoCount: faltando.length, faltando: faltando.map((p:any)=>({id:p.id,label:p.label})) });
               } catch {}
             }
             try {
@@ -1421,7 +1431,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } catch (err) {
-        console.warn('ValidaÃ§Ã£o de questionÃ¡rio falhou:', err);
+        console.warn('Validação de questionário falhou:', err);
       }
       try {
         setGlobalLoading(true);
@@ -1458,10 +1468,20 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
         setGlobalLoading(false);
       }
     },
-    [adicionarNotificacao, mostrarAlerta, processos, setProcessos, setGlobalLoading, departamentos]
+    [adicionarNotificacao, mostrarAlerta, mostrarConfirmacao, processos, setProcessos, setGlobalLoading, departamentos]
   );
 
   const finalizarProcesso = useCallback(async (processoId: number) => {
+    const processoAtual = processos.find((p) => p.id === processoId);
+    const confirmado = await mostrarConfirmacao({
+      titulo: 'Confirmar finalização',
+      mensagem: `Deseja realmente finalizar esta solicitação${processoAtual?.nomeEmpresa ? ` (${processoAtual.nomeEmpresa})` : ''}?`,
+      tipo: 'aviso',
+      textoConfirmar: 'Sim, finalizar',
+      textoCancelar: 'Cancelar',
+    });
+    if (!confirmado) return;
+
     try {
       setGlobalLoading(true);
       
@@ -1630,7 +1650,7 @@ export function SistemaProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setGlobalLoading(false);
     }
-  }, [adicionarNotificacao, departamentos, mostrarAlerta]);
+  }, [adicionarNotificacao, departamentos, mostrarAlerta, mostrarConfirmacao, processos]);
 
   const aplicarTagsProcesso = useCallback(async (processoId: number, novasTags: number[]) => {
     try {

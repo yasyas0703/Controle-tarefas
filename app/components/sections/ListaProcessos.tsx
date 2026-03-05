@@ -27,6 +27,8 @@ import { Processo } from '@/app/types';
 import { temPermissao } from '@/app/utils/permissions';
 import { verificarMencoesNaoLidasPorNotificacoes } from '@/app/utils/mentions';
 
+const REPOSITORIO_DOCS_MARKER_PREFIX = '__repositorio_docs_departamento__:';
+
 interface ListaProcessosProps {
   onProcessoClicado: (processo: Processo) => void;
   filtroStatus?: string;
@@ -104,7 +106,12 @@ export default function ListaProcessos({
     return 'Nova Empresa';
   };
 
+  const isProcessoRepositorioDocs = (proc: Processo) =>
+    String((proc as any)?.notasCriador || '').trim().startsWith(REPOSITORIO_DOCS_MARKER_PREFIX);
+
   const processosFiltrados = processos.filter((proc) => {
+    if (isProcessoRepositorioDocs(proc)) return false;
+
     // Filtro por status
     if (filtroStatus === 'andamento' && proc.status !== 'em_andamento') return false;
     if (filtroStatus === 'finalizado' && proc.status !== 'finalizado') return false;
@@ -137,6 +144,8 @@ export default function ListaProcessos({
 
     return true;
   });
+
+  const totalProcessosVisiveis = processos.filter((proc) => !isProcessoRepositorioDocs(proc)).length;
 
   const getPriorityColor = (prioridade: string) => {
     switch (String(prioridade || '').toLowerCase()) {
@@ -623,7 +632,7 @@ export default function ListaProcessos({
       </div>
 
       <div className="p-6 border-t border-gray-200 text-sm text-gray-600 text-center">
-        Mostrando {processosFiltrados.length} de {processos.length} processos
+        Mostrando {processosFiltrados.length} de {totalProcessosVisiveis} processos
       </div>
     </div>
   );

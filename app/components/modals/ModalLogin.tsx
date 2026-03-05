@@ -376,7 +376,7 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
           </div>
 
           <div className="p-4 border-t border-gray-200 dark:border-[var(--border)] text-center text-sm text-gray-600 dark:text-gray-300">
-            Versão 2.0 - Controle de Tarefas &copy; 2026
+            Versão 1.0 - Controle de Tarefas &copy; 2026
           </div>
         </div>
       </ModalBase>
@@ -529,7 +529,7 @@ export default function ModalLogin({ onLogin }: ModalLoginProps) {
 
           {/* Footer */}
           <div className="p-4 border-t border-gray-200 dark:border-[var(--border)] text-center text-sm text-gray-600 dark:text-gray-300">
-            Versão 2.0 - Controle de Tarefas &copy; 2026
+            Versão 1.0 - Controle de Tarefas &copy; 2026
           </div>
         </div>
     </ModalBase>

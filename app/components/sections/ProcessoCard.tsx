@@ -10,7 +10,6 @@ import {
   Star,
   Pin,
   Tag,
-  Upload,
   X,
   Loader2,
   Edit3,
@@ -545,24 +544,13 @@ export default function ProcessoCard({
                     e.stopPropagation();
                     onQuestionario(processo);
                   }}
-                  className="w-full bg-white border border-gray-300 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
+                  className="col-span-2 w-full bg-white border border-gray-300 text-gray-700 px-2 py-1 rounded text-xs hover:bg-gray-50 transition-colors flex items-center justify-center gap-1"
                   title="Abrir Questionário"
                 >
                   <FileText size={10} />
                   Form
                 </button>
 
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDocumentos(processo);
-                  }}
-                  className="w-full bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 transition-colors flex items-center justify-center gap-1"
-                  title="Upload de Documentos"
-                >
-                  <Upload size={10} />
-                  Docs
-                </button>
               </>
             )}
 

@@ -123,6 +123,30 @@ function canWorkOnDepartment(
   return processo.deptIndependente && flow.includes(userDeptId);
 }
 
+function resolveVisibleDepartmentIdsForRead(
+  processo: ProcessoAccessSnapshot,
+  userDeptId: number
+) {
+  const flow = normalizeFlow(processo);
+
+  // Em fluxo paralelo, mantemos isolamento por departamento.
+  if (processo.deptIndependente) return [userDeptId];
+  if (flow.length === 0) return [userDeptId];
+
+  const userIdx = flow.indexOf(userDeptId);
+  if (userIdx < 0) return [userDeptId];
+
+  const currentIdx = flow.indexOf(Number(processo.departamentoAtual));
+  const cutoff = currentIdx >= 0 ? Math.min(userIdx, currentIdx) : userIdx;
+  const visible = flow.slice(0, cutoff + 1).filter((id, idx, arr) => arr.indexOf(id) === idx);
+
+  if (!visible.includes(userDeptId)) {
+    visible.push(userDeptId);
+  }
+
+  return visible;
+}
+
 export async function assertProcessAccess(
   user: AuthUser,
   processoId: number,
@@ -234,7 +258,10 @@ export async function assertProcessAccess(
     processo,
     roleUpper,
     userDeptId,
-    visibleDepartmentIds: [userDeptId],
+    visibleDepartmentIds:
+      action === 'read'
+        ? resolveVisibleDepartmentIdsForRead(processo, userDeptId)
+        : [userDeptId],
     isAdminLike: false,
     error: null,
   };

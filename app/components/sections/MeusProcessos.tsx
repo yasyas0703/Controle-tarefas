@@ -158,6 +158,16 @@ export default function MeusProcessos({
     const processo = processos.find((p: any) => p.id === processoId);
     if (!processo) return;
 
+    const nomeDept = departamentos.find((d: any) => d.id === deptId)?.nome || `Dept #${deptId}`;
+    const confirmado = await mostrarConfirmacao({
+      titulo: 'Confirmar conclusão',
+      mensagem: `Deseja realmente concluir o departamento "${nomeDept}" e prosseguir?`,
+      tipo: 'aviso',
+      textoConfirmar: 'Sim, concluir',
+      textoCancelar: 'Cancelar',
+    });
+    if (!confirmado) return;
+
     const checklistConcluido = checklistCache.get(Number(processoId));
     const jaFez = checklistConcluido?.has(Number(deptId)) ?? false;
 
